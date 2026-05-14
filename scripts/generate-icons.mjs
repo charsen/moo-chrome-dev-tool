@@ -4,7 +4,7 @@
 // 用法:
 //   pnpm icons
 
-import { readFileSync, mkdirSync, existsSync } from 'node:fs'
+import { readFileSync, mkdirSync, existsSync, cpSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -68,3 +68,11 @@ for (const { size, name } of sizes) {
   console.log(`✓ ${size.toString().padStart(3)} → ${out}`)
 }
 console.log(`done. ${sizes.length} icons written to ${outDir}.`)
+
+// 如果 dist/icons 存在（说明 pnpm dev 正在跑），顺手同步过去，避免 CRXJS 不监听 public/ 的坑
+const distDir = resolve(root, 'dist/icons')
+if (existsSync(distDir)) {
+  cpSync(outDir, distDir, { recursive: true })
+  console.log(`✓ synced to ${distDir}`)
+}
+
