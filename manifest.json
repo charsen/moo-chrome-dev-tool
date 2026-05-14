@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Moo Dev Tool",
+  "version": "0.0.1",
+  "description": "前后端业务调试工具",
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "Moo Dev Tool"
+  },
+  "devtools_page": "src/devtools/index.html",
+  "background": {
+    "service_worker": "src/background/index.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content/index.ts"],
+      "run_at": "document_start"
+    }
+  ],
+  "permissions": ["storage", "tabs", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/injected/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
