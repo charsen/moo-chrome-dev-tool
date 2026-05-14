@@ -8,7 +8,9 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "type-check": "vue-tsc --noEmit"
+    "type-check": "vue-tsc --noEmit",
+    "mock": "node scripts/mock-server.mjs",
+    "icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "vue": "^3.4.21"
@@ -16,7 +18,9 @@
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.0.0-beta.23",
     "@types/chrome": "^0.0.263",
+    "@types/node": "^25.7.0",
     "@vitejs/plugin-vue": "^5.0.4",
+    "sharp": "^0.34.5",
     "typescript": "^5.4.2",
     "vite": "^5.2.0",
     "vue-tsc": "^2.0.6"

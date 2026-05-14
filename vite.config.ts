@@ -12,9 +12,10 @@ export default defineConfig({
     }
   },
   server: {
-    port: 5173,
+    host: '127.0.0.1',
+    port: 5273,
     strictPort: true,
-    hmr: { port: 5173 }
+    hmr: { port: 5273 }
   },
   build: {
     target: 'esnext',

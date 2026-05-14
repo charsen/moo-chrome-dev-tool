@@ -15,31 +15,27 @@
       </nav>
     </header>
     <main class="content">
-      <section v-if="active === 'overview'">
-        <p class="placeholder">骨架已就绪，等待功能实现。</p>
-      </section>
-      <section v-else-if="active === 'network'">
-        <p class="placeholder">网络/接口调试面板（待实现）</p>
-      </section>
-      <section v-else-if="active === 'state'">
-        <p class="placeholder">前端状态/Store 面板（待实现）</p>
-      </section>
-      <section v-else-if="active === 'settings'">
-        <p class="placeholder">设置面板（待实现）</p>
-      </section>
+      <Environment v-if="active === 'env'" />
+      <Overview v-else-if="active === 'overview'" />
+      <History v-else-if="active === 'history'" />
+      <Placeholder v-else-if="active === 'settings'" text="设置（Phase 3：脱敏规则 / 缓冲大小 / 快捷键）" />
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import Environment from './tabs/Environment.vue'
+import History from './tabs/History.vue'
+import Overview from './tabs/Overview.vue'
+import Placeholder from './tabs/Placeholder.vue'
 
 const tabId = ref(chrome.devtools.inspectedWindow.tabId)
 
 const tabs = [
   { key: 'overview', label: '概览' },
-  { key: 'network', label: '网络' },
-  { key: 'state', label: '状态' },
+  { key: 'env', label: '环境' },
+  { key: 'history', label: '历史' },
   { key: 'settings', label: '设置' }
 ] as const
 
@@ -60,6 +56,7 @@ const active = ref<TabKey>('overview')
 .header {
   border-bottom: 1px solid #e5e5e5;
   background: #fafafa;
+  flex: none;
 }
 .title {
   display: flex;
@@ -90,11 +87,8 @@ const active = ref<TabKey>('overview')
 }
 .content {
   flex: 1;
-  padding: 12px 14px;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
 }
-.placeholder {
-  color: #888;
-  margin: 0;
-}
+.content > * { flex: 1; min-height: 0; }
 </style>
