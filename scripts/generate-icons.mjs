@@ -1,8 +1,14 @@
-// 从 src/assets/eagle-source.jpg 自动方形裁剪（attention 策略聚焦鹰眼+喙），
-// 生成 manifest 用的 16/32/48/128 PNG，以及悬浮球用的 96px PNG。
+// 从 src/assets/eagle-source.jpg 生成 manifest 用的 16/32/48/128 PNG
+// 以及悬浮球用的 96px PNG，最后套圆形 alpha mask。
 //
 // 用法:
 //   pnpm icons
+//
+// 源图要求：方形（width === height），主体居中。
+// - 方形源图下 fit:'cover' 直接走 resize，不做裁剪
+// - 不得不传非方源图时，下面 CROP_POSITION 决定 cover 保留哪一侧
+//   （早期版本用 sharp.strategy.attention 自动找重点，但黑底大块容易
+//   误判，所以改成固定 position，输出确定可预测）
 
 import { readFileSync, mkdirSync, existsSync, cpSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
@@ -30,13 +36,21 @@ mkdirSync(outDir, { recursive: true })
 
 const sourceBuf = readFileSync(sourcePath)
 
-// 先把源图方形裁剪成一张高分辨率正方形 PNG，供后续各尺寸缩放
+// 非方形源图 cover 时保留哪一侧。可选值：
+//   'center' / 'top' / 'right' / 'bottom' / 'left'
+//   'right top' / 'right bottom' / 'left top' / 'left bottom'
+// 方形源图下不会触发裁剪，此值无影响。
+const CROP_POSITION = 'center'
+
+// 先把源图压成一张正方形 PNG（方形源图实质只是 resize，非方源图按
+// CROP_POSITION 裁剪），供后续各尺寸缩放
 const baseSize = 512
+const meta = await sharp(sourceBuf).metadata()
+if (meta.width !== meta.height) {
+  console.warn(`⚠ 源图 ${meta.width}x${meta.height} 非方形，将按 position='${CROP_POSITION}' 裁剪`)
+}
 const squareBuf = await sharp(sourceBuf)
-  .resize(baseSize, baseSize, {
-    fit: 'cover',
-    position: sharp.strategy.attention // 自动定位"最有信息量"的区域（鹰眼/喙）
-  })
+  .resize(baseSize, baseSize, { fit: 'cover', position: CROP_POSITION })
   .png()
   .toBuffer()
 
