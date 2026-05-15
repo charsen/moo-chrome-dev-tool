@@ -134,6 +134,7 @@ import type { CapturedRequest } from '@/types/requests'
 import type { ConsoleError } from '@/types/errors'
 import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes } from '@/types/messages'
 import { formatSubmitResult } from '@/utils/submitMessage'
+import { safeSendMessage } from '@/utils/messaging'
 import ElementPicker, { type PickedElement } from './ElementPicker.vue'
 import type { RecordingResult } from './useRecorder'
 
@@ -273,12 +274,16 @@ async function onPreview() {
   if (!server) return
   previewing.value = true
   try {
-    const res = (await chrome.runtime.sendMessage({
-      type: MSG.PREVIEW_PAYLOAD,
-      source: 'content',
-      payload: { server, context: buildContext() } satisfies PreviewPayloadReq
-    })) as PreviewPayloadRes
-    preview.value = res.rendered
+    try {
+      const res = (await safeSendMessage({
+        type: MSG.PREVIEW_PAYLOAD,
+        source: 'content',
+        payload: { server, context: buildContext() } satisfies PreviewPayloadReq
+      })) as PreviewPayloadRes
+      preview.value = res.rendered
+    } catch (err) {
+      preview.value = `预览失败: ${(err as Error).message}`
+    }
   } finally {
     previewing.value = false
   }
@@ -303,7 +308,7 @@ async function onSubmit() {
       elements: ctx.elements,
       video: ctx.video ?? undefined
     }
-    const res = (await chrome.runtime.sendMessage({
+    const res = (await safeSendMessage({
       type: MSG.SUBMIT_BUG,
       source: 'content',
       payload: req

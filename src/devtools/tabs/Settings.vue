@@ -1,9 +1,15 @@
 <template>
   <div v-if="!loaded" class="loading">加载配置中…</div>
   <div v-else class="settings">
+    <div v-if="toast" :class="['moo-toast', `moo-toast--${toastKind}`]">{{ toast }}</div>
     <header class="page-head">
       <h2>设置</h2>
-      <span class="hint">改动自动保存</span>
+      <span class="save-indicator" :class="`is-${saveState}`">
+        <template v-if="saveState === 'saving'">保存中…</template>
+        <template v-else-if="saveState === 'saved'">✓ 已保存</template>
+        <template v-else-if="saveState === 'error'">⚠ 保存失败</template>
+        <template v-else>改动自动保存</template>
+      </span>
     </header>
 
     <main class="page-body">
@@ -144,6 +150,7 @@ import type { MooConfig, Project } from '@/types/config'
 import { loadConfig, saveConfig } from '@/storage/config'
 import { listHistory, clearHistory } from '@/storage/history'
 import { MSG } from '@/types/messages'
+import { safeSendMessage } from '@/utils/messaging'
 
 const HISTORY_MAX = 30
 
@@ -177,9 +184,41 @@ onMounted(async () => {
 const ready = ref(false)
 watch(loaded, (v) => { if (v) ready.value = true })
 
+type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+const saveState = ref<SaveState>('idle')
+let inflight = 0
+let savedTimer: number | undefined
+
+const toast = ref('')
+const toastKind = ref<'success' | 'error' | 'info'>('info')
+let toastTimer: number | undefined
+function showToast(msg: string, kind: 'success' | 'error' | 'info' = 'info') {
+  toast.value = msg
+  toastKind.value = kind
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = window.setTimeout(() => (toast.value = ''), kind === 'error' ? 5000 : 2600)
+}
+
 async function save() {
   if (!ready.value) return
-  await saveConfig(config.value)
+  inflight++
+  saveState.value = 'saving'
+  try {
+    await saveConfig(config.value)
+    inflight--
+    // 仅在没有后续保存还在路上时才切到 saved，避免来回闪 saving↔saved
+    if (inflight === 0) {
+      saveState.value = 'saved'
+      if (savedTimer) clearTimeout(savedTimer)
+      savedTimer = window.setTimeout(() => {
+        if (saveState.value === 'saved') saveState.value = 'idle'
+      }, 1500)
+    }
+  } catch (e) {
+    inflight--
+    saveState.value = 'error'
+    console.error('[Moo settings] 保存失败', e)
+  }
 }
 
 function onBufferSize(v: string) {
@@ -192,11 +231,15 @@ function onBufferSize(v: string) {
 }
 
 async function clearHistoryAll() {
-  if (!confirm(`清空所有 ${historyCount.value} 条历史记录？`)) return
+  const n = historyCount.value
+  if (!confirm(`清空所有 ${n} 条历史记录？`)) return
   busy.value = 'history'
   try {
     await clearHistory()
     await refreshStats()
+    showToast(`已清空 ${n} 条历史`, 'success')
+  } catch (e) {
+    showToast(`清空失败: ${(e as Error).message}`, 'error')
   } finally {
     busy.value = ''
   }
@@ -205,19 +248,27 @@ async function clearHistoryAll() {
 async function flushQueue() {
   busy.value = 'flush'
   try {
-    await chrome.runtime.sendMessage({ type: MSG.RETRY_QUEUE_FLUSH, source: 'devtools' })
+    const res = await safeSendMessage({ type: MSG.RETRY_QUEUE_FLUSH, source: 'devtools' })
     await refreshStats()
+    const processed = (res as { processed?: number } | undefined)?.processed ?? 0
+    showToast(processed > 0 ? `重试完成，${processed} 条已上报` : '队列已空 / 全部失败，无变化', processed > 0 ? 'success' : 'info')
+  } catch (e) {
+    showToast(`重试失败: ${(e as Error).message}`, 'error')
   } finally {
     busy.value = ''
   }
 }
 
 async function clearQueue() {
-  if (!confirm(`清空 ${queueCount.value} 条未上报队列？这些 bug 将丢失。`)) return
+  const n = queueCount.value
+  if (!confirm(`清空 ${n} 条未上报队列？这些 bug 将丢失。`)) return
   busy.value = 'clearQueue'
   try {
     await chrome.storage.local.set({ mooRetryQueue: [] })
     await refreshStats()
+    showToast(`已清空 ${n} 条`, 'success')
+  } catch (e) {
+    showToast(`清空失败: ${(e as Error).message}`, 'error')
   } finally {
     busy.value = ''
   }
@@ -327,6 +378,16 @@ const TagInput = (props: { modelValue: string[]; placeholder?: string }, { emit 
   font-size: var(--moo-fs-xs);
   color: var(--moo-c-text-dim);
 }
+
+.save-indicator {
+  font-size: var(--moo-fs-xs);
+  color: var(--moo-c-text-dim);
+  font-variant-numeric: tabular-nums;
+  transition: color var(--moo-motion-fast);
+}
+.save-indicator.is-saving { color: var(--moo-c-text); }
+.save-indicator.is-saved  { color: var(--moo-c-success); font-weight: 500; }
+.save-indicator.is-error  { color: var(--moo-c-danger);  font-weight: 500; }
 
 .page-body {
   flex: 1;

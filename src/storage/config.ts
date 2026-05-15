@@ -58,10 +58,12 @@ export async function loadConfig(): Promise<MooConfig> {
   const cfg = normalizeConfig(result[CONFIG_KEY] as Partial<MooConfig> | undefined)
   const { config, changed } = applyMigrations(cfg)
   if (changed) {
-    console.log('[Moo:config] migrated payloadTemplate(s) to include video fields')
+    if (import.meta.env.DEV) console.log('[Moo:config] migrated payloadTemplate(s) to include video fields')
     void saveConfig(config)
   }
-  console.log('[Moo:config] loaded', config, 'rawKey:', result[CONFIG_KEY])
+  // 不要在生产打整份 config —— project.token / endpoint 是敏感信息，
+  // 用户开 DevTools 或截图分享 console 会泄露。
+  if (import.meta.env.DEV) console.log('[Moo:config] loaded', config, 'rawKey:', result[CONFIG_KEY])
   return config
 }
 
@@ -69,7 +71,7 @@ export async function saveConfig(config: MooConfig): Promise<void> {
   // Vue 响应式对象在结构化克隆时可能丢字段，先解到纯对象再写入
   const plain = JSON.parse(JSON.stringify(config)) as MooConfig
   await chrome.storage.local.set({ [CONFIG_KEY]: plain })
-  console.log('[Moo:config] saved', plain)
+  if (import.meta.env.DEV) console.log('[Moo:config] saved', plain)
 }
 
 export async function updateConfig(updater: (cfg: MooConfig) => MooConfig): Promise<MooConfig> {

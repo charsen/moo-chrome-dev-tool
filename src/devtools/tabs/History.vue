@@ -98,6 +98,7 @@ import { loadConfig } from '@/storage/config'
 import { MSG, type SubmitBugReq, type SubmitBugRes } from '@/types/messages'
 import type { BugHistoryEntry } from '@/types/history'
 import { formatSubmitResult } from '@/utils/submitMessage'
+import { safeSendMessage, MessagingError } from '@/utils/messaging'
 import type { Project } from '@/types/config'
 
 const list = ref<BugHistoryEntry[]>([])
@@ -126,8 +127,10 @@ function remoteStatusLabel(s: string): string {
 async function syncRemoteStatus() {
   syncing.value = true
   try {
-    await chrome.runtime.sendMessage({ type: MSG.REFRESH_HISTORY_STATUS, source: 'devtools' })
+    await safeSendMessage({ type: MSG.REFRESH_HISTORY_STATUS, source: 'devtools' })
     await reload()
+  } catch (e) {
+    showToast(`同步失败: ${(e as Error).message}`, 'error')
   } finally {
     syncing.value = false
   }
@@ -236,13 +239,17 @@ async function resubmit(e: BugHistoryEntry) {
       requests: e.requests,
       errors: e.errors
     }
-    const res = (await chrome.runtime.sendMessage({
-      type: MSG.SUBMIT_BUG,
-      source: 'devtools',
-      payload: req
-    })) as SubmitBugRes
-    const { message } = formatSubmitResult(res)
-    showToast(message, res.ok ? 'success' : 'error')
+    try {
+      const res = (await safeSendMessage({
+        type: MSG.SUBMIT_BUG,
+        source: 'devtools',
+        payload: req
+      })) as SubmitBugRes
+      const { message } = formatSubmitResult(res)
+      showToast(message, res.ok ? 'success' : 'error')
+    } catch (err) {
+      showToast(`重发失败: ${(err as MessagingError).message}`, 'error')
+    }
   } finally {
     busyId.value = ''
   }

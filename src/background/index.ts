@@ -60,12 +60,15 @@ chrome.commands?.onCommand.addListener((command, tab) => {
   })
 })
 
-// 接住 devtools 面板的 keepalive 端口
-chrome.runtime.onConnect.addListener((port) => {
-  if (port.name === '__panel_keepalive__') {
-    port.onDisconnect.addListener(() => {})
-  }
-})
+// 接住 devtools 面板的 keepalive 端口（仅 dev：HMR 重载扩展时面板靠它感知 disconnect 后自刷新）。
+// 生产 panel.ts 已不连这个 port，这里也对称屏蔽掉，避免被外部随意 connect 撑活 SW。
+if (import.meta.env.DEV) {
+  chrome.runtime.onConnect.addListener((port) => {
+    if (port.name === '__panel_keepalive__') {
+      port.onDisconnect.addListener(() => {})
+    }
+  })
+}
 
 chrome.runtime.onMessage.addListener((message: MooMessage, sender, sendResponse) => {
   ;(async () => {

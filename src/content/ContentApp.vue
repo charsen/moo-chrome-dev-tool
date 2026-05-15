@@ -47,6 +47,7 @@ import { useRecorder, type RecordingResult } from './useRecorder'
 import type { Project } from '@/types/config'
 import { MSG, type CaptureScreenshotRes, type MatchProjectRes } from '@/types/messages'
 import { onConfigChanged } from '@/storage/config'
+import { safeSendMessage } from '@/utils/messaging'
 import { useRequests } from './useRequests'
 import { useErrors } from './useErrors'
 
@@ -74,11 +75,15 @@ const capturedRequests = computed(() => reqApi.requests.value)
 const capturedErrors = computed(() => errApi.errors.value)
 
 async function refreshProject() {
-  const res = (await chrome.runtime.sendMessage({
-    type: MSG.MATCH_PROJECT,
-    source: 'content',
-    payload: { url: location.href }
-  })) as MatchProjectRes
+  // SW 暂时不可达时静默 fallback —— 悬浮球消失比抛错让 Vue 卡死要好；下次 SPA 路由变更会再试。
+  const res = (await safeSendMessage<MatchProjectRes>(
+    {
+      type: MSG.MATCH_PROJECT,
+      source: 'content',
+      payload: { url: location.href }
+    },
+    { fallback: { matches: [], project: null } satisfies MatchProjectRes }
+  )) as MatchProjectRes
   matches.value = res.matches ?? (res.project ? [res.project] : [])
   // 唯一匹配 → 直接 active；多匹配 → 留空，等用户在悬浮球里选
   // 抓取配置始终走 matches[0]（同一 URL 命中的项目，抓取/脱敏通常一致；
@@ -161,10 +166,14 @@ async function startCapture() {
 
   let res: CaptureScreenshotRes
   try {
-    res = (await chrome.runtime.sendMessage({
+    res = (await safeSendMessage({
       type: MSG.CAPTURE_SCREENSHOT,
       source: 'content'
     })) as CaptureScreenshotRes
+  } catch (err) {
+    showToast(`截图失败: ${(err as Error).message}`, 'error')
+    state.value = 'idle'
+    return
   } finally {
     unmask()
   }

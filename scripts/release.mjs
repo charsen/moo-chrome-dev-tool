@@ -45,8 +45,22 @@ if (existsSync(distDir)) {
 console.log('运行 vite build…')
 execSync('pnpm build', { cwd: root, stdio: 'inherit' })
 
-if (!existsSync(resolve(distDir, 'manifest.json'))) {
-  console.error('build 没产出 dist/manifest.json，中止')
+// 冒烟检查：发版前确认 dist 里所有"运行必须文件"都在。
+// 起因：v0.1.1 因为 panel.html 没在 vite input 里、build 没产出，朋友装完打开 DevTools 一片空白。
+// manifest 入口（popup / devtools_page / service_worker）+ devtools.ts 动态注册的 panel.html
+// 三类都列出来；任何一个缺，直接退出别打包。
+const required = [
+  'manifest.json',
+  'service-worker-loader.js',
+  'src/popup/index.html',
+  'src/devtools/index.html',
+  'src/devtools/panel.html',
+  'src/offscreen/index.html'
+]
+const missing = required.filter((f) => !existsSync(resolve(distDir, f)))
+if (missing.length > 0) {
+  console.error('build 产物缺以下必需文件，中止发版：')
+  for (const f of missing) console.error(`  - dist/${f}`)
   process.exit(1)
 }
 

@@ -224,6 +224,9 @@ async function onSave() {
   try {
     config.value = clone(draft.value)
     await save()
+    showToast('已保存', 'success')
+  } catch (e) {
+    showToast(`保存失败: ${(e as Error).message}`, 'error')
   } finally {
     saving.value = false
   }
@@ -330,6 +333,16 @@ function importConfig() {
         showToast('文件格式不正确', 'error')
         return
       }
+      // 安全确认：导入他人配置 = 同意把本机抓取的请求/cookie/storage 发到这些 endpoint。
+      // 列出所有 host 让用户在落盘前看清楚，避免被预置的恶意 endpoint 偷数据。
+      const endpoints = collectEndpoints(parsed.projects)
+      if (endpoints.length > 0) {
+        const lines = endpoints.map((e) => `  • ${e}`).join('\n')
+        if (!confirm(
+          `这份配置会把抓取到的数据上报到下列地址：\n\n${lines}\n\n` +
+          `导入后，匹配规则命中时本机的请求 / cookie / storage / 截图都会发往以上地址。\n确认导入？`
+        )) return
+      }
       draft.value = {
         projects: parsed.projects,
         globalEnabled: typeof parsed.globalEnabled === 'boolean' ? parsed.globalEnabled : true
@@ -340,6 +353,32 @@ function importConfig() {
     }
   }
   input.click()
+}
+
+/** 从 projects 数组里抽出所有 server.endpoint 的可读 host（带协议），去重保序。 */
+function collectEndpoints(projects: unknown[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const p of projects) {
+    const servers = (p as { servers?: unknown[] })?.servers
+    if (!Array.isArray(servers)) continue
+    for (const s of servers) {
+      const ep = (s as { endpoint?: unknown })?.endpoint
+      if (typeof ep !== 'string' || !ep) continue
+      let display = ep
+      try {
+        const u = new URL(ep)
+        display = `${u.protocol}//${u.host}${u.pathname === '/' ? '' : u.pathname}`
+      } catch {
+        // 非法 URL：原样展示，让用户自己判断
+      }
+      if (!seen.has(display)) {
+        seen.add(display)
+        out.push(display)
+      }
+    }
+  }
+  return out
 }
 </script>
 

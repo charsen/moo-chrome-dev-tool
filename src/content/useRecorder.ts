@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { MSG } from '@/types/messages'
+import { safeSendMessage } from '@/utils/messaging'
 
 /**
  * 屏幕录制 composable —— 走 chrome.tabCapture + offscreen document。
@@ -35,10 +36,16 @@ export function useRecorder(opts: { maxSeconds?: number } = {}) {
     if (recording.value) return null
     error.value = ''
 
-    const startRes = await chrome.runtime.sendMessage({
-      type: MSG.RECORD_START,
-      source: 'content'
-    })
+    let startRes: { ok?: boolean; error?: string } | undefined
+    try {
+      startRes = await safeSendMessage<{ ok?: boolean; error?: string }>({
+        type: MSG.RECORD_START,
+        source: 'content'
+      })
+    } catch (e) {
+      error.value = (e as Error).message
+      return null
+    }
     if (!startRes?.ok) {
       error.value = startRes?.error || '启动录制失败'
       return null
@@ -83,7 +90,7 @@ export function useRecorder(opts: { maxSeconds?: number } = {}) {
     const finalElapsed = elapsed.value
     // sendMessage 异常（service worker 重启等）也必须 resolve，避免 start() 返回的 Promise 永远悬挂
     try {
-      const res = await chrome.runtime.sendMessage({ type: MSG.RECORD_STOP, source: 'content' })
+      const res = await safeSendMessage<{ ok?: boolean; dataUrl?: string; bytes?: number; mime?: string; error?: string }>({ type: MSG.RECORD_STOP, source: 'content' })
       if (res?.ok && res.dataUrl) {
         pendingResolve?.({
           dataUrl: res.dataUrl,
@@ -105,11 +112,8 @@ export function useRecorder(opts: { maxSeconds?: number } = {}) {
 
   async function cancel() {
     if (!recording.value) return
-    try {
-      await chrome.runtime.sendMessage({ type: MSG.RECORD_CANCEL, source: 'content' })
-    } catch {
-      // 即使取消消息发不出去，也要按取消语义 resolve null 并清状态
-    }
+    // CANCEL 发不出去就算了：按取消语义 resolve null 并清状态即可
+    await safeSendMessage({ type: MSG.RECORD_CANCEL, source: 'content' }, { fallback: undefined })
     pendingResolve?.(null)
     pendingResolve = null
     cleanup()

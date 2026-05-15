@@ -19,10 +19,18 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
-    sourcemap: true,
+    // 生产关 sourcemap：release.mjs 用 `zip -r .` 把 dist 全部打包，
+    // 开了 sourcemap 会让发布 zip 同时携带源码（包体积 2-4 倍 + 等价源码外发）。
+    // 需要调试线上问题时临时改 true 再 build 即可。
+    sourcemap: false,
     rollupOptions: {
       input: {
-        offscreen: resolve(__dirname, 'src/offscreen/index.html')
+        offscreen: resolve(__dirname, 'src/offscreen/index.html'),
+        // devtools panel.html 不是 manifest 入口（由 devtools.ts 里
+        // chrome.devtools.panels.create() 动态注册），必须显式声明 input，
+        // 否则 build 不会把它写到 dist，DevTools 打开 Moo 面板会报
+        // “该文件可能已被移至别处、修改或删除。”
+        devtoolsPanel: resolve(__dirname, 'src/devtools/panel.html')
       }
     }
   }
