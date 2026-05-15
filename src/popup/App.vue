@@ -1,47 +1,66 @@
 <template>
   <div class="popup">
-    <header>
-      <h3>Moo Dev Tool</h3>
-      <span class="badge">v{{ version }}</span>
+    <header class="head">
+      <div class="brand">
+        <span class="logo">M</span>
+        <h1>Moo Dev Tool</h1>
+      </div>
+      <span class="moo-chip">v{{ version }}</span>
     </header>
 
-    <div v-if="loading" class="status">检测中…</div>
+    <div v-if="loading" class="state state--loading">
+      <div class="spinner" /> 检测中…
+    </div>
 
     <!-- 1. 已匹配 -->
-    <div v-else-if="project" class="status matched">
-      <div class="line">
-        <span class="dot" /> 已匹配项目：<b>{{ project.name }}</b>
+    <section v-else-if="project" class="state state--matched">
+      <div class="state-head">
+        <span class="status-dot status-dot--on" />
+        <div class="state-title">已启用</div>
       </div>
-      <div class="hint">悬浮球已在该页面启用，点击即可截图上报。</div>
-      <div class="hint">配置了 <b>{{ project.servers.length }}</b> 个上报服务器。</div>
-    </div>
+      <div class="proj-card">
+        <div class="proj-name">{{ project.name }}</div>
+        <div class="proj-meta">
+          <span>{{ project.servers.length }} 个上报服务器</span>
+        </div>
+      </div>
+      <p class="hint">悬浮球已在当前页面启用，点击或按 ⌘/Ctrl + Shift + B 截图上报。</p>
+    </section>
 
     <!-- 2. 有项目但当前 URL 不匹配 -->
-    <div v-else-if="projects.length" class="status nomatch">
-      <div class="line">当前页面 <b>不在</b> 任何已配置项目的匹配规则内。</div>
-      <div class="hint">当前 URL：</div>
-      <div class="url-box">{{ currentUrl || '(未知)' }}</div>
-      <div class="hint">已配置 {{ projects.length }} 个项目：</div>
-      <ul class="project-list">
-        <li v-for="p in projects" :key="p.id">
-          <span class="dot" :class="{ off: !p.enabled }" />
-          <b>{{ p.name }}</b>
-          <span class="patterns">
-            {{ p.matchPatterns.length ? p.matchPatterns.join(', ') : '(无 URL 规则)' }}
-          </span>
-        </li>
-      </ul>
-      <div class="hint sub">想让本页生效：DevTools → Moo → 环境 → 改 URL 匹配规则后<b>保存</b>。</div>
-    </div>
+    <section v-else-if="projects.length" class="state state--nomatch">
+      <div class="state-head">
+        <span class="status-dot status-dot--warn" />
+        <div class="state-title">当前页面未匹配</div>
+      </div>
+      <div class="url-row">
+        <div class="url-label">URL</div>
+        <code class="url-value">{{ currentUrl || '(未知)' }}</code>
+      </div>
+      <div class="projs">
+        <div class="projs-label">{{ projects.length }} 个已配置项目</div>
+        <ul class="proj-list">
+          <li v-for="p in projects" :key="p.id">
+            <span class="status-dot" :class="p.enabled ? 'status-dot--on' : 'status-dot--off'" />
+            <span class="li-name">{{ p.name }}</span>
+            <span class="li-patterns">
+              {{ p.matchPatterns.length ? p.matchPatterns.join(', ') : '(无 URL 规则)' }}
+            </span>
+          </li>
+        </ul>
+      </div>
+      <p class="hint">在 DevTools → <b>Moo</b> → <b>环境</b> 中修改匹配规则后保存。</p>
+    </section>
 
     <!-- 3. 完全没配置 -->
-    <div v-else class="status empty">
-      <div class="line">还没有任何项目配置。</div>
-      <div class="hint">打开 DevTools（F12）→ <b>Moo</b> 面板 → "环境" Tab 新建项目并添加 URL 匹配规则。</div>
-    </div>
+    <section v-else class="state state--empty">
+      <div class="empty-illust">📋</div>
+      <div class="state-title">还没有项目</div>
+      <p class="hint">打开 DevTools（F12）→ <b>Moo</b> 面板 → "环境" Tab 新建项目。</p>
+    </section>
 
-    <footer>
-      <button class="link" @click="openDevtoolsHelp">如何打开 DevTools 面板？</button>
+    <footer class="foot">
+      <button class="link" @click="openDevtoolsHelp">如何打开 DevTools 面板 →</button>
     </footer>
   </div>
 </template>
@@ -63,7 +82,6 @@ onMounted(async () => {
     currentUrl.value = tab?.url ?? ''
     const cfg = await loadConfig()
     projects.value = cfg.projects
-    // 不走 background MATCH_PROJECT 了，直接本地匹配以保证一致
     if (tab?.url && cfg.globalEnabled) {
       for (const p of cfg.projects) {
         if (!p.enabled) continue
@@ -85,86 +103,160 @@ function openDevtoolsHelp() {
 
 <style scoped>
 .popup {
-  width: 300px;
-  padding: 12px 14px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  width: 320px;
+  padding: 14px;
+  background: var(--moo-c-bg);
+  font-family: var(--moo-ff-sans);
+  color: var(--moo-c-text);
 }
-header {
+
+.head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
-h3 { margin: 0; font-size: 14px; }
-.badge {
-  font-size: 11px;
-  color: #999;
-  background: #f0f0f0;
-  padding: 2px 6px;
-  border-radius: 3px;
+.brand { display: flex; align-items: center; gap: 8px; }
+.logo {
+  width: 24px; height: 24px;
+  border-radius: var(--moo-r-sm);
+  background: var(--moo-c-brand);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: -.02em;
 }
-.status {
-  border-radius: 4px;
-  padding: 10px 12px;
-  font-size: 12px;
-  line-height: 1.6;
+.head h1 {
+  margin: 0;
+  font-size: var(--moo-fs-md);
+  font-weight: 600;
+  letter-spacing: -.01em;
 }
-.status.matched { background: #f0f9f4; color: #14532d; }
-.status.nomatch { background: #fff7ed; color: #7c2d12; }
-.status.empty { background: #f3f4f6; color: #374151; }
-.line { font-size: 13px; }
-.hint { color: #555; margin-top: 4px; }
-.hint.sub { font-size: 11px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #f3d9a0; }
-.dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
+
+.state {
+  padding: 12px;
+  border-radius: var(--moo-r-lg);
+  background: var(--moo-c-bg-soft);
+  border: 1px solid var(--moo-c-border);
+}
+.state--loading {
+  display: flex; align-items: center; gap: 8px;
+  font-size: var(--moo-fs-sm);
+  color: var(--moo-c-text-muted);
+}
+.spinner {
+  width: 14px; height: 14px;
+  border: 2px solid var(--moo-c-border);
+  border-top-color: var(--moo-c-brand);
   border-radius: 50%;
-  background: #22c55e;
-  margin-right: 5px;
+  animation: spin .8s linear infinite;
 }
-.dot.off { background: #ccc; }
-.url-box {
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 11px;
-  background: #fff;
-  border: 1px solid #fde68a;
-  border-radius: 3px;
-  padding: 4px 6px;
-  margin: 2px 0 4px;
-  word-break: break-all;
-  color: #444;
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.state-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px;
 }
-.project-list {
-  list-style: none;
-  margin: 4px 0 0;
-  padding: 0;
-  font-size: 11px;
+.state-title {
+  font-size: var(--moo-fs-base);
+  font-weight: 600;
+  color: var(--moo-c-text);
 }
-.project-list li {
-  padding: 4px 0;
-  border-top: 1px dashed #f3d9a0;
-  line-height: 1.4;
+
+.state--matched { border-color: #bbf7d0; background: #f0fdf4; }
+.state--nomatch { border-color: #fed7aa; background: #fffbeb; }
+.state--empty   { text-align: center; padding: 20px 16px; }
+
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex: none;
 }
-.project-list li:first-child { border-top: none; }
-.project-list .patterns {
+.status-dot--on   { background: var(--moo-c-success); box-shadow: 0 0 0 3px rgba(22, 163, 74, .12); }
+.status-dot--warn { background: var(--moo-c-warn);    box-shadow: 0 0 0 3px rgba(217, 119, 6, .12); }
+.status-dot--off  { background: var(--moo-c-text-faint); }
+
+.proj-card {
+  background: var(--moo-c-bg);
+  border: 1px solid #bbf7d0;
+  border-radius: var(--moo-r-md);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.proj-name { font-weight: 600; color: var(--moo-c-text); margin-bottom: 2px; }
+.proj-meta { font-size: var(--moo-fs-xs); color: var(--moo-c-text-muted); }
+
+.url-row {
+  background: var(--moo-c-bg);
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-md);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  font-size: var(--moo-fs-xs);
+}
+.url-label { color: var(--moo-c-text-dim); margin-bottom: 2px; }
+.url-value {
   display: block;
-  font-family: ui-monospace, Menlo, monospace;
-  color: #7c2d12;
-  margin-left: 12px;
+  font-family: var(--moo-ff-mono);
+  font-size: var(--moo-fs-xs);
+  color: var(--moo-c-text);
   word-break: break-all;
 }
-footer {
-  margin-top: 10px;
-  text-align: center;
+
+.projs-label {
+  font-size: var(--moo-fs-xs);
+  color: var(--moo-c-text-dim);
+  margin-bottom: 6px;
 }
+.proj-list {
+  list-style: none; margin: 0; padding: 0;
+  background: var(--moo-c-bg);
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-md);
+  font-size: var(--moo-fs-xs);
+  max-height: 160px;
+  overflow: auto;
+}
+.proj-list li {
+  display: grid;
+  grid-template-columns: 12px max-content 1fr;
+  gap: 6px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--moo-c-divider);
+}
+.proj-list li:last-child { border-bottom: none; }
+.li-name { font-weight: 500; color: var(--moo-c-text); }
+.li-patterns {
+  font-family: var(--moo-ff-mono);
+  color: var(--moo-c-text-muted);
+  word-break: break-all;
+  text-align: right;
+}
+
+.empty-illust { font-size: 28px; opacity: .6; margin-bottom: 6px; }
+
+.hint {
+  margin: 10px 0 0;
+  font-size: var(--moo-fs-xs);
+  color: var(--moo-c-text-muted);
+  line-height: 1.55;
+}
+.hint b { color: var(--moo-c-text); font-weight: 600; }
+
+.foot { margin-top: 12px; text-align: center; }
 .link {
   background: transparent;
   border: none;
-  color: #1a73e8;
-  font-size: 11px;
+  color: var(--moo-c-brand);
+  font-size: var(--moo-fs-xs);
+  font-family: var(--moo-ff-sans);
   cursor: pointer;
   padding: 4px;
+  transition: color var(--moo-motion-fast);
 }
-.link:hover { text-decoration: underline; }
+.link:hover { color: var(--moo-c-brand-hover); text-decoration: underline; }
 </style>

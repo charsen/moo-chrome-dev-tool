@@ -1,0 +1,246 @@
+/* ============================================================
+   Moo Dev Tool · 设计令牌
+   ------------------------------------------------------------
+   被 popup / devtools 直接 import；content scripts 因 shadow DOM
+   独立，颜色等值在 src/content/styles.ts 中保持同步。
+   ============================================================ */
+
+:root {
+  /* === 中性色（slate 风） === */
+  --moo-c-bg:           #ffffff;
+  --moo-c-bg-soft:      #f8fafc;
+  --moo-c-bg-elev:      #f1f5f9;
+  --moo-c-border:       #e2e8f0;
+  --moo-c-border-soft:  #f1f5f9;
+  --moo-c-divider:      #f1f5f9;
+
+  --moo-c-text:         #0f172a;
+  --moo-c-text-muted:   #475569;
+  --moo-c-text-dim:     #94a3b8;
+  --moo-c-text-faint:   #cbd5e1;
+
+  /* === 品牌色 === */
+  --moo-c-brand:        #4f46e5;   /* indigo-600 */
+  --moo-c-brand-hover:  #4338ca;
+  --moo-c-brand-soft:   #eef2ff;
+  --moo-c-brand-fg:     #ffffff;
+
+  /* === 状态色 === */
+  --moo-c-success:      #16a34a;
+  --moo-c-success-soft: #dcfce7;
+  --moo-c-success-fg:   #15803d;
+
+  --moo-c-warn:         #d97706;
+  --moo-c-warn-soft:    #fef3c7;
+  --moo-c-warn-fg:      #92400e;
+
+  --moo-c-danger:       #dc2626;
+  --moo-c-danger-soft:  #fee2e2;
+  --moo-c-danger-fg:    #b91c1c;
+
+  --moo-c-info:         #2563eb;
+  --moo-c-info-soft:    #dbeafe;
+  --moo-c-info-fg:      #1d4ed8;
+
+  /* === 字号 === */
+  --moo-fs-xs:    11px;
+  --moo-fs-sm:    12px;
+  --moo-fs-base:  13px;
+  --moo-fs-md:    14px;
+  --moo-fs-lg:    16px;
+
+  /* === 间距 === */
+  --moo-sp-1: 4px;
+  --moo-sp-2: 8px;
+  --moo-sp-3: 12px;
+  --moo-sp-4: 16px;
+  --moo-sp-5: 20px;
+  --moo-sp-6: 24px;
+  --moo-sp-8: 32px;
+
+  /* === 圆角 === */
+  --moo-r-sm: 4px;
+  --moo-r-md: 6px;
+  --moo-r-lg: 8px;
+  --moo-r-xl: 12px;
+  --moo-r-pill: 999px;
+
+  /* === 阴影 === */
+  --moo-sh-sm: 0 1px 2px rgba(15, 23, 42, .06);
+  --moo-sh-md: 0 4px 12px rgba(15, 23, 42, .08);
+  --moo-sh-lg: 0 12px 32px rgba(15, 23, 42, .12);
+
+  /* === 字体 === */
+  --moo-ff-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --moo-ff-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* === 动效 === */
+  --moo-motion-fast: 120ms cubic-bezier(.4, 0, .2, 1);
+  --moo-motion-med:  200ms cubic-bezier(.4, 0, .2, 1);
+}
+
+/* ============================================================
+   基础组件类（popup / devtools 通用）
+   ============================================================ */
+
+.moo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-md);
+  background: var(--moo-c-bg);
+  color: var(--moo-c-text);
+  font-family: var(--moo-ff-sans);
+  font-size: var(--moo-fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--moo-motion-fast),
+              border-color var(--moo-motion-fast),
+              color var(--moo-motion-fast),
+              box-shadow var(--moo-motion-fast);
+  user-select: none;
+  white-space: nowrap;
+}
+.moo-btn:hover:not(:disabled) {
+  background: var(--moo-c-bg-soft);
+  border-color: var(--moo-c-text-faint);
+}
+.moo-btn:active:not(:disabled) { background: var(--moo-c-bg-elev); }
+.moo-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, .18);
+  border-color: var(--moo-c-brand);
+}
+.moo-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.moo-btn--primary {
+  background: var(--moo-c-brand);
+  border-color: var(--moo-c-brand);
+  color: var(--moo-c-brand-fg);
+}
+.moo-btn--primary:hover:not(:disabled) {
+  background: var(--moo-c-brand-hover);
+  border-color: var(--moo-c-brand-hover);
+}
+
+.moo-btn--danger {
+  color: var(--moo-c-danger-fg);
+  border-color: var(--moo-c-border);
+}
+.moo-btn--danger:hover:not(:disabled) {
+  background: var(--moo-c-danger-soft);
+  border-color: var(--moo-c-danger-soft);
+}
+
+.moo-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+}
+.moo-btn--ghost:hover:not(:disabled) {
+  background: var(--moo-c-bg-soft);
+}
+
+.moo-btn--sm { height: 24px; padding: 0 10px; font-size: var(--moo-fs-xs); }
+.moo-btn--lg { height: 32px; padding: 0 16px; font-size: var(--moo-fs-base); }
+
+/* === Input / Select / Textarea === */
+.moo-field {
+  width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-md);
+  background: var(--moo-c-bg);
+  color: var(--moo-c-text);
+  font-family: var(--moo-ff-sans);
+  font-size: var(--moo-fs-sm);
+  transition: border-color var(--moo-motion-fast), box-shadow var(--moo-motion-fast);
+  box-sizing: border-box;
+}
+textarea.moo-field {
+  height: auto;
+  padding: 6px 10px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.moo-field:focus {
+  outline: none;
+  border-color: var(--moo-c-brand);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, .15);
+}
+.moo-field::placeholder { color: var(--moo-c-text-dim); }
+
+/* === Chip / Badge === */
+.moo-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--moo-r-sm);
+  background: var(--moo-c-bg-elev);
+  color: var(--moo-c-text-muted);
+  font-size: var(--moo-fs-xs);
+  font-family: var(--moo-ff-mono);
+  font-weight: 500;
+  line-height: 1;
+}
+.moo-chip--brand   { background: var(--moo-c-brand-soft);   color: var(--moo-c-brand); }
+.moo-chip--success { background: var(--moo-c-success-soft); color: var(--moo-c-success-fg); }
+.moo-chip--warn    { background: var(--moo-c-warn-soft);    color: var(--moo-c-warn-fg); }
+.moo-chip--danger  { background: var(--moo-c-danger-soft);  color: var(--moo-c-danger-fg); }
+.moo-chip--info    { background: var(--moo-c-info-soft);    color: var(--moo-c-info-fg); }
+
+/* === Card === */
+.moo-card {
+  background: var(--moo-c-bg);
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-lg);
+  box-shadow: var(--moo-sh-sm);
+}
+.moo-card__hd {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--moo-c-divider);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.moo-card__bd { padding: 14px; }
+
+/* === KV list === */
+.moo-kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  font-size: var(--moo-fs-sm);
+}
+.moo-kv dt { color: var(--moo-c-text-dim); font-weight: normal; }
+.moo-kv dd { margin: 0; color: var(--moo-c-text); min-width: 0; word-break: break-word; }
+
+/* === Empty state === */
+.moo-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--moo-sp-8) var(--moo-sp-4);
+  color: var(--moo-c-text-dim);
+  font-size: var(--moo-fs-sm);
+  text-align: center;
+}
+.moo-empty__title { color: var(--moo-c-text-muted); font-size: var(--moo-fs-base); margin-bottom: 4px; }
+
+/* === 滚动条（细，与底色融合） === */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--moo-c-text-faint);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--moo-c-text-dim); background-clip: padding-box; border: 2px solid transparent; }
+*::-webkit-scrollbar-track { background: transparent; }

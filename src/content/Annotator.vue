@@ -38,6 +38,7 @@
         <button :class="['tool', { active: mode === 'arrow' }]" @click="mode = 'arrow'">↗ 箭头</button>
         <button :class="['tool', { active: mode === 'pointer' }]" @click="mode = 'pointer'">➤ 指针</button>
         <button :class="['tool', { active: mode === 'text' }]" @click="mode = 'text'">T 文字</button>
+        <button :class="['tool', { active: mode === 'mosaic' }]" @click="mode = 'mosaic'">▓ 马赛克</button>
       </div>
       <span class="hint">{{ modeHint }}</span>
       <div class="sep" />
@@ -73,8 +74,9 @@ type CircleItem = { type: 'circle'; x: number; y: number; w: number; h: number }
 type ArrowItem = { type: 'arrow'; x1: number; y1: number; x2: number; y2: number }
 type PointerItem = { type: 'pointer'; x: number; y: number } // 锚点为指针 tip
 type TextItem = { type: 'text'; x: number; y: number; text: string }
-type Item = RectItem | CircleItem | ArrowItem | PointerItem | TextItem
-type Mode = 'rect' | 'circle' | 'arrow' | 'pointer' | 'text'
+type MosaicItem = { type: 'mosaic'; x: number; y: number; w: number; h: number; block: number }
+type Item = RectItem | CircleItem | ArrowItem | PointerItem | TextItem | MosaicItem
+type Mode = 'rect' | 'circle' | 'arrow' | 'pointer' | 'text' | 'mosaic'
 
 const items = ref<Item[]>([])
 const mode = ref<Mode>('rect')
@@ -85,6 +87,7 @@ const lineWidth = 12
 const textFontPx = 48
 const textFont = `700 ${textFontPx}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`
 const pointerSize = 80 // 虚拟指针图形高度（px）
+const mosaicBlock = 14 // 马赛克像素块大小（按原图坐标）
 
 let drawing = false
 let start = { x: 0, y: 0 }
@@ -112,6 +115,7 @@ const modeHint = computed(() => {
     case 'arrow': return `拖动绘制箭头：起点 → 指向目标 ${base}`
     case 'pointer': return `点击放置虚拟指针 ${base}`
     case 'text': return `点击放置文字 ${base}`
+    case 'mosaic': return `拖动选区打马赛克（脱敏） ${base}`
   }
   return ''
 })
@@ -174,7 +178,7 @@ function onDown(e: PointerEvent) {
     redraw()
     return
   }
-  // rect / circle / arrow：拖动绘制
+  // rect / circle / arrow / mosaic：拖动绘制
   drawing = true
   start = p
   if (mode.value === 'rect') {
@@ -183,6 +187,8 @@ function onDown(e: PointerEvent) {
     items.value.push({ type: 'circle', x: p.x, y: p.y, w: 0, h: 0 })
   } else if (mode.value === 'arrow') {
     items.value.push({ type: 'arrow', x1: p.x, y1: p.y, x2: p.x, y2: p.y })
+  } else if (mode.value === 'mosaic') {
+    items.value.push({ type: 'mosaic', x: p.x, y: p.y, w: 0, h: 0, block: mosaicBlock })
   }
   ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   window.addEventListener('pointermove', onMove)
@@ -211,7 +217,7 @@ function onMove(e: PointerEvent) {
   if (drawing) {
     const last = items.value[items.value.length - 1]
     if (!last) return
-    if (last.type === 'rect' || last.type === 'circle') {
+    if (last.type === 'rect' || last.type === 'circle' || last.type === 'mosaic') {
       last.w = p.x - start.x
       last.h = p.y - start.y
     } else if (last.type === 'arrow') {
@@ -231,7 +237,7 @@ function onUp() {
   drawing = false
   const last = items.value[items.value.length - 1]
   if (!last) return
-  if ((last.type === 'rect' || last.type === 'circle') && (Math.abs(last.w) < 4 || Math.abs(last.h) < 4)) {
+  if ((last.type === 'rect' || last.type === 'circle' || last.type === 'mosaic') && (Math.abs(last.w) < 4 || Math.abs(last.h) < 4)) {
     items.value.pop()
     redraw()
   } else if (last.type === 'arrow' && Math.hypot(last.x2 - last.x1, last.y2 - last.y1) < 8) {
@@ -253,7 +259,7 @@ function hitTest(p: { x: number; y: number }): number {
   const hitTol = lineWidth + 4
   for (let i = items.value.length - 1; i >= 0; i--) {
     const it = items.value[i]
-    if (it.type === 'rect' || it.type === 'circle') {
+    if (it.type === 'rect' || it.type === 'circle' || it.type === 'mosaic') {
       const x1 = Math.min(it.x, it.x + it.w)
       const x2 = Math.max(it.x, it.x + it.w)
       const y1 = Math.min(it.y, it.y + it.h)
@@ -308,8 +314,35 @@ function redraw() {
     else if (it.type === 'circle') drawCircle(ctx, it)
     else if (it.type === 'arrow') drawArrow(ctx, it)
     else if (it.type === 'pointer') drawPointer(ctx, it)
+    else if (it.type === 'mosaic') drawMosaic(ctx, it)
     else drawText(ctx, it)
   }
+}
+
+function drawMosaic(ctx: CanvasRenderingContext2D, it: MosaicItem) {
+  if (!bgEl.value) return
+  const block = Math.max(4, it.block)
+  const x = Math.min(it.x, it.x + it.w)
+  const y = Math.min(it.y, it.y + it.h)
+  const w = Math.abs(it.w)
+  const h = Math.abs(it.h)
+  if (w < 4 || h < 4) return
+  // 已有标注（包括前面的 mosaic）会被覆盖在原图上面，但马赛克的来源是原图 bgEl，
+  // 因此后画的 mosaic 不会马赛克"先前已经画好的红框"——这是预期行为。
+  const tmp = document.createElement('canvas')
+  const sw = Math.max(1, Math.floor(w / block))
+  const sh = Math.max(1, Math.floor(h / block))
+  tmp.width = sw
+  tmp.height = sh
+  const tctx = tmp.getContext('2d')
+  if (!tctx) return
+  tctx.imageSmoothingEnabled = true
+  // 从背景画布取该区域 → 缩小到 (sw, sh) → 像素化
+  tctx.drawImage(bgEl.value, x, y, w, h, 0, 0, sw, sh)
+  ctx.save()
+  ctx.imageSmoothingEnabled = false
+  ctx.drawImage(tmp, 0, 0, sw, sh, x, y, w, h)
+  ctx.restore()
 }
 
 function drawRect(ctx: CanvasRenderingContext2D, it: RectItem) {

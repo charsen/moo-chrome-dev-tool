@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import Panel from './Panel.vue'
+import '@/styles/tokens.css'
 
 // 开发环境下 CRXJS 每次 HMR 都会重载扩展，导致当前面板的 chrome.* 上下文失效。
 // 用一个 keepalive 端口监听扩展重载，触发后自动刷新面板。

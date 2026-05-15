@@ -39,6 +39,13 @@ export interface SubmitBugReq {
   timestamp: string
   requests: CapturedRequest[]    // 现场请求快照
   errors: ConsoleError[]         // 现场 console 错误
+  elements?: unknown[]           // 用户点选的元素信息（ElementPicker 选中的）
+  video?: {
+    dataUrl: string              // data:video/webm;base64,...
+    bytes: number
+    duration: number
+    mime: string
+  }
 }
 export interface SubmitBugRes {
   ok: boolean

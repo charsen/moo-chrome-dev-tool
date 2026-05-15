@@ -1,5 +1,14 @@
 <template>
-  <div class="moo-dialog-mask" @click.self="emit('cancel')">
+  <ElementPicker v-if="picking" @pick="onElementPicked" @cancel="picking = false" />
+
+  <!-- 录制中浮条 -->
+  <div v-if="recorder.recording.value" class="moo-rec-bar">
+    <span class="rec-dot" />
+    <span class="rec-time">{{ fmtDuration(recorder.elapsed.value) }} / {{ fmtDuration(recorder.maxSec) }}</span>
+    <button class="moo-btn small" @click="stopRecord">⏹ 停止</button>
+  </div>
+
+  <div v-show="!picking && !recorder.recording.value" class="moo-dialog-mask" @click.self="emit('cancel')">
     <div class="moo-dialog">
       <header class="moo-dialog-head">
         <h3>提交 Bug — {{ project.name }}</h3>
@@ -79,6 +88,48 @@
           </div>
         </div>
 
+        <div class="moo-form-row moo-req-row">
+          <label>
+            附带录屏
+            <div class="req-count">{{ video ? fmtDuration(video.duration) : '—' }}</div>
+          </label>
+          <div class="req-panel">
+            <div class="req-controls">
+              <button v-if="!video" class="moo-btn small" :disabled="recorder.recording.value || videoBusy" @click="startRecord">
+                🎥 开始录屏
+              </button>
+              <button v-else class="moo-btn small" @click="dropVideo">删除录像</button>
+              <span class="req-hint">
+                <template v-if="recorder.error.value">{{ recorder.error.value }}</template>
+                <template v-else-if="!video">点击后选择浏览器标签 / 窗口；最长 {{ recorder.maxSec }}s 自动停</template>
+                <template v-else>已录制 {{ fmtDuration(video.duration) }} · {{ fmtBytes(video.bytes) }}</template>
+              </span>
+            </div>
+            <video v-if="video" class="moo-video-preview" :src="video.dataUrl" controls preload="metadata" />
+          </div>
+        </div>
+
+        <div class="moo-form-row moo-req-row">
+          <label>
+            附带元素
+            <div class="req-count">{{ pickedElements.length }} 个</div>
+          </label>
+          <div class="req-panel">
+            <div class="req-controls">
+              <button class="moo-btn small" @click="picking = true">📍 选元素</button>
+              <button v-if="pickedElements.length" class="moo-btn small" @click="pickedElements = []">清空</button>
+              <span class="req-hint" v-if="!pickedElements.length">点击"选元素"，在页面上指定 bug 涉及的具体 DOM</span>
+            </div>
+            <div v-if="pickedElements.length" class="req-list">
+              <div v-for="(el, i) in pickedElements" :key="i" class="req-item el-item">
+                <span class="method" :title="'tag: ' + el.tag">{{ el.tag }}</span>
+                <span class="url" :title="el.selector">{{ el.selector }}</span>
+                <button class="moo-close-btn" @click="pickedElements.splice(i, 1)">×</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="moo-form-row" v-if="preview">
           <label>预览</label>
           <pre class="moo-preview">{{ preview }}</pre>
@@ -102,6 +153,8 @@ import type { CapturedRequest } from '@/types/requests'
 import type { ConsoleError } from '@/types/errors'
 import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes } from '@/types/messages'
 import { formatSubmitResult } from '@/utils/submitMessage'
+import ElementPicker, { type PickedElement } from './ElementPicker.vue'
+import { useRecorder, type RecordingResult } from './useRecorder'
 
 const props = defineProps<{
   project: Project
@@ -125,6 +178,43 @@ const urlFilter = ref('')
 const openedAt = performance.now()
 const selectedIds = ref<Set<string>>(new Set())
 const selectedErrIds = ref<Set<string>>(new Set())
+
+// element picker
+const picking = ref(false)
+const pickedElements = ref<PickedElement[]>([])
+
+function onElementPicked(el: PickedElement) {
+  pickedElements.value.push(el)
+  picking.value = false
+}
+
+// screen recorder
+const recorder = useRecorder({ maxSeconds: 30 })
+const video = ref<RecordingResult | null>(null)
+const videoBusy = ref(false)
+
+async function startRecord() {
+  if (videoBusy.value) return
+  videoBusy.value = true
+  try {
+    const result = await recorder.start()
+    if (result) video.value = result
+  } finally {
+    videoBusy.value = false
+  }
+}
+function stopRecord() { recorder.stop() }
+function dropVideo() { video.value = null }
+
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+function fmtDuration(s: number): string {
+  const m = Math.floor(s / 60), ss = s % 60
+  return `${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+}
 
 const filtered = computed(() => {
   const all = props.requests
@@ -206,7 +296,9 @@ function buildContext() {
     viewport: `${window.innerWidth}x${window.innerHeight}`,
     timestamp: new Date().toISOString(),
     requests: selectedRequests(),
-    errors: selectedErrors()
+    errors: selectedErrors(),
+    elements: pickedElements.value,
+    video: video.value
   }
 }
 
@@ -236,7 +328,9 @@ async function onSubmit() {
       viewport: ctx.viewport,
       timestamp: ctx.timestamp,
       requests: ctx.requests,
-      errors: ctx.errors
+      errors: ctx.errors,
+      elements: ctx.elements,
+      video: ctx.video ?? undefined
     }
     const res = (await chrome.runtime.sendMessage({
       type: MSG.SUBMIT_BUG,

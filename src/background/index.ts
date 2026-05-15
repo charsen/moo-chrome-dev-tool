@@ -107,6 +107,10 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
   if (!server) return { ok: false, error: 'server not found' }
   if (!server.endpoint) return { ok: false, error: 'server endpoint is empty' }
 
+  // 按项目白名单抓取页面 storage（localStorage 优先，找不到尝试 sessionStorage）
+  const storageKeys = project.capture?.storageKeys ?? []
+  const storage = storageKeys.length > 0 ? await readPageStorage(tabId, storageKeys) : {}
+
   const ctx: Record<string, unknown> = {
     title: req.title,
     description: req.description,
@@ -116,7 +120,12 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
     viewport: req.viewport,
     timestamp: req.timestamp,
     requests: req.requests,
-    errors: req.errors
+    errors: req.errors,
+    elements: req.elements ?? [],
+    storage,
+    video: req.video ? req.video.dataUrl : '',
+    videoBytes: req.video?.bytes ?? 0,
+    videoDuration: req.video?.duration ?? 0
   }
 
   const { body, headers } = buildRequestBody(server, ctx, project)
@@ -167,6 +176,57 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
   }
 
   return result
+}
+
+// ============================================================
+// 页面 storage 白名单快照
+// ============================================================
+
+/**
+ * 从目标 tab 的页面读取一组 storage key。
+ * 优先 localStorage；找不到再试 sessionStorage；都没有则记 null。
+ *
+ * 返回每个 key 对应的 { value, source }，便于服务端区分。
+ */
+async function readPageStorage(
+  tabId: number | undefined,
+  keys: string[]
+): Promise<Record<string, { value: string | null; source: 'localStorage' | 'sessionStorage' | 'missing' }>> {
+  if (!tabId || keys.length === 0) return {}
+  try {
+    const [{ result }] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: (ks: string[]) => {
+        const out: Record<string, { value: string | null; source: 'localStorage' | 'sessionStorage' | 'missing' }> = {}
+        for (const k of ks) {
+          let v: string | null = null
+          let src: 'localStorage' | 'sessionStorage' | 'missing' = 'missing'
+          try {
+            v = localStorage.getItem(k)
+            if (v !== null) src = 'localStorage'
+          } catch {
+            /* 安全异常忽略 */
+          }
+          if (v === null) {
+            try {
+              v = sessionStorage.getItem(k)
+              if (v !== null) src = 'sessionStorage'
+            } catch {
+              /* ignore */
+            }
+          }
+          out[k] = { value: v, source: src }
+        }
+        return out
+      },
+      args: [keys]
+    })
+    return (result as Record<string, { value: string | null; source: 'localStorage' | 'sessionStorage' | 'missing' }>) ?? {}
+  } catch (e) {
+    console.warn('[Moo] readPageStorage failed', e)
+    return {}
+  }
 }
 
 // ============================================================
