@@ -227,9 +227,9 @@ HTTP 2xx + JSON body：
 ```json
 {
   "ok": true,
-  "id": "01krn592qkc1v1s1htc0dpzsqr",
+  "id": "01HXXXXEXAMPLEXXXXTODOID",
   "status": "open",
-  "url": "https://your-host/admin/bugs/01krn592qkc1v1s1htc0dpzsqr"
+  "url": "https://your-host/admin/bugs/01HXXXXEXAMPLEXXXXTODOID"
 }
 ```
 
