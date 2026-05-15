@@ -1,12 +1,25 @@
 <template>
-  <div
-    :class="['moo-ball', { dragging, hidden }]"
-    :style="{ left: pos.x + 'px', top: pos.y + 'px' }"
-    @pointerdown="onDown"
-    @click="onClick"
-  >
-    <img :src="eagleUrl" class="moo-ball-icon" alt="Moo" draggable="false" />
-    <span class="moo-ball-tip">{{ tip }}</span>
+  <div class="moo-ball-wrap" :style="{ left: pos.x + 'px', top: pos.y + 'px' }">
+    <!-- 展开菜单 -->
+    <div v-if="expanded && !dragging" class="moo-ball-menu">
+      <button class="moo-ball-action" @click="onPickCapture">
+        <span class="ic">📷</span>
+        <span class="lab">截图</span>
+      </button>
+      <button class="moo-ball-action" @click="onPickRecord">
+        <span class="ic">🎥</span>
+        <span class="lab">录屏</span>
+      </button>
+    </div>
+
+    <div
+      :class="['moo-ball', { dragging, hidden, expanded }]"
+      @pointerdown="onDown"
+      @click="onClick"
+    >
+      <img :src="eagleUrl" class="moo-ball-icon" alt="Moo" draggable="false" />
+      <span v-if="!expanded" class="moo-ball-tip">{{ tip }}</span>
+    </div>
   </div>
 </template>
 
@@ -15,12 +28,16 @@ import { onMounted, onBeforeUnmount, ref } from 'vue'
 
 const eagleUrl = chrome.runtime.getURL('icons/eagle-ball.png')
 
-const props = defineProps<{ tip: string; hidden: boolean }>()
-const emit = defineEmits<{ (e: 'capture'): void }>()
+defineProps<{ tip: string; hidden: boolean }>()
+const emit = defineEmits<{
+  (e: 'capture'): void
+  (e: 'record'): void
+}>()
 
 const POS_KEY = 'moo-ball-pos'
 const pos = ref({ x: window.innerWidth - 70, y: window.innerHeight - 70 })
 const dragging = ref(false)
+const expanded = ref(false)
 let downAt = { x: 0, y: 0 }
 let originPos = { x: 0, y: 0 }
 let moved = false
@@ -66,7 +83,24 @@ function onUp() {
 
 function onClick() {
   if (moved) return
+  expanded.value = !expanded.value
+}
+
+function onPickCapture() {
+  expanded.value = false
   emit('capture')
+}
+function onPickRecord() {
+  expanded.value = false
+  emit('record')
+}
+
+function onDocClick(e: MouseEvent) {
+  if (!expanded.value) return
+  // 点到悬浮球或菜单都忽略
+  const target = e.target as Element
+  if (target.closest && target.closest('.moo-ball-wrap')) return
+  expanded.value = false
 }
 
 function onResize() {
@@ -76,6 +110,12 @@ function onResize() {
   }
 }
 
-onMounted(() => window.addEventListener('resize', onResize))
-onBeforeUnmount(() => window.removeEventListener('resize', onResize))
+onMounted(() => {
+  window.addEventListener('resize', onResize)
+  document.addEventListener('click', onDocClick, true)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onResize)
+  document.removeEventListener('click', onDocClick, true)
+})
 </script>

@@ -1,23 +1,25 @@
 <template>
   <ElementPicker v-if="picking" @pick="onElementPicked" @cancel="picking = false" />
 
-  <!-- 录制中浮条 -->
-  <div v-if="recorder.recording.value" class="moo-rec-bar">
-    <span class="rec-dot" />
-    <span class="rec-time">{{ fmtDuration(recorder.elapsed.value) }} / {{ fmtDuration(recorder.maxSec) }}</span>
-    <button class="moo-btn small" @click="stopRecord">⏹ 停止</button>
-  </div>
-
-  <div v-show="!picking && !recorder.recording.value" class="moo-dialog-mask" @click.self="emit('cancel')">
+  <div v-show="!picking" class="moo-dialog-mask" @click.self="emit('cancel')">
     <div class="moo-dialog">
       <header class="moo-dialog-head">
         <h3>提交 Bug — {{ project.name }}</h3>
         <button class="moo-close-btn" @click="emit('cancel')">×</button>
       </header>
       <div class="moo-dialog-body">
-        <div class="moo-form-row">
+        <div class="moo-form-row" v-if="image">
           <label>截图</label>
           <img class="moo-thumb" :src="image" />
+        </div>
+        <div class="moo-form-row" v-if="video">
+          <label>录像</label>
+          <div class="req-panel">
+            <video class="moo-video-preview" :src="video.dataUrl" controls preload="metadata" />
+            <div class="req-controls" style="border-top: 1px solid var(--c-divider); border-bottom: 0;">
+              <span class="req-hint">已录制 {{ fmtDuration(video.duration) }} · {{ fmtBytes(video.bytes) }}</span>
+            </div>
+          </div>
         </div>
         <div class="moo-form-row">
           <label>标题</label>
@@ -90,27 +92,6 @@
 
         <div class="moo-form-row moo-req-row">
           <label>
-            附带录屏
-            <div class="req-count">{{ video ? fmtDuration(video.duration) : '—' }}</div>
-          </label>
-          <div class="req-panel">
-            <div class="req-controls">
-              <button v-if="!video" class="moo-btn small" :disabled="recorder.recording.value || videoBusy" @click="startRecord">
-                🎥 开始录屏
-              </button>
-              <button v-else class="moo-btn small" @click="dropVideo">删除录像</button>
-              <span class="req-hint">
-                <template v-if="recorder.error.value">{{ recorder.error.value }}</template>
-                <template v-else-if="!video">点击后选择浏览器标签 / 窗口；最长 {{ recorder.maxSec }}s 自动停</template>
-                <template v-else>已录制 {{ fmtDuration(video.duration) }} · {{ fmtBytes(video.bytes) }}</template>
-              </span>
-            </div>
-            <video v-if="video" class="moo-video-preview" :src="video.dataUrl" controls preload="metadata" />
-          </div>
-        </div>
-
-        <div class="moo-form-row moo-req-row">
-          <label>
             附带元素
             <div class="req-count">{{ pickedElements.length }} 个</div>
           </label>
@@ -154,11 +135,12 @@ import type { ConsoleError } from '@/types/errors'
 import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes } from '@/types/messages'
 import { formatSubmitResult } from '@/utils/submitMessage'
 import ElementPicker, { type PickedElement } from './ElementPicker.vue'
-import { useRecorder, type RecordingResult } from './useRecorder'
+import type { RecordingResult } from './useRecorder'
 
 const props = defineProps<{
   project: Project
-  image: string
+  image?: string
+  video?: RecordingResult | null
   requests: CapturedRequest[]
   errors: ConsoleError[]
 }>()
@@ -187,24 +169,6 @@ function onElementPicked(el: PickedElement) {
   pickedElements.value.push(el)
   picking.value = false
 }
-
-// screen recorder
-const recorder = useRecorder({ maxSeconds: 30 })
-const video = ref<RecordingResult | null>(null)
-const videoBusy = ref(false)
-
-async function startRecord() {
-  if (videoBusy.value) return
-  videoBusy.value = true
-  try {
-    const result = await recorder.start()
-    if (result) video.value = result
-  } finally {
-    videoBusy.value = false
-  }
-}
-function stopRecord() { recorder.stop() }
-function dropVideo() { video.value = null }
 
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`
@@ -290,7 +254,7 @@ function buildContext() {
   return {
     title: title.value,
     description: description.value,
-    image: props.image,
+    image: props.image ?? '',
     url: location.href,
     userAgent: navigator.userAgent,
     viewport: `${window.innerWidth}x${window.innerHeight}`,
@@ -298,7 +262,7 @@ function buildContext() {
     requests: selectedRequests(),
     errors: selectedErrors(),
     elements: pickedElements.value,
-    video: video.value
+    video: props.video ?? null
   }
 }
 
@@ -322,7 +286,7 @@ async function onSubmit() {
       projectId: props.project.id,
       title: title.value,
       description: description.value,
-      image: props.image,
+      image: props.image ?? '',
       url: ctx.url,
       userAgent: ctx.userAgent,
       viewport: ctx.viewport,

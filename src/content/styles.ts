@@ -36,10 +36,65 @@ export const SHADOW_CSS = `
 }
 
 /* ============================================
-   悬浮球
+   悬浮球（点击展开菜单）
 ============================================ */
-.moo-ball {
+.moo-ball-wrap {
   position: fixed;
+  z-index: 2147483600;
+  width: 44px;
+  height: 44px;
+}
+.moo-ball-menu {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 8px;
+  background: var(--c-bg);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-lg);
+  border: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  gap: 2px;
+  animation: moo-menu-in .15s cubic-bezier(.4, 0, .2, 1);
+  min-width: 120px;
+}
+@keyframes moo-menu-in {
+  from { opacity: 0; transform: translateY(6px) scale(.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.moo-ball-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--c-text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background-color .12s, color .12s;
+  text-align: left;
+}
+.moo-ball-action:hover {
+  background: var(--c-brand-soft, #eef2ff);
+  color: var(--c-brand);
+}
+.moo-ball-action .ic {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+}
+.moo-ball-action .lab { flex: 1; }
+
+.moo-ball {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -170,6 +225,34 @@ export const SHADOW_CSS = `
   box-shadow: var(--sh-lg);
   z-index: 2147483641;
   border: 1px solid var(--c-border);
+  max-width: calc(100vw - 32px);
+}
+.moo-toolbar--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 6px 8px;
+  gap: 4px;
+}
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.toolbar-row.tools-row { justify-content: center; }
+.toolbar-row.action-row {
+  border-top: 1px solid var(--c-divider);
+  padding-top: 6px;
+  margin-top: 2px;
+}
+.toolbar-row.action-row .hint { flex: 1; min-width: 0; }
+.toolbar-row .actions-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.moo-toolbar--stacked .tool span {
+  margin-left: 4px;
 }
 .moo-toolbar button {
   display: inline-flex;

@@ -37,11 +37,11 @@
       "run_at": "document_start"
     }
   ],
-  "permissions": ["storage", "tabs", "activeTab", "scripting", "cookies", "alarms"],
+  "permissions": ["storage", "tabs", "activeTab", "scripting", "cookies", "alarms", "offscreen", "tabCapture"],
   "host_permissions": ["<all_urls>"],
   "web_accessible_resources": [
     {
-      "resources": ["icons/*.png"],
+      "resources": ["icons/*.png", "src/offscreen/index.html"],
       "matches": ["<all_urls>"]
     }
   ]

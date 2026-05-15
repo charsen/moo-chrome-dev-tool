@@ -5,7 +5,17 @@
       :tip="`Moo · ${project.name} (⌘/Ctrl+Shift+B)`"
       :hidden="state !== 'idle'"
       @capture="startCapture"
+      @record="startRecord"
     />
+
+    <!-- 录制中浮条 -->
+    <div v-if="state === 'recording'" class="moo-rec-bar">
+      <span class="rec-dot" />
+      <span class="rec-time">{{ fmtDuration(recordElapsed) }}</span>
+      <button class="moo-btn small" @click="stopRecording">⏹ 停止</button>
+      <button class="moo-btn small" @click="cancelRecording">取消</button>
+    </div>
+
     <Annotator
       v-if="state === 'annotating' && rawImage"
       :image="rawImage"
@@ -13,9 +23,10 @@
       @cancel="reset"
     />
     <SubmitDialog
-      v-if="state === 'submitting' && project && annotatedImage"
+      v-if="state === 'submitting' && project"
       :project="project"
       :image="annotatedImage"
+      :video="recordedVideo"
       :requests="capturedRequests"
       :errors="capturedErrors"
       @cancel="reset"
@@ -31,21 +42,26 @@ import FloatingBall from './FloatingBall.vue'
 import Annotator from './Annotator.vue'
 import SubmitDialog from './SubmitDialog.vue'
 import { maskPasswordInputs } from './passwordMask'
+import { useRecorder, type RecordingResult } from './useRecorder'
 import type { Project } from '@/types/config'
 import { MSG, type CaptureScreenshotRes, type MatchProjectRes } from '@/types/messages'
 import { onConfigChanged } from '@/storage/config'
 import { useRequests } from './useRequests'
 import { useErrors } from './useErrors'
 
-type State = 'idle' | 'capturing' | 'annotating' | 'submitting'
+type State = 'idle' | 'capturing' | 'annotating' | 'recording' | 'submitting'
 
 const state = ref<State>('idle')
 const project = ref<Project | null>(null)
 const rawImage = ref('')
 const annotatedImage = ref('')
+const recordedVideo = ref<RecordingResult | null>(null)
 const toast = ref('')
 const toastKind = ref<'success' | 'error' | ''>('')
 let toastTimer: number | undefined
+
+const recorder = useRecorder({ maxSeconds: 30 })
+const recordElapsed = computed(() => recorder.elapsed.value)
 
 const reqApi = useRequests()
 const errApi = useErrors()
@@ -128,6 +144,33 @@ function onAnnotated(dataUrl: string) {
   state.value = 'submitting'
 }
 
+async function startRecord() {
+  if (state.value !== 'idle') return
+  state.value = 'recording'
+  const result = await recorder.start()
+  if (!result) {
+    showToast(recorder.error.value || '录制取消', 'error')
+    state.value = 'idle'
+    return
+  }
+  recordedVideo.value = result
+  state.value = 'submitting'
+}
+
+function stopRecording() {
+  void recorder.stop()
+}
+
+function cancelRecording() {
+  void recorder.cancel()
+  state.value = 'idle'
+}
+
+function fmtDuration(s: number): string {
+  const m = Math.floor(s / 60), ss = s % 60
+  return `${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+}
+
 function onSubmitted(ok: boolean, message: string) {
   showToast(message, ok ? 'success' : 'error')
   if (ok) reset()
@@ -137,6 +180,7 @@ function reset() {
   state.value = 'idle'
   rawImage.value = ''
   annotatedImage.value = ''
+  recordedVideo.value = null
 }
 
 function showToast(msg: string, kind: 'success' | 'error') {

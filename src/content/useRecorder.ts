@@ -1,15 +1,16 @@
 import { ref } from 'vue'
+import { MSG } from '@/types/messages'
 
 /**
- * 屏幕录制 composable。
+ * 屏幕录制 composable —— 走 chrome.tabCapture + offscreen document。
  *
- * 通过 navigator.mediaDevices.getDisplayMedia 录浏览器标签页（用户在弹窗选目标）。
- * 输出 video/webm dataURL，方便随 todo 上报。
+ * 优点：
+ * - HTTP + IP 页面也能录（不依赖 page secure context）
+ * - 内容脚本只发消息，所有 MediaRecorder 在 offscreen 跑
  *
- * 注意：
- * - 录制必须由用户手势直接触发（按钮点击）；
- * - 默认最长 30 秒自动停止；大于这个会让 base64 体积太大；
- * - 720p / 15fps / VP9 800kbps，10 秒约 1MB，可调。
+ * 限制：
+ * - 只录当前标签页内容（不录其他窗口）
+ * - 切到别的标签会暂停（chrome 限制）
  */
 
 const MAX_SECONDS = 30
@@ -28,99 +29,66 @@ export function useRecorder(opts: { maxSeconds?: number } = {}) {
 
   const maxSec = opts.maxSeconds ?? MAX_SECONDS
 
-  let mediaRecorder: MediaRecorder | null = null
-  let chunks: Blob[] = []
-  let stream: MediaStream | null = null
   let timer: number | null = null
-  let resolver: ((r: RecordingResult | null) => void) | null = null
-
-  function pickMime(): string {
-    const candidates = [
-      'video/webm;codecs=vp9',
-      'video/webm;codecs=vp8',
-      'video/webm'
-    ]
-    for (const m of candidates) {
-      if (MediaRecorder.isTypeSupported(m)) return m
-    }
-    return ''
-  }
 
   async function start(): Promise<RecordingResult | null> {
     if (recording.value) return null
     error.value = ''
-    try {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 15 } as MediaTrackConstraints,
-        audio: false
-      })
-    } catch (e) {
-      error.value = (e as Error).message || '用户取消或无权访问'
+
+    const startRes = await chrome.runtime.sendMessage({
+      type: MSG.RECORD_START,
+      source: 'content'
+    })
+    if (!startRes?.ok) {
+      error.value = startRes?.error || '启动录制失败'
       return null
     }
-
-    chunks = []
-    const mime = pickMime()
-    try {
-      mediaRecorder = mime
-        ? new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 800_000 })
-        : new MediaRecorder(stream)
-    } catch (e) {
-      error.value = '不支持的视频格式：' + (e as Error).message
-      stream.getTracks().forEach((t) => t.stop())
-      stream = null
-      return null
-    }
-
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunks.push(e.data)
-    }
-    mediaRecorder.onstop = async () => {
-      const finalElapsed = elapsed.value
-      const blob = new Blob(chunks, { type: mediaRecorder?.mimeType || 'video/webm' })
-      cleanup()
-      if (blob.size === 0) {
-        resolver?.(null)
-        resolver = null
-        return
-      }
-      const dataUrl = await blobToDataUrl(blob)
-      resolver?.({
-        dataUrl,
-        bytes: blob.size,
-        duration: finalElapsed,
-        mime: blob.type
-      })
-      resolver = null
-    }
-
-    // 用户从浏览器原生共享 UI 点了停止
-    stream.getVideoTracks()[0].onended = () => stop()
 
     recording.value = true
     elapsed.value = 0
     const startTime = Date.now()
     timer = window.setInterval(() => {
       elapsed.value = Math.floor((Date.now() - startTime) / 1000)
-      if (elapsed.value >= maxSec) stop()
+      if (elapsed.value >= maxSec) {
+        // 自动停止
+        void stop()
+      }
     }, 250)
 
-    mediaRecorder.start(1000)
-
-    return new Promise<RecordingResult | null>((res) => {
-      resolver = res
+    return new Promise<RecordingResult | null>((resolve) => {
+      // 把 resolve 挂到 stop 上：stop() 会主动调用
+      pendingResolve = (r) => {
+        cleanup()
+        resolve(r)
+      }
     })
   }
 
-  function stop() {
-    if (!recording.value || !mediaRecorder) return
-    if (mediaRecorder.state !== 'inactive') mediaRecorder.stop()
+  let pendingResolve: ((r: RecordingResult | null) => void) | null = null
+
+  async function stop() {
+    if (!recording.value) return
+    const finalElapsed = elapsed.value
+    const res = await chrome.runtime.sendMessage({ type: MSG.RECORD_STOP, source: 'content' })
+    if (res?.ok && res.dataUrl) {
+      pendingResolve?.({
+        dataUrl: res.dataUrl,
+        bytes: res.bytes ?? 0,
+        duration: finalElapsed,
+        mime: res.mime ?? 'video/webm'
+      })
+    } else {
+      error.value = res?.error || '停止失败 / 无内容'
+      pendingResolve?.(null)
+    }
+    pendingResolve = null
   }
 
-  function cancel() {
+  async function cancel() {
     if (!recording.value) return
-    resolver?.(null)
-    resolver = null
+    await chrome.runtime.sendMessage({ type: MSG.RECORD_CANCEL, source: 'content' })
+    pendingResolve?.(null)
+    pendingResolve = null
     cleanup()
   }
 
@@ -129,22 +97,20 @@ export function useRecorder(opts: { maxSeconds?: number } = {}) {
       clearInterval(timer)
       timer = null
     }
-    if (stream) {
-      stream.getTracks().forEach((t) => t.stop())
-      stream = null
-    }
-    mediaRecorder = null
     recording.value = false
   }
 
   return { recording, elapsed, error, start, stop, cancel, maxSec }
 }
 
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(blob)
-  })
+/**
+ * 走 chrome.tabCapture，**任何页面都能录**，不需要 secure context。
+ * 保留这两个工具函数兼容旧调用方。
+ */
+export function isMediaDevicesAvailable(): boolean {
+  return true
+}
+
+export function unavailableReason(): string {
+  return ''
 }

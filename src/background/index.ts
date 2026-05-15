@@ -77,6 +77,22 @@ chrome.runtime.onMessage.addListener((message: MooMessage, sender, sendResponse)
           sendResponse({ ok: true, processed: n })
           break
         }
+        case MSG.RECORD_START: {
+          const tabId = sender.tab?.id
+          const res = await startTabRecording(tabId)
+          sendResponse(res)
+          break
+        }
+        case MSG.RECORD_STOP: {
+          const res = await stopTabRecording()
+          sendResponse(res)
+          break
+        }
+        case MSG.RECORD_CANCEL: {
+          await cancelTabRecording()
+          sendResponse({ ok: true })
+          break
+        }
         default:
           sendResponse({ ok: false, error: `unknown message type: ${message.type}` })
       }
@@ -176,6 +192,83 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
   }
 
   return result
+}
+
+// ============================================================
+// 屏幕录制（通过 offscreen document 走 tabCapture）
+// ============================================================
+
+const OFFSCREEN_URL = 'src/offscreen/index.html'
+
+async function ensureOffscreenDocument(): Promise<void> {
+  const hasApi = !!(chrome as any).offscreen
+  if (!hasApi) throw new Error('当前 Chrome 版本不支持 offscreen documents（需要 109+）')
+
+  let exists = false
+  try {
+    const getCtx = (chrome.runtime as any).getContexts
+    if (typeof getCtx === 'function') {
+      const contexts = await getCtx({ contextTypes: ['OFFSCREEN_DOCUMENT'] })
+      exists = Array.isArray(contexts) && contexts.length > 0
+    }
+  } catch {
+    // ignore
+  }
+  if (exists) return
+
+  await (chrome as any).offscreen.createDocument({
+    url: OFFSCREEN_URL,
+    reasons: ['USER_MEDIA'],
+    justification: '录制当前标签页画面以附在 bug todo 中'
+  })
+}
+
+async function closeOffscreenDocument(): Promise<void> {
+  try {
+    await (chrome as any).offscreen.closeDocument()
+  } catch {
+    // ignore
+  }
+}
+
+async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?: string }> {
+  if (!tabId) return { ok: false, error: '缺少 tabId' }
+  try {
+    await ensureOffscreenDocument()
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
+
+  let streamId: string
+  try {
+    streamId = await new Promise<string>((resolve, reject) => {
+      ;(chrome.tabCapture as any).getMediaStreamId({ targetTabId: tabId }, (id: string) => {
+        const err = chrome.runtime.lastError
+        if (err || !id) reject(new Error(err?.message || '无法获取 streamId'))
+        else resolve(id)
+      })
+    })
+  } catch (e) {
+    return { ok: false, error: 'tabCapture 失败：' + (e as Error).message }
+  }
+
+  const res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'START', streamId })
+  if (!res?.ok) {
+    await closeOffscreenDocument()
+    return { ok: false, error: res?.error || 'offscreen 启动失败' }
+  }
+  return { ok: true }
+}
+
+async function stopTabRecording(): Promise<{ ok: boolean; dataUrl?: string; bytes?: number; mime?: string; error?: string }> {
+  const res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'STOP' })
+  await closeOffscreenDocument()
+  return res ?? { ok: false, error: '无响应' }
+}
+
+async function cancelTabRecording(): Promise<void> {
+  try { await chrome.runtime.sendMessage({ target: 'offscreen', type: 'CANCEL' }) } catch { /* ignore */ }
+  await closeOffscreenDocument()
 }
 
 // ============================================================

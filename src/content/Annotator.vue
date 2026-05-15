@@ -31,22 +31,25 @@
         <button class="moo-text-btn cancel" @click="cancelText" title="取消 (Esc)">✕</button>
       </div>
     </div>
-    <div class="moo-toolbar">
-      <div class="tools">
-        <button :class="['tool', { active: mode === 'rect' }]" @click="mode = 'rect'">▭ 矩形</button>
-        <button :class="['tool', { active: mode === 'circle' }]" @click="mode = 'circle'">◯ 圆形</button>
-        <button :class="['tool', { active: mode === 'arrow' }]" @click="mode = 'arrow'">↗ 箭头</button>
-        <button :class="['tool', { active: mode === 'pointer' }]" @click="mode = 'pointer'">➤ 指针</button>
-        <button :class="['tool', { active: mode === 'text' }]" @click="mode = 'text'">T 文字</button>
-        <button :class="['tool', { active: mode === 'mosaic' }]" @click="mode = 'mosaic'">▓ 马赛克</button>
+    <div class="moo-toolbar moo-toolbar--stacked">
+      <div class="toolbar-row tools-row">
+        <button :class="['tool', { active: mode === 'rect' }]" @click="mode = 'rect'" title="矩形">▭<span>矩形</span></button>
+        <button :class="['tool', { active: mode === 'circle' }]" @click="mode = 'circle'" title="圆形">◯<span>圆形</span></button>
+        <button :class="['tool', { active: mode === 'arrow' }]" @click="mode = 'arrow'" title="箭头">↗<span>箭头</span></button>
+        <button :class="['tool', { active: mode === 'pointer' }]" @click="mode = 'pointer'" title="指针">➤<span>指针</span></button>
+        <button :class="['tool', { active: mode === 'text' }]" @click="mode = 'text'" title="文字">T<span>文字</span></button>
+        <button :class="['tool', { active: mode === 'mosaic' }]" @click="mode = 'mosaic'" title="马赛克">▓<span>马赛克</span></button>
       </div>
-      <span class="hint">{{ modeHint }}</span>
-      <div class="sep" />
-      <button @click="undo" :disabled="!items.length">撤销</button>
-      <button class="danger" @click="clearAll" :disabled="!items.length">清空</button>
-      <div class="sep" />
-      <button @click="cancel">取消</button>
-      <button class="primary" @click="finish">下一步</button>
+      <div class="toolbar-row action-row">
+        <span class="hint">{{ modeHint }}</span>
+        <div class="actions-right">
+          <button @click="undo" :disabled="!items.length">撤销</button>
+          <button class="danger" @click="clearAll" :disabled="!items.length">清空</button>
+          <div class="sep" />
+          <button @click="cancel">取消</button>
+          <button class="primary" @click="finish">下一步</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>

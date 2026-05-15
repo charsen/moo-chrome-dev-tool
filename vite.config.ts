@@ -19,6 +19,11 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
-    sourcemap: true
+    sourcemap: true,
+    rollupOptions: {
+      input: {
+        offscreen: resolve(__dirname, 'src/offscreen/index.html')
+      }
+    }
   }
 })
