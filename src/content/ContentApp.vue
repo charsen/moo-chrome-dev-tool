@@ -143,9 +143,11 @@ function showToast(msg: string, kind: 'success' | 'error') {
   toast.value = msg
   toastKind.value = kind
   if (toastTimer) clearTimeout(toastTimer)
+  // 失败 toast 显示更久，方便读完错误原因
+  const duration = kind === 'error' ? 6000 : 2800
   toastTimer = window.setTimeout(() => {
     toast.value = ''
     toastKind.value = ''
-  }, 2800)
+  }, duration)
 }
 </script>

@@ -90,6 +90,7 @@ import { clearHistory, listHistory, onHistoryChanged, removeHistory } from '@/st
 import { loadConfig } from '@/storage/config'
 import { MSG, type SubmitBugReq, type SubmitBugRes } from '@/types/messages'
 import type { BugHistoryEntry } from '@/types/history'
+import { formatSubmitResult } from '@/utils/submitMessage'
 import type { Project } from '@/types/config'
 
 const list = ref<BugHistoryEntry[]>([])
@@ -216,7 +217,8 @@ async function resubmit(e: BugHistoryEntry) {
       source: 'devtools',
       payload: req
     })) as SubmitBugRes
-    alert(res.ok ? `提交成功 (${res.status})` : `提交失败: ${res.error ?? `HTTP ${res.status}`}`)
+    const { message } = formatSubmitResult(res)
+    alert(message)
   } finally {
     busyId.value = ''
   }

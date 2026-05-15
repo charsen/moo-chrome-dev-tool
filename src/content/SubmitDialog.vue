@@ -101,6 +101,7 @@ import type { Project } from '@/types/config'
 import type { CapturedRequest } from '@/types/requests'
 import type { ConsoleError } from '@/types/errors'
 import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes } from '@/types/messages'
+import { formatSubmitResult } from '@/utils/submitMessage'
 
 const props = defineProps<{
   project: Project
@@ -242,11 +243,8 @@ async function onSubmit() {
       source: 'content',
       payload: req
     })) as SubmitBugRes
-    if (res.ok) {
-      emit('submitted', true, `提交成功 (${res.status})`)
-    } else {
-      emit('submitted', false, `提交失败: ${res.error ?? `HTTP ${res.status}`}`)
-    }
+    const { ok, message } = formatSubmitResult(res)
+    emit('submitted', ok, message)
   } catch (err) {
     emit('submitted', false, `提交异常: ${(err as Error).message}`)
   } finally {

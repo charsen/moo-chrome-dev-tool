@@ -353,6 +353,10 @@ export const SHADOW_CSS = `
   padding: 10px 18px;
   border-radius: 4px;
   font-size: 13px;
+  line-height: 1.5;
+  max-width: min(560px, calc(100vw - 48px));
+  word-break: break-word;
+  white-space: pre-line;
   z-index: 2147483647;
   box-shadow: 0 4px 16px rgba(0,0,0,0.3);
   animation: moo-toast-in 0.2s;
