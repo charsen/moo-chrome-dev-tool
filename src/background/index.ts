@@ -9,7 +9,7 @@ import type {
   SubmitBugRes
 } from '@/types/messages'
 import { MSG } from '@/types/messages'
-import { loadConfig, matchProject } from '@/storage/config'
+import { loadConfig, matchProjects } from '@/storage/config'
 import { addHistoryEntry, listHistory, updateHistoryEntry } from '@/storage/history'
 import { renderTemplate } from '@/utils/template'
 import type { BugServer, Project } from '@/types/config'
@@ -79,8 +79,8 @@ chrome.runtime.onMessage.addListener((message: MooMessage, sender, sendResponse)
         case MSG.MATCH_PROJECT: {
           const { url } = (message.payload as MatchProjectReq) ?? { url: '' }
           const config = await loadConfig()
-          const project = matchProject(config, url)
-          sendResponse({ project } satisfies MatchProjectRes)
+          const matches = matchProjects(config, url)
+          sendResponse({ project: matches[0] ?? null, matches } satisfies MatchProjectRes)
           break
         }
         case MSG.PREVIEW_PAYLOAD: {

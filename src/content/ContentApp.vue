@@ -1,9 +1,11 @@
 <template>
   <div class="moo-root">
     <FloatingBall
-      v-if="project"
-      :tip="`Moo · ${project.name} (⌘/Ctrl+Shift+B)`"
+      v-if="matches.length"
+      :tip="ballTip"
       :hidden="state !== 'idle'"
+      :matches="matches"
+      @select-project="onSelectProject"
       @capture="startCapture"
       @record="startRecord"
     />
@@ -52,7 +54,14 @@ import { useErrors } from './useErrors'
 type State = 'idle' | 'capturing' | 'annotating' | 'recording' | 'submitting'
 
 const state = ref<State>('idle')
+/** 当前页面匹配到的所有项目（>=0 个；空数组时悬浮球不显示） */
+const matches = ref<Project[]>([])
+/** 当前 active 项目：唯一匹配时即 matches[0]；多匹配时由用户在悬浮球里点选确认 */
 const project = ref<Project | null>(null)
+const ballTip = computed(() => {
+  const name = project.value?.name ?? (matches.value.length > 1 ? `${matches.value.length} 个项目` : '')
+  return `Moo · ${name} (⌘/Ctrl+Shift+B)`
+})
 const rawImage = ref('')
 const annotatedImage = ref('')
 const recordedVideo = ref<RecordingResult | null>(null)
@@ -75,17 +84,30 @@ async function refreshProject() {
     source: 'content',
     payload: { url: location.href }
   })) as MatchProjectRes
-  project.value = res.project
-  if (project.value) {
-    reqApi.setConfig({ capture: project.value.capture, redact: project.value.redact })
+  matches.value = res.matches ?? (res.project ? [res.project] : [])
+  // 唯一匹配 → 直接 active；多匹配 → 留空，等用户在悬浮球里选
+  // 抓取配置始终走 matches[0]（同一 URL 命中的项目，抓取/脱敏通常一致；
+  // 即使有差异，submit 时仍用用户选定的 active project，所以问题可控）
+  project.value = matches.value.length === 1 ? matches.value[0] : null
+  const cfgSrc = project.value ?? matches.value[0]
+  if (cfgSrc) reqApi.setConfig({ capture: cfgSrc.capture, redact: cfgSrc.redact })
+}
+
+function onSelectProject(id: string) {
+  const p = matches.value.find((x) => x.id === id)
+  if (p) {
+    project.value = p
+    reqApi.setConfig({ capture: p.capture, redact: p.redact })
   }
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (state.value !== 'idle' || !project.value) return
+  if (state.value !== 'idle' || matches.value.length === 0) return
   const mod = e.metaKey || e.ctrlKey
   if (mod && e.shiftKey && (e.key === 'B' || e.key === 'b')) {
     e.preventDefault()
+    // 快捷键场景没 UI 让用户挑，多匹配时 default 到首个；用户事后想换可在悬浮球点切换
+    if (!project.value) onSelectProject(matches.value[0].id)
     startCapture()
   }
 }
@@ -114,6 +136,11 @@ onMounted(async () => {
     if (!msg.ok) {
       showToast(msg.error || '录屏启动失败', 'error')
       return
+    }
+    // 录屏由快捷键触发，没有 UI 让用户挑项目；多匹配时 default 到首个，
+    // 用户在 SubmitDialog 之外没法切换，但符合"快捷键不被打断"的预期
+    if (!project.value && matches.value.length > 0) {
+      onSelectProject(matches.value[0].id)
     }
     void beginRecordingFromCommand()
   })

@@ -13,22 +13,29 @@
     </div>
 
     <!-- 1. 已匹配 -->
-    <section v-else-if="project" class="state state--matched">
+    <section v-else-if="matched.length" class="state state--matched">
       <div class="state-head">
         <span class="status-dot status-dot--on" />
-        <div class="state-title">已启用</div>
+        <div class="state-title">{{ matched.length > 1 ? `已启用 · 匹配到 ${matched.length} 个项目` : '已启用' }}</div>
       </div>
-      <div class="proj-card">
-        <div class="proj-name">{{ project.name }}</div>
+      <div v-for="p in matched" :key="p.id" class="proj-card">
+        <div class="proj-name">{{ p.name }}</div>
         <div class="proj-meta">
-          <span>{{ project.servers.length }} 个上报服务器</span>
+          <span>{{ p.servers.length }} 个上报服务器</span>
         </div>
       </div>
-      <p class="hint">悬浮球已在当前页面启用，点击或按 ⌘/Ctrl + Shift + B 截图上报。</p>
+      <p class="hint">
+        <template v-if="matched.length > 1">
+          点击悬浮球时会让你选择目标项目；快捷键 ⌘/Ctrl + Shift + B 默认走第一个。
+        </template>
+        <template v-else>
+          悬浮球已在当前页面启用，点击或按 ⌘/Ctrl + Shift + B 截图上报。
+        </template>
+      </p>
     </section>
 
     <!-- 2. 有项目但当前 URL 不匹配 -->
-    <section v-else-if="projects.length" class="state state--nomatch">
+    <section v-else-if="projects.length && !matched.length" class="state state--nomatch">
       <div class="state-head">
         <span class="status-dot status-dot--warn" />
         <div class="state-title">当前页面未匹配</div>
@@ -76,7 +83,7 @@ import type { Project } from '@/types/config'
 import { loadConfig, urlMatches } from '@/storage/config'
 
 const version = ref(chrome.runtime.getManifest().version)
-const project = ref<Project | null>(null)
+const matched = ref<Project[]>([])
 const projects = ref<Project[]>([])
 const currentUrl = ref('')
 const loading = ref(true)
@@ -89,13 +96,9 @@ onMounted(async () => {
     const cfg = await loadConfig()
     projects.value = cfg.projects
     if (tab?.url && cfg.globalEnabled) {
-      for (const p of cfg.projects) {
-        if (!p.enabled) continue
-        if (p.matchPatterns.some((pat) => urlMatches(tab.url!, pat))) {
-          project.value = p
-          break
-        }
-      }
+      matched.value = cfg.projects.filter(
+        (p) => p.enabled && p.matchPatterns.some((pat) => urlMatches(tab.url!, pat))
+      )
     }
   } finally {
     loading.value = false

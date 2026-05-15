@@ -139,8 +139,6 @@ pnpm build        # dist/ 可直接打包发布
 composer require charsen/moo-scaffold
 ```
 
-完整 source：`/Volumes/dev/wwwroot/light-language-engine/packages/moo-scaffold/`
-
 其它语言 / 框架想自己实现 intake：→ [`docs/SERVER_INTEGRATION.md`](docs/SERVER_INTEGRATION.md)（含协议规范 + Node/Python 示例 + 字段语义表）
 
 ---

@@ -1,7 +1,26 @@
 <template>
   <div class="moo-ball-wrap" :style="{ left: pos.x + 'px', top: pos.y + 'px' }">
-    <!-- 展开菜单 -->
-    <div v-if="expanded && !dragging" class="moo-ball-menu">
+    <!-- 多匹配场景：先让用户选项目 -->
+    <div v-if="expanded && !dragging && phase === 'picker'" class="moo-ball-menu moo-ball-picker">
+      <div class="moo-ball-picker-hd">当前页面匹配到多个项目</div>
+      <button
+        v-for="p in matches"
+        :key="p.id"
+        class="moo-ball-action moo-ball-picker-row"
+        @click="onPickProject(p.id)"
+      >
+        <span class="ic">📁</span>
+        <span class="lab">{{ p.name || '(未命名)' }}</span>
+      </button>
+    </div>
+
+    <!-- 展开菜单（已选定项目后） -->
+    <div v-else-if="expanded && !dragging" class="moo-ball-menu">
+      <div v-if="matches.length > 1" class="moo-ball-active-hd">
+        <span class="ic">📁</span>
+        <span class="lab">{{ activeProjectName }}</span>
+        <button class="moo-ball-switch" @click="onBackToPicker" title="切换项目">切换</button>
+      </div>
       <button class="moo-ball-action" @click="onPickCapture">
         <span class="ic">📷</span>
         <span class="lab">截图</span>
@@ -24,20 +43,35 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import type { Project } from '@/types/config'
 
 const eagleUrl = chrome.runtime.getURL('icons/eagle-ball.png')
 
-defineProps<{ tip: string; hidden: boolean }>()
+const props = defineProps<{
+  tip: string
+  hidden: boolean
+  /** 当前页面匹配到的所有项目（1 个直接用，多个需要让用户先选） */
+  matches: Project[]
+}>()
 const emit = defineEmits<{
+  /** 用户在多匹配场景下选了项目（单匹配时也会自动 emit 一次以同步给父组件） */
+  (e: 'select-project', projectId: string): void
   (e: 'capture'): void
   (e: 'record'): void
 }>()
+
+type Phase = 'picker' | 'menu'
 
 const POS_KEY = 'moo-ball-pos'
 const pos = ref({ x: window.innerWidth - 70, y: window.innerHeight - 70 })
 const dragging = ref(false)
 const expanded = ref(false)
+const phase = ref<Phase>('menu')
+const activeProjectId = ref<string>('')
+const activeProjectName = computed(
+  () => props.matches.find((p) => p.id === activeProjectId.value)?.name || '(未命名)'
+)
 let downAt = { x: 0, y: 0 }
 let originPos = { x: 0, y: 0 }
 let moved = false
@@ -83,7 +117,30 @@ function onUp() {
 
 function onClick() {
   if (moved) return
-  expanded.value = !expanded.value
+  if (expanded.value) {
+    expanded.value = false
+    return
+  }
+  expanded.value = true
+  // 每次展开都重置项目选择：1 个匹配自动确认，多个匹配强制让用户选
+  if (props.matches.length <= 1) {
+    activeProjectId.value = props.matches[0]?.id ?? ''
+    if (activeProjectId.value) emit('select-project', activeProjectId.value)
+    phase.value = 'menu'
+  } else {
+    activeProjectId.value = ''
+    phase.value = 'picker'
+  }
+}
+
+function onPickProject(id: string) {
+  activeProjectId.value = id
+  emit('select-project', id)
+  phase.value = 'menu'
+}
+
+function onBackToPicker() {
+  phase.value = 'picker'
 }
 
 function onPickCapture() {

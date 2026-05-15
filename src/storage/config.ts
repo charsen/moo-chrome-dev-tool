@@ -111,13 +111,15 @@ export function urlMatches(url: string, pattern: string): boolean {
   }
 }
 
+/** 所有匹配当前 url 的启用项目。globalEnabled=false 时返回空数组。 */
+export function matchProjects(config: MooConfig, url: string): Project[] {
+  if (!config.globalEnabled) return []
+  return config.projects.filter(
+    (p) => p.enabled && p.matchPatterns.some((pat) => urlMatches(url, pat))
+  )
+}
+
+/** 兼容旧调用方：返回首个匹配项目。 */
 export function matchProject(config: MooConfig, url: string): Project | null {
-  if (!config.globalEnabled) return null
-  for (const project of config.projects) {
-    if (!project.enabled) continue
-    if (project.matchPatterns.some((p) => urlMatches(url, p))) {
-      return project
-    }
-  }
-  return null
+  return matchProjects(config, url)[0] ?? null
 }

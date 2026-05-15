@@ -24,7 +24,10 @@ export interface MatchProjectReq {
   url: string
 }
 export interface MatchProjectRes {
+  /** 首个匹配项目（兼容旧调用方）。无匹配 → null */
   project: Project | null
+  /** 所有匹配的项目（包含 project）。0 / 1 / 多个，由 UI 决定是否需要让用户选择 */
+  matches: Project[]
 }
 
 export interface SubmitBugReq {

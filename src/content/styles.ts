@@ -93,6 +93,51 @@ export const SHADOW_CSS = `
 }
 .moo-ball-action .lab { flex: 1; }
 
+/* 多匹配项目选择器 */
+.moo-ball-picker { min-width: 200px; }
+.moo-ball-picker-hd {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  color: var(--c-text-dim);
+  line-height: 1.4;
+}
+.moo-ball-picker-row .lab {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+/* 已选项目头条（菜单顶部） */
+.moo-ball-active-hd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--c-divider);
+  font-size: 11px;
+  color: var(--c-text-muted);
+}
+.moo-ball-active-hd .ic { font-size: 12px; }
+.moo-ball-active-hd .lab {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: var(--c-text);
+}
+.moo-ball-switch {
+  border: none;
+  background: transparent;
+  color: var(--c-brand);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 11px;
+}
+.moo-ball-switch:hover { text-decoration: underline; }
+
 .moo-ball {
   position: absolute;
   top: 0;

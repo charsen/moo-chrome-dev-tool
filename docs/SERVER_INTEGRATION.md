@@ -2,7 +2,7 @@
 
 本扩展（moo-chrome-dev-tool）是**协议无关**的客户端：用户在 Chrome 里截图/录屏/捕获请求与错误，扩展按用户在「环境 Tab」配置的 `payloadTemplate` 渲染后 POST 到任意 HTTP 端点。
 
-要让你自家的 bug 收件箱接收扩展上报，按本文档实现一个 intake 接口即可。**参考实现**：`packages/moo-scaffold/src/Http/Controllers/TodoIntakeController.php`（Laravel）。
+要让你自家的 bug 收件箱接收扩展上报，按本文档实现一个 intake 接口即可。
 
 ---
 
@@ -53,7 +53,9 @@
 
 后端任选其一校验即可。token 来源是「环境 Tab」里的 **项目级 token**（每开发者一份，不进版本控制）。
 
-> **建议**：维护一个开发账号表 / 文件，token 命中即放行；命中后用账号自身的 username/role 作为 todo 的 submitter，**不要**信任客户端传的提交人字段（不安全）。
+> **建议**：
+> 维护一个开发账号表 / 文件，token 命中即放行；命中后用账号自身的 username/role 作为 todo 的 submitter，
+> **不要**信任客户端传的提交人字段（不安全）。
 
 ### 2.3 Content-Type
 
@@ -292,10 +294,6 @@ post_max_size = 60M
 upload_max_filesize = 60M
 ```
 
-### 7.2 限流
-
-scaffold 用 Laravel 的 `throttle:60,1`（每分钟 60 次）。如果你的扩展用户量大，建议**按 token / IP 限流**，避免单人脚本暴打 intake。
-
 ### 7.3 鉴权细节
 
 - token 比对用 `hash_equals` / `crypto.timingSafeEqual`，避免时序攻击
@@ -449,21 +447,3 @@ def status(tid):
         return jsonify(ok=False, error='not found'), 404
     return jsonify(ok=True, status=json.loads(f.read_text())['status'])
 ```
-
----
-
-## 10. moo-scaffold 完整参考实现
-
-文件位置：`/Volumes/dev/wwwroot/light-language-engine/packages/moo-scaffold/`
-
-| 文件 | 作用 |
-|---|---|
-| `src/Http/routes.php` | intake + status-public + 后台管理路由（不走登录） |
-| `src/Http/Controllers/TodoIntakeController.php` | 鉴权 + 多 Content-Type 解析 + 限流 |
-| `src/Http/Controllers/TodoController.php` | 后台 UI 视图（列表、详情、状态流转、screenshot/video 二进制响应） |
-| `src/Support/TodoStore.php` | yaml 落盘、截图/视频持久化、索引、清理 |
-| `src/Support/AccountStore.php` | 开发账号 yaml + token 校验 |
-| `src/Http/Views/todo/show.blade.php` | 详情页 `<video>` / `<img>` 渲染 |
-| `config/config.php` | `max_intake_bytes` / `max_video_bytes` / `intake_tokens` / `rate_limit_per_min` |
-
-如果你用 Laravel，直接 `composer require charsen/moo-scaffold` 即可（包内自带路由 + 后台 UI + accounts 管理）。其它语言可直接照搬 `TodoStore.php` 的字段命名和落盘结构。
