@@ -64,24 +64,21 @@
         </div>
 
         <div class="section-head">
-          <h4>提交人（可选）</h4>
+          <h4>上报 Token</h4>
         </div>
         <div class="row">
-          <label>名字</label>
+          <label>Token</label>
           <input
-            :value="activeProject.submitterSource?.value ?? ''"
-            @input="setSubmitterValue(($event.target as HTMLInputElement).value)"
-            placeholder="例如：张三 / dev-team"
-          />
-          <label>Header 名</label>
-          <input
-            :value="activeProject.submitterSource?.headerName ?? ''"
-            @input="setSubmitterHeader(($event.target as HTMLInputElement).value)"
-            placeholder="X-Submitter"
-            class="narrow"
+            v-model="activeProject.token"
+            placeholder="从 /scaffold/accounts 获取你的个人 token"
+            class="grow"
           />
         </div>
-        <div class="tpl-hint">留空则不注入 header；填写后会作为请求头随每次上报一起发出。</div>
+        <div class="tpl-hint">
+          上报时会自动注入 <code class="inline-code">Authorization: Bearer …</code> 与
+          <code class="inline-code">X-Scaffold-Token</code> 两个 header；服务端命中后会用账号 username 作为提交人。
+          留空则按匿名提交（若服务端配了共享 token 也会被拒）。
+        </div>
 
         <div class="section-head">
           <h4>上报服务器</h4>
@@ -230,30 +227,6 @@ function onRevert() {
   if (!draft.value.projects.find((p) => p.id === activeId.value)) {
     activeId.value = draft.value.projects[0]?.id ?? ''
   }
-}
-
-function setSubmitterValue(v: string) {
-  const p = activeProject.value
-  if (!p) return
-  const value = v
-  if (!value && !p.submitterSource?.headerName) {
-    delete p.submitterSource
-    return
-  }
-  if (!p.submitterSource) p.submitterSource = { value }
-  else p.submitterSource.value = value
-}
-
-function setSubmitterHeader(v: string) {
-  const p = activeProject.value
-  if (!p) return
-  const headerName = v.trim() || undefined
-  if (!headerName && !p.submitterSource?.value) {
-    delete p.submitterSource
-    return
-  }
-  if (!p.submitterSource) p.submitterSource = { value: '', headerName }
-  else p.submitterSource.headerName = headerName
 }
 
 function addProject() {

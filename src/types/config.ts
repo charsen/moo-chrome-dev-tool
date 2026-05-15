@@ -42,13 +42,6 @@ export interface RedactConfig {
   maskPasswordInputs: boolean
 }
 
-export interface SubmitterSource {
-  /** 提交人名字，手动填写 */
-  value: string
-  /** 注入到上报请求的 header 名，默认 'X-Submitter' */
-  headerName?: string
-}
-
 export interface Project {
   id: string
   name: string
@@ -60,8 +53,12 @@ export interface Project {
   redact: RedactConfig
   /** 是否启用（关闭后即使匹配也不显示悬浮球） */
   enabled: boolean
-  /** 自动从页面 storage / cookie 取提交人名，注入到上报 header */
-  submitterSource?: SubmitterSource
+  /**
+   * 上报 token（每个开发者一个）。从 scaffold 的 /scaffold/accounts 页面获取。
+   * 上报时会作为 Authorization: Bearer {token} 与 X-Scaffold-Token 同时注入；
+   * 服务端命中后会自动用账号 username 作为提交人。
+   */
+  token?: string
 }
 
 export interface MooConfig {

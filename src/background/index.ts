@@ -119,10 +119,7 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
     errors: req.errors
   }
 
-  // 自动提交人：从页面 storage / cookie 读取，注入到 header
-  const autoHeader = await resolveSubmitterHeader(project, tabId)
-
-  const { body, headers } = buildRequestBody(server, ctx, autoHeader)
+  const { body, headers } = buildRequestBody(server, ctx, project)
   const safeHeaders = sanitizeHeaders(headers)
   let result: SubmitBugRes
   let remoteId: string | undefined
@@ -161,7 +158,7 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
     result,
     remoteId,
     remoteBase: deriveRemoteBase(server.endpoint),
-    remoteHeaders: pickPropagatedHeaders(server.headers)
+    remoteHeaders: pickPropagatedHeaders(applyAuthHeaders(project, { ...server.headers }))
   }
   try {
     await addHistoryEntry(entry)
@@ -173,19 +170,26 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
 }
 
 // ============================================================
-// 自动提交人
+// 上报 token
 // ============================================================
 
-async function resolveSubmitterHeader(
-  project: Project,
-  _tabId?: number
-): Promise<{ name: string; value: string } | null> {
-  const src = project.submitterSource
-  if (!src) return null
-  const value = src.value?.trim()
-  if (!value) return null
-  const name = src.headerName?.trim() || 'X-Submitter'
-  return { name, value }
+/**
+ * 把项目级 token 注入到 header：
+ *   Authorization: Bearer {token}
+ *   X-Scaffold-Token: {token}
+ * 服务端 AccountStore 命中后会自动用账号 username 作为提交人。
+ */
+function applyAuthHeaders(project: Project, headers: Record<string, string>): Record<string, string> {
+  const token = project.token?.trim()
+  if (!token) return headers
+  const out = { ...headers }
+  if (!out['Authorization'] && !out['authorization']) {
+    out['Authorization'] = `Bearer ${token}`
+  }
+  if (!out['X-Scaffold-Token'] && !out['x-scaffold-token']) {
+    out['X-Scaffold-Token'] = token
+  }
+  return out
 }
 
 // HTTP header 值只允许 ISO-8859-1（基本就是 ASCII），中文/emoji 必须 percent-encode；
@@ -331,7 +335,7 @@ function deriveRemoteBase(endpoint: string): string {
 function buildRequestBody(
   server: BugServer,
   ctx: Record<string, unknown>,
-  autoHeader: { name: string; value: string } | null
+  project: Project
 ): { body: BodyInit; headers: Record<string, string> } {
   const rendered = renderTemplate(server.payloadTemplate, ctx)
   if (server.imageFormat === 'multipart') {
@@ -346,14 +350,12 @@ function buildRequestBody(
       form.append('payload', rendered)
     }
     form.append(server.imageField, dataUrlToBlob(String(ctx.image)), 'screenshot.png')
-    const headers = { ...server.headers }
+    const headers = applyAuthHeaders(project, { ...server.headers })
     delete headers['Content-Type']
     delete headers['content-type']
-    if (autoHeader) headers[autoHeader.name] = autoHeader.value
     return { body: form, headers }
   }
-  const headers = { ...server.headers }
-  if (autoHeader) headers[autoHeader.name] = autoHeader.value
+  const headers = applyAuthHeaders(project, { ...server.headers })
   return { body: rendered, headers }
 }
 
