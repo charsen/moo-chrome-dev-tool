@@ -26,13 +26,14 @@ if (!version) {
   process.exit(1)
 }
 
-// 同步 manifest 版本号
+// 同步 manifest 版本号：只动 version 字段，不用 JSON.parse+stringify 整个重写
+// （会让原来紧凑的 array 全部展开成多行，commit diff 噪音很大）
 const manifestPath = resolve(root, 'manifest.json')
-const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-if (manifest.version !== version) {
-  console.log(`同步 manifest.json: ${manifest.version} → ${version}`)
-  manifest.version = version
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
+const manifestRaw = readFileSync(manifestPath, 'utf8')
+const m = manifestRaw.match(/"version"\s*:\s*"([^"]+)"/)
+if (m && m[1] !== version) {
+  console.log(`同步 manifest.json: ${m[1]} → ${version}`)
+  writeFileSync(manifestPath, manifestRaw.replace(m[0], `"version": "${version}"`))
 }
 
 // 清空旧 dist 后重建，避免上次构建残留进 zip
