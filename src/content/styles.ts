@@ -43,8 +43,61 @@ export const SHADOW_CSS = `
 .moo-ball-wrap {
   position: fixed;
   z-index: 2147483600;
-  width: 44px;
-  height: 44px;
+  /* 横排三按钮自然撑宽，不再固定 44px */
+}
+
+/* 三按钮横排容器 */
+.moo-ball-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  background: rgba(255, 255, 255, .96);
+  border: 1px solid var(--c-border);
+  border-radius: 28px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, .18);
+  backdrop-filter: blur(8px);
+  user-select: none;
+  touch-action: none;
+}
+.moo-ball-row.dragging { cursor: grabbing; box-shadow: 0 10px 24px rgba(15, 23, 42, .28); }
+.moo-ball-row.hidden { display: none; }
+
+.moo-ball-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--c-bg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--c-text);
+  padding: 0;
+  transition: background-color .12s, transform .12s;
+}
+.moo-ball-btn:hover {
+  background: var(--c-brand-soft, #eef2ff);
+  color: var(--c-brand);
+}
+.moo-ball-btn:active { transform: scale(.92); }
+.moo-ball-btn .ic { font-size: 17px; line-height: 1; }
+.moo-ball-btn--logo {
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .25) inset;
+  cursor: grab;
+  overflow: hidden;
+}
+.moo-ball-btn--logo:hover { background: linear-gradient(135deg, #4338ca 0%, #4f46e5 100%); }
+.moo-ball-row.dragging .moo-ball-btn--logo { cursor: grabbing; }
+.moo-ball-btn--logo .moo-ball-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  display: block;
+  border-radius: 50%;
 }
 .moo-ball-menu {
   position: absolute;
@@ -138,58 +191,6 @@ export const SHADOW_CSS = `
 }
 .moo-ball-switch:hover { text-decoration: underline; }
 
-.moo-ball {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  overflow: hidden;
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  user-select: none;
-  z-index: 2147483600;
-  box-shadow: 0 6px 16px rgba(79, 70, 229, .35),
-              0 0 0 2px rgba(255, 255, 255, .25) inset;
-  transition: transform .2s cubic-bezier(.4, 0, .2, 1),
-              box-shadow .2s cubic-bezier(.4, 0, .2, 1);
-}
-.moo-ball-icon {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  pointer-events: none;
-  display: block;
-}
-.moo-ball:hover {
-  transform: scale(1.1);
-  box-shadow: 0 8px 22px rgba(79, 70, 229, .5),
-              0 0 0 2px rgba(255, 255, 255, .35) inset;
-}
-.moo-ball.dragging { transition: none; cursor: grabbing; }
-.moo-ball.hidden { display: none; }
-.moo-ball-tip {
-  position: absolute;
-  right: 52px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: rgba(15, 23, 42, .92);
-  color: #fff;
-  padding: 5px 10px;
-  border-radius: var(--r-sm);
-  font-size: 11px;
-  letter-spacing: .01em;
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity .15s;
-  font-weight: 500;
-}
-.moo-ball:hover .moo-ball-tip { opacity: 1; }
 
 /* ============================================
    标注层

@@ -2,7 +2,6 @@
   <div class="moo-root">
     <FloatingBall
       v-if="matches.length"
-      :tip="ballTip"
       :hidden="state !== 'idle'"
       :matches="matches"
       @select-project="onSelectProject"
@@ -58,10 +57,6 @@ const state = ref<State>('idle')
 const matches = ref<Project[]>([])
 /** 当前 active 项目：唯一匹配时即 matches[0]；多匹配时由用户在悬浮球里点选确认 */
 const project = ref<Project | null>(null)
-const ballTip = computed(() => {
-  const name = project.value?.name ?? (matches.value.length > 1 ? `${matches.value.length} 个项目` : '')
-  return `Moo · ${name} (⌘/Ctrl+Shift+B)`
-})
 const rawImage = ref('')
 const annotatedImage = ref('')
 const recordedVideo = ref<RecordingResult | null>(null)
