@@ -4,6 +4,8 @@
 
 调试时发现 bug → 一键截图 + 录屏 → 自动附带页面 URL/UA/视口、现场抓的网络请求 / Console 错误 / 选中的 DOM 元素 / localStorage 快照 → 提交到可配置的服务端（按项目 / 多环境）→ 在 DevTools 里继续跟进状态。
 
+> **下载安装** → [Releases](https://gitee.com/charsen/moo-chrome-dev-tool/releases)（下 zip 解压，`chrome://extensions/` 开发者模式 → 加载已解压的扩展程序 → 选解压目录）
+>
 > 想接自家后端？看 [`docs/SERVER_INTEGRATION.md`](docs/SERVER_INTEGRATION.md)。
 
 ---
