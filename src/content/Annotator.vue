@@ -56,6 +56,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { clone } from '@/utils/clone'
 
 const props = defineProps<{ image: string }>()
 const emit = defineEmits<{
@@ -290,10 +291,6 @@ function distToSegment(p: { x: number; y: number }, x1: number, y1: number, x2: 
   let t = ((p.x - x1) * dx + (p.y - y1) * dy) / len2
   t = Math.max(0, Math.min(1, t))
   return Math.hypot(p.x - (x1 + t * dx), p.y - (y1 + t * dy))
-}
-
-function clone<T>(v: T): T {
-  return JSON.parse(JSON.stringify(v)) as T
 }
 
 function commitText() {

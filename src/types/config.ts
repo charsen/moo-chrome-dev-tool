@@ -84,6 +84,9 @@ export const DEFAULT_PAYLOAD_TEMPLATE = `{
   "title": "{{title}}",
   "description": "{{description}}\\n\\n页面: {{url}}\\nUA: {{userAgent}}\\n视口: {{viewport}}\\n时间: {{timestamp}}",
   "screenshot": "{{image}}",
+  "video": "{{video}}",
+  "video_duration": {{videoDuration}},
+  "video_bytes": {{videoBytes}},
   "context": {
     "url": "{{url}}",
     "userAgent": "{{userAgent}}",

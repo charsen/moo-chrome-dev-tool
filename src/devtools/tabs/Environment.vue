@@ -1,6 +1,7 @@
 <template>
   <div v-if="!loaded" class="loading">加载配置中…</div>
   <div v-else class="env-wrap">
+    <div v-if="toast" :class="['moo-toast', `moo-toast--${toastKind}`]">{{ toast }}</div>
     <div class="save-bar" :class="{ dirty }">
       <span class="status-msg">
         <template v-if="dirty">● 有未保存的更改</template>
@@ -177,17 +178,24 @@ import {
   type MooConfig,
   type Project
 } from '@/types/config'
+import { clone } from '@/utils/clone'
 
 const { config, loaded, save } = useConfig()
-
-function clone<T>(v: T): T {
-  return JSON.parse(JSON.stringify(v)) as T
-}
 
 const draft = ref<MooConfig>({ projects: [], globalEnabled: true })
 const activeId = ref<string>('')
 const saving = ref(false)
 const initialized = ref(false)
+
+const toast = ref('')
+const toastKind = ref<'success' | 'error' | 'info'>('info')
+let toastTimer: number | undefined
+function showToast(msg: string, kind: 'success' | 'error' | 'info' = 'info') {
+  toast.value = msg
+  toastKind.value = kind
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = window.setTimeout(() => (toast.value = ''), kind === 'error' ? 5000 : 2600)
+}
 
 const dirty = computed(() => JSON.stringify(draft.value) !== JSON.stringify(config.value))
 
@@ -319,7 +327,7 @@ function importConfig() {
       const text = await file.text()
       const parsed = JSON.parse(text)
       if (!Array.isArray(parsed.projects)) {
-        alert('文件格式不正确')
+        showToast('文件格式不正确', 'error')
         return
       }
       draft.value = {
@@ -328,7 +336,7 @@ function importConfig() {
       }
       activeId.value = draft.value.projects[0]?.id ?? ''
     } catch (e) {
-      alert(`导入失败: ${(e as Error).message}`)
+      showToast(`导入失败: ${(e as Error).message}`, 'error')
     }
   }
   input.click()

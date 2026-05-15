@@ -11,6 +11,8 @@ export interface BugHistoryEntry {
   title: string
   description: string
   image: string              // base64 dataURL
+  hasVideo?: boolean         // 仅记录是否带视频，不存 webm dataURL（storage.local 10MB 限制）
+  videoDuration?: number     // 秒
   url: string
   userAgent: string
   viewport: string

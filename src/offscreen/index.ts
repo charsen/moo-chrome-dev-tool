@@ -48,13 +48,21 @@ chrome.runtime.onMessage.addListener((msg: Msg, _sender, sendResponse) => {
 async function handleStart(streamId: string): Promise<{ ok: boolean; error?: string }> {
   if (recorder) return { ok: false, error: '已在录制中' }
   try {
-    // tabCapture 拿到的 streamId 走这种"曾用名"路径取流；视频走 mandatory，audio 留给后续可选
+    // tabCapture 拿到的 streamId 走这种"曾用名"路径取流；视频走 mandatory，audio 留给后续可选。
+    // 必须显式给 min/max 分辨率：tabCapture 不指定时会默认 640x480，1920+ 的 tab 会被压成中间一小块、四周黑边。
+    // Chrome 会在 min/max 之间按 tab 实际 viewport 采集，超过 max 才会缩放。
     stream = await (navigator.mediaDevices as any).getUserMedia({
       audio: false,
       video: {
         mandatory: {
           chromeMediaSource: 'tab',
-          chromeMediaSourceId: streamId
+          chromeMediaSourceId: streamId,
+          minWidth: 1280,
+          minHeight: 720,
+          maxWidth: 3840,
+          maxHeight: 2160,
+          minFrameRate: 5,
+          maxFrameRate: 30
         }
       }
     })
@@ -65,8 +73,9 @@ async function handleStart(streamId: string): Promise<{ ok: boolean; error?: str
   chunks = []
   const mime = pickMime()
   try {
+    // 比特率按 1080p ~30fps 经验值：3.5Mbps 视觉够清且 webm/vp9 压缩效率高，30 秒约 13MB。
     recorder = mime
-      ? new MediaRecorder(stream!, { mimeType: mime, videoBitsPerSecond: 1_200_000 })
+      ? new MediaRecorder(stream!, { mimeType: mime, videoBitsPerSecond: 3_500_000 })
       : new MediaRecorder(stream!)
   } catch (e) {
     cleanup()

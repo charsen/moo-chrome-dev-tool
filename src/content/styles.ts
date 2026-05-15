@@ -10,6 +10,8 @@ export const SHADOW_CSS = `
   color: #0f172a;
   --c-brand:        #4f46e5;
   --c-brand-hover:  #4338ca;
+  --c-brand-soft:   #eef2ff;
+  --c-info:         #2563eb;
   --c-text:         #0f172a;
   --c-text-muted:   #475569;
   --c-text-dim:     #94a3b8;
@@ -516,7 +518,7 @@ export const SHADOW_CSS = `
 }
 .req-item .method.post { color: var(--c-warn-fg); }
 .req-item .method.put,
-.req-item .method.patch { color: #2563eb; }
+.req-item .method.patch { color: var(--c-info); }
 .req-item .method.delete { color: var(--c-danger-fg); }
 .req-item .status {
   flex: 0 0 36px;

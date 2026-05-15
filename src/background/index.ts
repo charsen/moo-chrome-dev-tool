@@ -10,7 +10,7 @@ import type {
 } from '@/types/messages'
 import { MSG } from '@/types/messages'
 import { loadConfig, matchProject } from '@/storage/config'
-import { addHistoryEntry, readHistory, updateHistoryEntry } from '@/storage/history'
+import { addHistoryEntry, listHistory, updateHistoryEntry } from '@/storage/history'
 import { renderTemplate } from '@/utils/template'
 import type { BugServer, Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
@@ -30,6 +30,34 @@ chrome.runtime.onStartup?.addListener(() => {
 
 chrome.alarms?.onAlarm.addListener((alarm) => {
   if (alarm.name === RETRY_ALARM) void flushRetryQueue()
+})
+
+// 录屏入口必须由用户手势触发：chrome.commands 命中算手势，并直接把当前 tab 传进来。
+// 悬浮球的 click 经 content script → message 转一道后手势就丢了，tabCapture.getMediaStreamId
+// 会拒绝。所以 onCommand 内务必尽快（避免多余 await）调到 startTabRecording，让
+// getMediaStreamId 在 user activation 还在的瞬间被 invoke。
+chrome.commands?.onCommand.addListener((command, tab) => {
+  console.log('[Moo cmd]', command, 'tab:', tab?.id, tab?.url)
+  if (command !== 'start-recording') return
+  const tabId = tab?.id
+  if (!tabId) {
+    console.warn('[Moo cmd] 无 tabId（可能焦点不在 tab 内容上）')
+    return
+  }
+  // 不 await：让 startTabRecording 内的 getMediaStreamId 在当前同步栈完成调用，
+  // 拿到 streamId 后再把后续编排（offscreen + 通知 content）丢给 microtask。
+  void startTabRecording(tabId).then(async (res) => {
+    console.log('[Moo cmd] startTabRecording →', res)
+    try {
+      await chrome.tabs.sendMessage(tabId, {
+        type: MSG.RECORD_EXTERNAL_STARTED,
+        ok: res.ok,
+        error: res.error
+      })
+    } catch (e) {
+      console.warn('[Moo cmd] 通知 content script 失败：', (e as Error).message)
+    }
+  })
 })
 
 // 接住 devtools 面板的 keepalive 端口
@@ -152,6 +180,16 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
     const resp = await fetch(server.endpoint, { method: server.method, headers: safeHeaders, body })
     const text = await resp.text()
     remoteId = parseRemoteId(text)
+    if (!resp.ok) {
+      console.warn('[Moo submit-fail]', {
+        endpoint: server.endpoint,
+        finalUrl: resp.url,
+        status: resp.status,
+        statusText: resp.statusText,
+        bodyPreview: text.slice(0, 400),
+        sentHeaders: safeHeaders
+      })
+    }
     result = { ok: resp.ok, status: resp.status, body: text, remoteId }
     if (!resp.ok && resp.status >= 500) {
       // 5xx → 进重试队列
@@ -175,6 +213,8 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
     title: req.title,
     description: req.description,
     image: req.image,
+    hasVideo: !!req.video,
+    videoDuration: req.video?.duration ?? 0,
     url: req.url,
     userAgent: req.userAgent,
     viewport: req.viewport,
@@ -233,12 +273,9 @@ async function closeOffscreenDocument(): Promise<void> {
 
 async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?: string }> {
   if (!tabId) return { ok: false, error: '缺少 tabId' }
-  try {
-    await ensureOffscreenDocument()
-  } catch (e) {
-    return { ok: false, error: (e as Error).message }
-  }
 
+  // 关键：getMediaStreamId 必须在 user activation 还有效时立即 invoke。
+  // 任何 await（包括 ensureOffscreenDocument）放在它前面，都会让手势在 microtask 后丢失。
   let streamId: string
   try {
     streamId = await new Promise<string>((resolve, reject) => {
@@ -250,6 +287,12 @@ async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?:
     })
   } catch (e) {
     return { ok: false, error: 'tabCapture 失败：' + (e as Error).message }
+  }
+
+  try {
+    await ensureOffscreenDocument()
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
   }
 
   const res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'START', streamId })
@@ -430,7 +473,7 @@ async function flushRetryQueue(): Promise<number> {
 // ============================================================
 
 async function refreshHistoryStatus(): Promise<number> {
-  const list = await readHistory()
+  const list = await listHistory()
   let updated = 0
   for (const entry of list) {
     if (!entry.remoteId || !entry.remoteBase) continue
@@ -471,6 +514,8 @@ function pickPropagatedHeaders(src: Record<string, string>): Record<string, stri
 }
 
 function parseRemoteId(text: string): string | undefined {
+  // 上报响应体一般几百字节 JSON；防御性：>64KB 直接放弃 parse，避免误把超大 HTML 错误页喂给 JSON.parse 卡 service worker
+  if (!text || text.length > 64 * 1024) return undefined
   try {
     const obj = JSON.parse(text)
     if (obj && typeof obj === 'object' && typeof obj.id === 'string') return obj.id

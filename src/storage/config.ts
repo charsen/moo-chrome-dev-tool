@@ -1,4 +1,4 @@
-import type { MooConfig, Project } from '@/types/config'
+import type { BugServer, MooConfig, Project } from '@/types/config'
 
 const CONFIG_KEY = 'mooConfig'
 
@@ -15,11 +15,54 @@ function normalizeConfig(raw: Partial<MooConfig> | undefined | null): MooConfig 
   }
 }
 
+/**
+ * 迁移：旧版 payloadTemplate 没有 video 占位符，自动追加。
+ * 只处理形如 `"screenshot": "{{image}}",`（即默认模板派生、带 trailing 逗号）的 server；
+ * 用户完全自定义的模板（已含 {{video}}、或不含 {{image}}、或 image 行无 trailing 逗号）一律不动，
+ * 避免破坏其 JSON 结构。
+ */
+function migrateServerTemplate(tpl: string): string {
+  if (typeof tpl !== 'string' || tpl === '') return tpl
+  if (tpl.includes('{{video}}')) return tpl
+  const m = tpl.match(/([ \t]*)"screenshot"\s*:\s*"\{\{image\}\}"\s*,/)
+  if (!m) return tpl
+  const lead = m[1] ?? '  '
+  const insertion = [
+    `${lead}"screenshot": "{{image}}",`,
+    `${lead}"video": "{{video}}",`,
+    `${lead}"video_duration": {{videoDuration}},`,
+    `${lead}"video_bytes": {{videoBytes}},`
+  ].join('\n')
+  return tpl.replace(m[0], insertion)
+}
+
+function applyMigrations(cfg: MooConfig): { config: MooConfig; changed: boolean } {
+  let changed = false
+  const projects = cfg.projects.map((p) => {
+    if (!Array.isArray(p.servers) || p.servers.length === 0) return p
+    const servers: BugServer[] = p.servers.map((s) => {
+      const tpl2 = migrateServerTemplate(s.payloadTemplate)
+      if (tpl2 !== s.payloadTemplate) {
+        changed = true
+        return { ...s, payloadTemplate: tpl2 }
+      }
+      return s
+    })
+    return changed ? { ...p, servers } : p
+  })
+  return { config: changed ? { ...cfg, projects } : cfg, changed }
+}
+
 export async function loadConfig(): Promise<MooConfig> {
   const result = await chrome.storage.local.get(CONFIG_KEY)
   const cfg = normalizeConfig(result[CONFIG_KEY] as Partial<MooConfig> | undefined)
-  console.log('[Moo:config] loaded', cfg, 'rawKey:', result[CONFIG_KEY])
-  return cfg
+  const { config, changed } = applyMigrations(cfg)
+  if (changed) {
+    console.log('[Moo:config] migrated payloadTemplate(s) to include video fields')
+    void saveConfig(config)
+  }
+  console.log('[Moo:config] loaded', config, 'rawKey:', result[CONFIG_KEY])
+  return config
 }
 
 export async function saveConfig(config: MooConfig): Promise<void> {

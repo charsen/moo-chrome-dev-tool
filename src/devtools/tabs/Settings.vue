@@ -241,11 +241,11 @@ const Switch = (props: { modelValue: boolean }, { emit }: any) =>
     {
       type: 'button',
       role: 'switch',
-      class: ['switch', { 'is-on': props.modelValue }],
+      class: ['moo-switch', { 'is-on': props.modelValue }],
       'aria-checked': props.modelValue ? 'true' : 'false',
       onClick: () => emit('update:modelValue', !props.modelValue)
     },
-    h('span', { class: 'switch-thumb' })
+    h('span', { class: 'moo-switch-thumb' })
   )
 ;(Switch as any).props = ['modelValue']
 ;(Switch as any).emits = ['update:modelValue']
@@ -403,31 +403,7 @@ const TagInput = (props: { modelValue: string[]; placeholder?: string }, { emit 
   text-align: right;
 }
 
-/* Switch */
-.switch {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  border-radius: var(--moo-r-pill);
-  background: var(--moo-c-bg-elev);
-  border: 1px solid var(--moo-c-border);
-  cursor: pointer;
-  padding: 0;
-  transition: background-color var(--moo-motion-fast), border-color var(--moo-motion-fast);
-}
-.switch-thumb {
-  position: absolute;
-  top: 1px;
-  left: 1px;
-  width: 16px;
-  height: 16px;
-  background: var(--moo-c-bg);
-  border-radius: 50%;
-  box-shadow: var(--moo-sh-sm);
-  transition: transform var(--moo-motion-fast);
-}
-.switch.is-on { background: var(--moo-c-brand); border-color: var(--moo-c-brand); }
-.switch.is-on .switch-thumb { transform: translateX(16px); background: #fff; }
+/* Switch 样式见 src/styles/tokens.css（.moo-switch / .moo-switch-thumb，挂全局是因为本组件用 h() 渲染） */
 
 /* TagInput */
 .taginput {

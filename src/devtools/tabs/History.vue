@@ -8,6 +8,8 @@
       <button class="btn danger" @click="clearAll" :disabled="!list.length">清空</button>
     </header>
 
+    <div v-if="toast" :class="['moo-toast', `moo-toast--${toastKind}`]">{{ toast }}</div>
+
     <div class="list" v-if="filtered.length">
       <div
         v-for="e in filtered"
@@ -15,7 +17,12 @@
         :class="['row', { open: openId === e.id }]"
       >
         <div class="row-head" @click="toggle(e.id)">
-          <img :src="e.image" class="thumb" />
+          <img v-if="e.image" :src="e.image" class="thumb" />
+          <div v-else-if="e.hasVideo" class="thumb thumb-video" :title="`${e.videoDuration ?? 0}s 录像`">
+            <span class="thumb-icon">🎥</span>
+            <span v-if="e.videoDuration" class="thumb-dur">{{ formatDur(e.videoDuration) }}</span>
+          </div>
+          <div v-else class="thumb thumb-empty" title="无截图 / 视频">—</div>
           <div class="info">
             <div class="title-line">
               <span :class="['status', e.result.ok ? 'ok' : 'err']">{{ e.result.ok ? `${e.result.status ?? 'OK'}` : 'FAIL' }}</span>
@@ -102,6 +109,16 @@ const busyId = ref('')
 const projects = ref<Project[]>([])
 const resubmitTo = ref<Record<string, string>>({})
 
+const toast = ref('')
+const toastKind = ref<'success' | 'error' | 'info'>('info')
+let toastTimer: number | undefined
+function showToast(msg: string, kind: 'success' | 'error' | 'info' = 'info') {
+  toast.value = msg
+  toastKind.value = kind
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = window.setTimeout(() => (toast.value = ''), kind === 'error' ? 5000 : 2600)
+}
+
 function remoteStatusLabel(s: string): string {
   return { open: '待处理', in_progress: '处理中', done: '已完成', deleted: '已删除' }[s] ?? s
 }
@@ -171,6 +188,13 @@ function shortUrl(url: string): string {
   } catch { return url }
 }
 
+function formatDur(s: number): string {
+  if (!s || s < 0) return ''
+  const m = Math.floor(s / 60)
+  const ss = s % 60
+  return m > 0 ? `${m}:${String(ss).padStart(2, '0')}` : `${ss}s`
+}
+
 function formatTime(ts: number) {
   const d = new Date(ts)
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -218,7 +242,7 @@ async function resubmit(e: BugHistoryEntry) {
       payload: req
     })) as SubmitBugRes
     const { message } = formatSubmitResult(res)
-    alert(message)
+    showToast(message, res.ok ? 'success' : 'error')
   } finally {
     busyId.value = ''
   }
@@ -324,6 +348,30 @@ async function resubmit(e: BugHistoryEntry) {
   flex: none;
   background: var(--moo-c-bg-elev);
 }
+.thumb-video {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #fff;
+}
+.thumb-video .thumb-icon { font-size: 16px; line-height: 1; }
+.thumb-video .thumb-dur {
+  font-family: var(--moo-ff-mono);
+  font-size: 10px;
+  opacity: .85;
+  line-height: 1;
+}
+.thumb-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--moo-c-text-dim);
+  font-family: var(--moo-ff-mono);
+}
 .info { flex: 1; min-width: 0; }
 .title-line {
   display: flex;
@@ -368,11 +416,11 @@ async function resubmit(e: BugHistoryEntry) {
   font-weight: 500;
   border: 1px solid;
 }
-.remote-status.rs-open         { color: var(--moo-c-danger-fg);  border-color: #fecaca; background: #fef2f2; }
-.remote-status.rs-in_progress  { color: var(--moo-c-warn-fg);    border-color: #fde68a; background: var(--moo-c-warn-soft); }
-.remote-status.rs-done         { color: var(--moo-c-success-fg); border-color: #bbf7d0; background: var(--moo-c-success-soft); }
-.remote-status.rs-deleted      { color: var(--moo-c-text-muted); border-color: var(--moo-c-border); background: var(--moo-c-bg-soft); }
-.remote-status.rs-queued       { color: #4338ca; border-color: #c7d2fe; background: #eef2ff; }
+.remote-status.rs-open         { color: var(--moo-c-danger-fg);  border-color: var(--moo-c-danger-soft);  background: var(--moo-c-danger-soft); }
+.remote-status.rs-in_progress  { color: var(--moo-c-warn-fg);    border-color: var(--moo-c-warn-soft);    background: var(--moo-c-warn-soft); }
+.remote-status.rs-done         { color: var(--moo-c-success-fg); border-color: var(--moo-c-success-soft); background: var(--moo-c-success-soft); }
+.remote-status.rs-deleted      { color: var(--moo-c-text-muted); border-color: var(--moo-c-border);       background: var(--moo-c-bg-soft); }
+.remote-status.rs-queued       { color: var(--moo-c-brand);      border-color: var(--moo-c-brand-soft);   background: var(--moo-c-brand-soft); }
 
 .meta {
   font-size: var(--moo-fs-xs);

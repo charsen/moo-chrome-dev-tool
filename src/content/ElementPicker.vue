@@ -123,8 +123,8 @@ function uniqueSelector(el: Element): string {
     if (cur.parentElement) {
       const siblings = Array.from(cur.parentElement.children).filter((s) => s.tagName === cur!.tagName)
       if (siblings.length > 1) {
-        const idx = siblings.indexOf(cur) + 1
-        part += `:nth-of-type(${idx})`
+        const pos = siblings.indexOf(cur)
+        if (pos >= 0) part += `:nth-of-type(${pos + 1})`
       }
     }
     parts.unshift(part)

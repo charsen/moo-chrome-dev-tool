@@ -37,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import FloatingBall from './FloatingBall.vue'
 import Annotator from './Annotator.vue'
 import SubmitDialog from './SubmitDialog.vue'
@@ -59,6 +59,7 @@ const recordedVideo = ref<RecordingResult | null>(null)
 const toast = ref('')
 const toastKind = ref<'success' | 'error' | ''>('')
 let toastTimer: number | undefined
+let spaTimer: number | undefined
 
 const recorder = useRecorder({ maxSeconds: 30 })
 const recordElapsed = computed(() => recorder.elapsed.value)
@@ -98,7 +99,7 @@ onMounted(async () => {
   onConfigChanged(() => refreshProject())
   // SPA 路由变化也重匹配
   let lastUrl = location.href
-  setInterval(() => {
+  spaTimer = window.setInterval(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href
       refreshProject()
@@ -106,6 +107,22 @@ onMounted(async () => {
   }, 1000)
   // 快捷键：Cmd/Ctrl + Shift + B
   window.addEventListener('keydown', onKeydown, true)
+  // 接收 background 通过 chrome.commands 触发的录屏（user gesture 保留在 onCommand 上下文，
+  // 这里只负责开 UI / 接管计时）
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg?.type !== MSG.RECORD_EXTERNAL_STARTED) return
+    if (!msg.ok) {
+      showToast(msg.error || '录屏启动失败', 'error')
+      return
+    }
+    void beginRecordingFromCommand()
+  })
+})
+
+onBeforeUnmount(() => {
+  if (spaTimer) clearInterval(spaTimer)
+  if (toastTimer) clearTimeout(toastTimer)
+  window.removeEventListener('keydown', onKeydown, true)
 })
 
 async function startCapture() {
@@ -144,10 +161,16 @@ function onAnnotated(dataUrl: string) {
   state.value = 'submitting'
 }
 
-async function startRecord() {
+// 悬浮球点录屏 —— 受 Chrome MV3 限制无法在 content script 链路保留 user gesture，
+// 这里只显示快捷键提示，真正的录制入口在 chrome.commands。
+function startRecord() {
+  showToast('请按 ⌥⇧R（Alt+Shift+R）开始录屏。可在 chrome://extensions/shortcuts 改键。', 'error')
+}
+
+async function beginRecordingFromCommand() {
   if (state.value !== 'idle') return
   state.value = 'recording'
-  const result = await recorder.start()
+  const result = await recorder.startExternally()
   if (!result) {
     showToast(recorder.error.value || '录制取消', 'error')
     state.value = 'idle'

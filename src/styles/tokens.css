@@ -234,6 +234,70 @@ textarea.moo-field {
 }
 .moo-empty__title { color: var(--moo-c-text-muted); font-size: var(--moo-fs-base); margin-bottom: 4px; }
 
+/* === Switch（toggle 开关） ===
+   写在全局是因为 Settings.vue 里用 h() 渲染的 functional component，
+   scoped CSS 拿不到子节点的 data-v 属性，thumb 会失去样式（DOM 上 thumb 在但是 0×0 空 span）。 */
+.moo-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: var(--moo-r-pill);
+  background: #cbd5e1;          /* slate-300：关闭态轨道 */
+  border: 1px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color var(--moo-motion-fast), border-color var(--moo-motion-fast);
+}
+.moo-switch:hover { background: #94a3b8; }
+.moo-switch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, .25);
+}
+.moo-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .25);
+  transition: transform var(--moo-motion-fast);
+}
+.moo-switch.is-on { background: var(--moo-c-brand); border-color: var(--moo-c-brand); }
+.moo-switch.is-on:hover { background: var(--moo-c-brand-hover); border-color: var(--moo-c-brand-hover); }
+.moo-switch.is-on .moo-switch-thumb { transform: translateX(16px); }
+
+/* === Toast（devtools / popup 通用，content scripts 内 shadow DOM 另有副本） === */
+.moo-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, .94);
+  color: #fff;
+  padding: 9px 16px;
+  border-radius: var(--moo-r-md);
+  font-size: var(--moo-fs-sm);
+  line-height: 1.5;
+  max-width: min(560px, calc(100vw - 48px));
+  word-break: break-word;
+  white-space: pre-line;
+  z-index: 9999;
+  box-shadow: var(--moo-sh-lg);
+  animation: moo-toast-in .2s cubic-bezier(.4, 0, .2, 1);
+  font-weight: 500;
+  font-family: var(--moo-ff-sans);
+}
+.moo-toast--success { background: var(--moo-c-success); }
+.moo-toast--error   { background: var(--moo-c-danger); }
+.moo-toast--warn    { background: var(--moo-c-warn); }
+.moo-toast--info    { background: var(--moo-c-info); }
+@keyframes moo-toast-in {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
 /* === 滚动条（细，与底色融合） === */
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-thumb {

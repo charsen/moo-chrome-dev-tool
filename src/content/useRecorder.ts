@@ -44,19 +44,31 @@ export function useRecorder(opts: { maxSeconds?: number } = {}) {
       return null
     }
 
+    return beginCountdown()
+  }
+
+  /**
+   * background 已经通过 chrome.commands 起好录制后调用：跳过 RECORD_START，
+   * 只接管本地计时 / 停止等待逻辑。返回 Promise 在 stop()/cancel() 时 resolve。
+   */
+  function startExternally(): Promise<RecordingResult | null> {
+    if (recording.value) return Promise.resolve(null)
+    error.value = ''
+    return beginCountdown()
+  }
+
+  function beginCountdown(): Promise<RecordingResult | null> {
     recording.value = true
     elapsed.value = 0
     const startTime = Date.now()
     timer = window.setInterval(() => {
       elapsed.value = Math.floor((Date.now() - startTime) / 1000)
       if (elapsed.value >= maxSec) {
-        // 自动停止
         void stop()
       }
     }, 250)
 
     return new Promise<RecordingResult | null>((resolve) => {
-      // 把 resolve 挂到 stop 上：stop() 会主动调用
       pendingResolve = (r) => {
         cleanup()
         resolve(r)
@@ -69,24 +81,35 @@ export function useRecorder(opts: { maxSeconds?: number } = {}) {
   async function stop() {
     if (!recording.value) return
     const finalElapsed = elapsed.value
-    const res = await chrome.runtime.sendMessage({ type: MSG.RECORD_STOP, source: 'content' })
-    if (res?.ok && res.dataUrl) {
-      pendingResolve?.({
-        dataUrl: res.dataUrl,
-        bytes: res.bytes ?? 0,
-        duration: finalElapsed,
-        mime: res.mime ?? 'video/webm'
-      })
-    } else {
-      error.value = res?.error || '停止失败 / 无内容'
+    // sendMessage 异常（service worker 重启等）也必须 resolve，避免 start() 返回的 Promise 永远悬挂
+    try {
+      const res = await chrome.runtime.sendMessage({ type: MSG.RECORD_STOP, source: 'content' })
+      if (res?.ok && res.dataUrl) {
+        pendingResolve?.({
+          dataUrl: res.dataUrl,
+          bytes: res.bytes ?? 0,
+          duration: finalElapsed,
+          mime: res.mime ?? 'video/webm'
+        })
+      } else {
+        error.value = res?.error || '停止失败 / 无内容'
+        pendingResolve?.(null)
+      }
+    } catch (e) {
+      error.value = (e as Error).message
       pendingResolve?.(null)
+    } finally {
+      pendingResolve = null
     }
-    pendingResolve = null
   }
 
   async function cancel() {
     if (!recording.value) return
-    await chrome.runtime.sendMessage({ type: MSG.RECORD_CANCEL, source: 'content' })
+    try {
+      await chrome.runtime.sendMessage({ type: MSG.RECORD_CANCEL, source: 'content' })
+    } catch {
+      // 即使取消消息发不出去，也要按取消语义 resolve null 并清状态
+    }
     pendingResolve?.(null)
     pendingResolve = null
     cleanup()
@@ -100,7 +123,7 @@ export function useRecorder(opts: { maxSeconds?: number } = {}) {
     recording.value = false
   }
 
-  return { recording, elapsed, error, start, stop, cancel, maxSec }
+  return { recording, elapsed, error, start, startExternally, stop, cancel, maxSec }
 }
 
 /**

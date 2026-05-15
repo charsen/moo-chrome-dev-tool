@@ -39,6 +39,15 @@
   ],
   "permissions": ["storage", "tabs", "activeTab", "scripting", "cookies", "alarms", "offscreen", "tabCapture"],
   "host_permissions": ["<all_urls>"],
+  "commands": {
+    "start-recording": {
+      "suggested_key": {
+        "default": "Alt+Shift+R",
+        "mac": "Alt+Shift+R"
+      },
+      "description": "开始录制当前标签页（tabCapture 需要快捷键 / 扩展图标这类用户手势才能调起）"
+    }
+  },
   "web_accessible_resources": [
     {
       "resources": ["icons/*.png", "src/offscreen/index.html"],

@@ -154,11 +154,17 @@ async function clearAll() {
   }
 }
 
+// 注：time-window 过滤用 startedAt（wall clock），不用 startTime。
+// startTime 来自网页主世界的 performance.now()，跟 devtools panel 的 performance.now()
+// 是两个独立时钟原点，跨上下文比较永远过不了窗口。
 const filtered = computed(() => {
-  const now = performance.now()
+  const now = Date.now()
   let arr = windowMs.value < 0
     ? requests.value
-    : requests.value.filter((r) => r.startTime + r.duration >= now - windowMs.value)
+    : requests.value.filter((r) => {
+        const ts = new Date(r.startedAt).getTime()
+        return ts + r.duration >= now - windowMs.value
+      })
   if (filter.value.trim()) {
     const f = filter.value.trim().toLowerCase()
     arr = arr.filter((r) => r.url.toLowerCase().includes(f))
@@ -167,10 +173,10 @@ const filtered = computed(() => {
 })
 
 const filteredErrors = computed(() => {
-  const now = performance.now()
+  const now = Date.now()
   let arr = windowMs.value < 0
     ? errors.value
-    : errors.value.filter((e) => e.startTime >= now - windowMs.value)
+    : errors.value.filter((e) => new Date(e.startedAt).getTime() >= now - windowMs.value)
   if (filter.value.trim()) {
     const f = filter.value.trim().toLowerCase()
     arr = arr.filter((e) => e.message.toLowerCase().includes(f))
@@ -339,7 +345,7 @@ onBeforeUnmount(() => {
   background: var(--moo-c-warn-soft);
   color: var(--moo-c-warn-fg);
   font-size: var(--moo-fs-xs);
-  border-bottom: 1px solid #fde68a;
+  border-bottom: 1px solid var(--moo-c-warn-soft);
 }
 
 /* 列表 */
@@ -373,7 +379,7 @@ onBeforeUnmount(() => {
   color: var(--moo-c-text-muted);
 }
 .row-head .method.post                            { color: var(--moo-c-warn-fg); }
-.row-head .method.put, .row-head .method.patch    { color: #2563eb; }
+.row-head .method.put, .row-head .method.patch    { color: var(--moo-c-info); }
 .row-head .method.delete                          { color: var(--moo-c-danger-fg); }
 .row-head .status {
   flex: 0 0 38px;

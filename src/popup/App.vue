@@ -60,7 +60,12 @@
     </section>
 
     <footer class="foot">
-      <button class="link" @click="openDevtoolsHelp">如何打开 DevTools 面板 →</button>
+      <button class="link" @click="helpOpen = !helpOpen">
+        如何打开 DevTools 面板 {{ helpOpen ? '▴' : '▾' }}
+      </button>
+      <div v-if="helpOpen" class="help-pop">
+        在网页上按 <span class="kbd">F12</span>（或右键 → <b>检查</b>），切到 <b>Moo</b> 面板。
+      </div>
     </footer>
   </div>
 </template>
@@ -75,6 +80,7 @@ const project = ref<Project | null>(null)
 const projects = ref<Project[]>([])
 const currentUrl = ref('')
 const loading = ref(true)
+const helpOpen = ref(false)
 
 onMounted(async () => {
   try {
@@ -96,9 +102,6 @@ onMounted(async () => {
   }
 })
 
-function openDevtoolsHelp() {
-  alert('在网页上按 F12（或右键 → 检查），切到 "Moo" 面板。')
-}
 </script>
 
 <style scoped>
@@ -259,4 +262,25 @@ function openDevtoolsHelp() {
   transition: color var(--moo-motion-fast);
 }
 .link:hover { color: var(--moo-c-brand-hover); text-decoration: underline; }
+.help-pop {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--moo-c-bg-soft);
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-md);
+  font-size: var(--moo-fs-xs);
+  color: var(--moo-c-text);
+  line-height: 1.6;
+  text-align: left;
+}
+.help-pop .kbd {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-sm);
+  font-family: var(--moo-ff-mono);
+  font-size: 10px;
+  background: var(--moo-c-bg);
+}
+.help-pop b { color: var(--moo-c-text); font-weight: 600; }
 </style>

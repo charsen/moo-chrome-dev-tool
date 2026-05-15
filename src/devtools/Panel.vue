@@ -132,6 +132,12 @@ const active = ref<TabKey>('overview')
 }
 .tab:hover { color: var(--moo-c-text); }
 .tab:hover .tab-icon { opacity: 1; }
+.tab:focus-visible {
+  outline: none;
+  color: var(--moo-c-text);
+  background: var(--moo-c-bg-soft);
+  border-radius: var(--moo-r-sm) var(--moo-r-sm) 0 0;
+}
 .tab.is-active {
   color: var(--moo-c-brand);
   border-bottom-color: var(--moo-c-brand);

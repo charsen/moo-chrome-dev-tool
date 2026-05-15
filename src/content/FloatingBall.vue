@@ -6,9 +6,9 @@
         <span class="ic">📷</span>
         <span class="lab">截图</span>
       </button>
-      <button class="moo-ball-action" @click="onPickRecord">
+      <button class="moo-ball-action" @click="onPickRecord" title="Chrome 限制：录屏必须由快捷键触发">
         <span class="ic">🎥</span>
-        <span class="lab">录屏</span>
+        <span class="lab">录屏 ⌥⇧R</span>
       </button>
     </div>
 

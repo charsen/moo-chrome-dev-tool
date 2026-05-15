@@ -10,18 +10,18 @@ async function read(): Promise<BugHistoryEntry[]> {
 }
 
 async function write(list: BugHistoryEntry[]): Promise<void> {
-  // 写入失败（一般是配额超出）时，逐步丢弃最旧的项再试
+  // 写入失败（一般是配额超出）时，**逐条**丢最旧的（list[0] 是最新，pop 末尾 = 最旧）。
+  // 之前的做法是二分丢一半 + 兜底清空，单次配额触顶可能直接掉掉一大半历史。
   let attempt = list.slice()
-  for (let i = 0; i < 5; i++) {
+  while (attempt.length > 0) {
     try {
       await chrome.storage.local.set({ [KEY]: attempt })
       return
     } catch {
-      attempt = attempt.slice(0, Math.max(1, Math.floor(attempt.length / 2)))
+      attempt.pop()
     }
   }
-  // 最后兜底：清空
-  await chrome.storage.local.set({ [KEY]: [] })
+  // 空数组也写不进去，说明 storage 整体异常 —— 静默放弃，下次 addHistoryEntry 会再试
 }
 
 export async function addHistoryEntry(entry: BugHistoryEntry): Promise<void> {
@@ -42,10 +42,6 @@ export async function removeHistory(id: string): Promise<void> {
 
 export async function clearHistory(): Promise<void> {
   await chrome.storage.local.set({ [KEY]: [] })
-}
-
-export async function readHistory(): Promise<BugHistoryEntry[]> {
-  return read()
 }
 
 export async function updateHistoryEntry(id: string, entry: BugHistoryEntry): Promise<void> {

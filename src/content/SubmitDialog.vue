@@ -118,7 +118,7 @@
       </div>
       <footer class="moo-dialog-foot">
         <button class="moo-btn" @click="emit('cancel')">取消</button>
-        <button class="moo-btn" :disabled="!canPreview" @click="onPreview">预览 payload</button>
+        <button class="moo-btn" :disabled="!canPreview || previewing" @click="onPreview">{{ previewing ? '预览中…' : '预览 payload' }}</button>
         <button class="moo-btn primary" :disabled="!canSubmit || submitting" @click="onSubmit">
           {{ submitting ? '提交中…' : '提交' }}
         </button>
@@ -266,15 +266,22 @@ function buildContext() {
   }
 }
 
+const previewing = ref(false)
 async function onPreview() {
+  if (previewing.value) return
   const server = props.project.servers.find((s) => s.id === serverId.value)
   if (!server) return
-  const res = (await chrome.runtime.sendMessage({
-    type: MSG.PREVIEW_PAYLOAD,
-    source: 'content',
-    payload: { server, context: buildContext() } satisfies PreviewPayloadReq
-  })) as PreviewPayloadRes
-  preview.value = res.rendered
+  previewing.value = true
+  try {
+    const res = (await chrome.runtime.sendMessage({
+      type: MSG.PREVIEW_PAYLOAD,
+      source: 'content',
+      payload: { server, context: buildContext() } satisfies PreviewPayloadReq
+    })) as PreviewPayloadRes
+    preview.value = res.rendered
+  } finally {
+    previewing.value = false
+  }
 }
 
 async function onSubmit() {
