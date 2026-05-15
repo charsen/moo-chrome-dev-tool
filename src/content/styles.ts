@@ -52,15 +52,35 @@ export const SHADOW_CSS = `
   align-items: center;
   gap: 6px;
   padding: 5px;
-  background: rgba(255, 255, 255, .96);
-  border: 1px solid var(--c-border);
+  /* 浅色背景：slate-50 风格，跟页面白色背景区分开 */
+  background: rgba(241, 245, 249, .96);
+  border: 1px solid rgba(148, 163, 184, .35);
   border-radius: 28px;
-  box-shadow: 0 6px 18px rgba(15, 23, 42, .18);
+  /* 双层阴影：紧贴的环 + 远距离投影，让悬浮球在任何背景下都明显 */
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .8) inset,
+    0 2px 6px rgba(15, 23, 42, .12),
+    0 10px 28px rgba(15, 23, 42, .28);
   backdrop-filter: blur(8px);
   user-select: none;
   touch-action: none;
+  transition: box-shadow .15s, transform .15s;
 }
-.moo-ball-row.dragging { cursor: grabbing; box-shadow: 0 10px 24px rgba(15, 23, 42, .28); }
+.moo-ball-row:hover {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .8) inset,
+    0 3px 8px rgba(15, 23, 42, .16),
+    0 14px 36px rgba(15, 23, 42, .34);
+  transform: translateY(-1px);
+}
+.moo-ball-row.dragging {
+  cursor: grabbing;
+  transition: none;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .8) inset,
+    0 4px 12px rgba(15, 23, 42, .22),
+    0 18px 44px rgba(15, 23, 42, .42);
+}
 .moo-ball-row.hidden { display: none; }
 
 .moo-ball-btn {
@@ -68,18 +88,21 @@ export const SHADOW_CSS = `
   height: 36px;
   border-radius: 50%;
   border: none;
-  background: var(--c-bg);
+  /* 按钮自身保持纯白，跟 row 的浅灰背景形成清晰对比 */
+  background: #ffffff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   color: var(--c-text);
   padding: 0;
-  transition: background-color .12s, transform .12s;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .1);
+  transition: background-color .12s, transform .12s, box-shadow .12s;
 }
 .moo-ball-btn:hover {
   background: var(--c-brand-soft, #eef2ff);
   color: var(--c-brand);
+  box-shadow: 0 2px 5px rgba(79, 70, 229, .2);
 }
 .moo-ball-btn:active { transform: scale(.92); }
 .moo-ball-btn .ic { font-size: 17px; line-height: 1; }
