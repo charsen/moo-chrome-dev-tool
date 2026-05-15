@@ -154,9 +154,14 @@ function onPickRecord() {
 
 function onDocClick(e: MouseEvent) {
   if (!expanded.value) return
-  // 点到悬浮球或菜单都忽略
-  const target = e.target as Element
-  if (target.closest && target.closest('.moo-ball-wrap')) return
+  // 用 composedPath 而不是 target.closest：content script 跑在 shadow DOM，
+  // 事件冒到 outer document 时 target 会被 retargeted 成 shadow host，
+  // closest('.moo-ball-wrap') 永远找不到（host 没这个 class），会误把"点菜单内"
+  // 当成"点外面"。composedPath 穿透 shadow boundary，包含 shadow 内部所有节点。
+  const path = e.composedPath?.() ?? []
+  for (const n of path) {
+    if (n instanceof Element && n.classList?.contains('moo-ball-wrap')) return
+  }
   expanded.value = false
 }
 
