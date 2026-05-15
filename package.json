@@ -1,6 +1,6 @@
 {
   "name": "moo-chrome-dev-tool",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "前后端业务调试 Chrome 扩展",
@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit",
     "mock": "node scripts/mock-server.mjs",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "vue": "^3.4.21"
