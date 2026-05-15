@@ -123,7 +123,9 @@ function onDown(e: PointerEvent) {
   downAt = { x: e.clientX, y: e.clientY }
   originPos = { ...pos.value }
   moved = false
-  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  // 不调 setPointerCapture(row)：会把 pointerup 强行送到 row 上，
+  // 子按钮的 click 事件就不再派发（down 在 button、up 在 row，target 不一致）。
+  // window 监听 pointermove/up 已经能捕获到指针移到 row 外的情况，足够拖动用。
   window.addEventListener('pointermove', onMove)
   window.addEventListener('pointerup', onUp, { once: true })
 }
@@ -137,7 +139,7 @@ function onMove(e: PointerEvent) {
   }
   if (moved) {
     pos.value = {
-      x: Math.max(0, Math.min(window.innerWidth - 160, originPos.x + dx)),
+      x: Math.max(0, Math.min(window.innerWidth - 130, originPos.x + dx)),
       y: Math.max(0, Math.min(window.innerHeight - 48, originPos.y + dy))
     }
   }
@@ -203,7 +205,7 @@ function onPickProject(id: string) {
 
 function onResize() {
   pos.value = {
-    x: Math.min(pos.value.x, window.innerWidth - 160),
+    x: Math.min(pos.value.x, window.innerWidth - 130),
     y: Math.min(pos.value.y, window.innerHeight - 48)
   }
 }

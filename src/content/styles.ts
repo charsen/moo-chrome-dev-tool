@@ -50,8 +50,8 @@ export const SHADOW_CSS = `
 .moo-ball-row {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px;
+  gap: 8px;
+  padding: 8px 10px;
   /* 浅色背景：slate-50 风格，跟页面白色背景区分开 */
   background: rgba(241, 245, 249, .96);
   border: 1px solid rgba(148, 163, 184, .35);
@@ -84,8 +84,8 @@ export const SHADOW_CSS = `
 .moo-ball-row.hidden { display: none; }
 
 .moo-ball-btn {
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   border: none;
   /* 按钮自身保持纯白，跟 row 的浅灰背景形成清晰对比 */
@@ -105,7 +105,7 @@ export const SHADOW_CSS = `
   box-shadow: 0 2px 5px rgba(79, 70, 229, .2);
 }
 .moo-ball-btn:active { transform: scale(.92); }
-.moo-ball-btn .ic { font-size: 17px; line-height: 1; }
+.moo-ball-btn .ic { font-size: 13px; line-height: 1; }
 .moo-ball-btn--logo {
   background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
   box-shadow: 0 0 0 2px rgba(255, 255, 255, .25) inset;
