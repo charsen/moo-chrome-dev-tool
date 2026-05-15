@@ -88,23 +88,22 @@ export const SHADOW_CSS = `
   height: 28px;
   border-radius: 50%;
   border: none;
-  /* 按钮自身保持纯白，跟 row 的浅灰背景形成清晰对比 */
-  background: #ffffff;
+  /* 扁平化：默认透明背景，靠 row 的浅灰底承托；hover 才出明显色块 */
+  background: transparent;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--c-text);
+  color: var(--c-text-muted);
   padding: 0;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, .1);
-  transition: background-color .12s, transform .12s, box-shadow .12s;
+  transition: background-color .12s, color .12s, transform .12s;
 }
 .moo-ball-btn:hover {
-  background: var(--c-brand-soft, #eef2ff);
-  color: var(--c-brand);
-  box-shadow: 0 2px 5px rgba(79, 70, 229, .2);
+  background: var(--c-brand);
+  color: #ffffff;
 }
-.moo-ball-btn:active { transform: scale(.92); }
+.moo-ball-btn:active { background: var(--c-brand-hover); transform: scale(.92); }
+.moo-ball-btn svg.ic { width: 15px; height: 15px; display: block; }
 .moo-ball-btn .ic { font-size: 13px; line-height: 1; }
 .moo-ball-btn--logo {
   background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
@@ -122,66 +121,84 @@ export const SHADOW_CSS = `
   display: block;
   border-radius: 50%;
 }
+/* 多匹配项目选择器：跟 .moo-ball-row 风格一致（浅灰底 + 三层阴影） */
 .moo-ball-menu {
   position: absolute;
   bottom: 100%;
   right: 0;
   margin-bottom: 8px;
-  background: var(--c-bg);
-  border-radius: var(--r-lg);
-  box-shadow: var(--sh-lg);
-  border: 1px solid var(--c-border);
+  background: rgba(241, 245, 249, .96);
+  border: 1px solid rgba(148, 163, 184, .35);
+  border-radius: 14px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .8) inset,
+    0 2px 6px rgba(15, 23, 42, .12),
+    0 10px 28px rgba(15, 23, 42, .28);
+  backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
-  padding: 4px;
+  padding: 6px;
   gap: 2px;
   animation: moo-menu-in .15s cubic-bezier(.4, 0, .2, 1);
-  min-width: 120px;
+  min-width: 200px;
+  max-width: 280px;
 }
 @keyframes moo-menu-in {
   from { opacity: 0; transform: translateY(6px) scale(.96); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+/* picker 内的项目按钮：白底 + 微阴影，跟悬浮球内 .moo-ball-btn 同语言 */
 .moo-ball-action {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 7px 10px;
   border: none;
-  background: transparent;
+  background: #ffffff;
   color: var(--c-text);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
-  border-radius: var(--r-md);
+  border-radius: 10px;
   cursor: pointer;
-  transition: background-color .12s, color .12s;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+  transition: background-color .12s, color .12s, box-shadow .12s, transform .12s;
   text-align: left;
+  width: 100%;
 }
 .moo-ball-action:hover {
   background: var(--c-brand-soft, #eef2ff);
   color: var(--c-brand);
+  box-shadow: 0 2px 5px rgba(79, 70, 229, .2);
 }
+.moo-ball-action:active { transform: scale(.98); }
 .moo-ball-action .ic {
-  font-size: 16px;
-  width: 20px;
+  font-size: 14px;
+  width: 18px;
   text-align: center;
+  flex: none;
 }
-.moo-ball-action .lab { flex: 1; }
-
-/* 多匹配项目选择器 */
-.moo-ball-picker { min-width: 200px; }
-.moo-ball-picker-hd {
-  padding: 6px 10px 4px;
-  font-size: 11px;
-  color: var(--c-text-dim);
-  line-height: 1.4;
-}
-.moo-ball-picker-row .lab {
+.moo-ball-action .lab {
+  flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 180px;
+}
+
+/* picker 标题：两行（主标题 + pending 提示） */
+.moo-ball-picker-hd {
+  padding: 4px 8px 6px;
+  font-size: 11px;
+  color: var(--c-text-muted);
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.moo-ball-picker-pending {
+  color: var(--c-brand);
+  font-weight: 500;
 }
 
 /* 已选项目头条（菜单顶部） */

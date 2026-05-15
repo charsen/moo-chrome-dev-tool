@@ -33,14 +33,20 @@
         title="截图"
         @click.stop="onTriggerCapture"
       >
-        <span class="ic">📷</span>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+          <circle cx="12" cy="13" r="3" />
+        </svg>
       </button>
       <button
         class="moo-ball-btn"
         title="录屏（按 ⌥⇧R 开始，Chrome 限制录屏必须由快捷键触发）"
         @click.stop="onTriggerRecord"
       >
-        <span class="ic">🎥</span>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m22 8-6 4 6 4V8Z" />
+          <rect width="14" height="12" x="2" y="6" rx="2" ry="2" />
+        </svg>
       </button>
     </div>
   </div>
