@@ -39,6 +39,11 @@ export const SHADOW_CSS = `
 
 /* ============================================
    悬浮球（点击展开菜单）
+   ----------------------------------------------
+   设计：跟宿主页主题"反相"，保证高对比度。
+   - 浅色页（默认 / prefers-color-scheme: light）→ 深色 ball
+   - 深色页（prefers-color-scheme: dark）→ 浅色 ball（媒体查询覆写）
+   shadow DOM 会继承 document 的 color-scheme 检测，所以 @media 在这里有效。
 ============================================ */
 .moo-ball-wrap {
   position: fixed;
@@ -46,21 +51,20 @@ export const SHADOW_CSS = `
   /* 横排三按钮自然撑宽，不再固定 44px */
 }
 
-/* 三按钮横排容器 */
+/* === 默认（浅页）→ 深色 ball === */
 .moo-ball-row {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  /* 浅色背景：slate-50 风格，跟页面白色背景区分开 */
-  background: rgba(241, 245, 249, .96);
-  border: 1px solid rgba(148, 163, 184, .35);
+  background: rgba(30, 41, 59, .94);       /* slate-800 */
+  border: 1px solid rgba(15, 23, 42, .5);
   border-radius: 28px;
-  /* 双层阴影：紧贴的环 + 远距离投影，让悬浮球在任何背景下都明显 */
+  /* 双层阴影：内嵌微亮顶边 + 远距离暗投影 */
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, .8) inset,
-    0 2px 6px rgba(15, 23, 42, .12),
-    0 10px 28px rgba(15, 23, 42, .28);
+    0 1px 0 rgba(255, 255, 255, .08) inset,
+    0 2px 6px rgba(0, 0, 0, .35),
+    0 10px 28px rgba(0, 0, 0, .45);
   backdrop-filter: blur(8px);
   user-select: none;
   touch-action: none;
@@ -68,39 +72,67 @@ export const SHADOW_CSS = `
 }
 .moo-ball-row:hover {
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, .8) inset,
-    0 3px 8px rgba(15, 23, 42, .16),
-    0 14px 36px rgba(15, 23, 42, .34);
+    0 1px 0 rgba(255, 255, 255, .12) inset,
+    0 3px 8px rgba(0, 0, 0, .45),
+    0 14px 36px rgba(0, 0, 0, .55);
   transform: translateY(-1px);
 }
 .moo-ball-row.dragging {
   cursor: grabbing;
   transition: none;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, .8) inset,
-    0 4px 12px rgba(15, 23, 42, .22),
-    0 18px 44px rgba(15, 23, 42, .42);
+    0 1px 0 rgba(255, 255, 255, .14) inset,
+    0 4px 12px rgba(0, 0, 0, .55),
+    0 18px 44px rgba(0, 0, 0, .65);
 }
 .moo-ball-row.hidden { display: none; }
+
+/* === 深色页 → 浅色 ball（保持之前的视觉） === */
+@media (prefers-color-scheme: dark) {
+  .moo-ball-row {
+    background: rgba(241, 245, 249, .96);
+    border-color: rgba(148, 163, 184, .35);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, .8) inset,
+      0 2px 6px rgba(15, 23, 42, .12),
+      0 10px 28px rgba(15, 23, 42, .28);
+  }
+  .moo-ball-row:hover {
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, .8) inset,
+      0 3px 8px rgba(15, 23, 42, .16),
+      0 14px 36px rgba(15, 23, 42, .34);
+  }
+  .moo-ball-row.dragging {
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, .8) inset,
+      0 4px 12px rgba(15, 23, 42, .22),
+      0 18px 44px rgba(15, 23, 42, .42);
+  }
+}
 
 .moo-ball-btn {
   width: 28px;
   height: 28px;
   border-radius: 50%;
   border: none;
-  /* 扁平化：默认透明背景，靠 row 的浅灰底承托；hover 才出明显色块 */
+  /* 扁平化：默认透明背景，靠 row 底承托；hover 才出明显色块。
+     默认（深 ball）用浅色描边图标，深色页媒体查询里翻回 dim 灰 */
   background: transparent;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--c-text-muted);
+  color: rgba(241, 245, 249, .82);
   padding: 0;
   transition: background-color .12s, color .12s, transform .12s;
 }
 .moo-ball-btn:hover {
   background: var(--c-brand);
   color: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  .moo-ball-btn { color: var(--c-text-muted); }
 }
 .moo-ball-btn:active { background: var(--c-brand-hover); transform: scale(.92); }
 .moo-ball-btn svg.ic { width: 15px; height: 15px; display: block; }
@@ -126,12 +158,19 @@ export const SHADOW_CSS = `
   font-size: 10px;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-weight: 600;
-  color: var(--c-text-muted);
-  background: rgba(15, 23, 42, .08);
+  /* 深 ball 默认：浅色 kbd 标签 */
+  color: rgba(241, 245, 249, .85);
+  background: rgba(255, 255, 255, .12);
   padding: 1px 5px;
   border-radius: 4px;
   line-height: 1.4;
   letter-spacing: .02em;
+}
+@media (prefers-color-scheme: dark) {
+  .moo-ball-btn--with-kbd .kbd-tag {
+    color: var(--c-text-muted);
+    background: rgba(15, 23, 42, .08);
+  }
 }
 .moo-ball-btn--logo .moo-ball-icon {
   width: 100%;
@@ -141,19 +180,19 @@ export const SHADOW_CSS = `
   display: block;
   border-radius: 50%;
 }
-/* 多匹配项目选择器：跟 .moo-ball-row 风格一致（浅灰底 + 三层阴影） */
+/* 多匹配项目选择器：跟 .moo-ball-row 同样的反相规则 */
 .moo-ball-menu {
   position: absolute;
   bottom: 100%;
   right: 0;
   margin-bottom: 8px;
-  background: rgba(241, 245, 249, .96);
-  border: 1px solid rgba(148, 163, 184, .35);
+  background: rgba(30, 41, 59, .94);
+  border: 1px solid rgba(15, 23, 42, .5);
   border-radius: 14px;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, .8) inset,
-    0 2px 6px rgba(15, 23, 42, .12),
-    0 10px 28px rgba(15, 23, 42, .28);
+    0 1px 0 rgba(255, 255, 255, .08) inset,
+    0 2px 6px rgba(0, 0, 0, .35),
+    0 10px 28px rgba(0, 0, 0, .45);
   backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
@@ -163,34 +202,56 @@ export const SHADOW_CSS = `
   min-width: 200px;
   max-width: 280px;
 }
+@media (prefers-color-scheme: dark) {
+  .moo-ball-menu {
+    background: rgba(241, 245, 249, .96);
+    border-color: rgba(148, 163, 184, .35);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, .8) inset,
+      0 2px 6px rgba(15, 23, 42, .12),
+      0 10px 28px rgba(15, 23, 42, .28);
+  }
+}
 @keyframes moo-menu-in {
   from { opacity: 0; transform: translateY(6px) scale(.96); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* picker 内的项目按钮：白底 + 微阴影，跟悬浮球内 .moo-ball-btn 同语言 */
+/* picker 内的项目按钮：默认深 ball 下用 slate-700 卡片；深色页里翻回白底 */
 .moo-ball-action {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 7px 10px;
   border: none;
-  background: #ffffff;
-  color: var(--c-text);
+  background: rgba(255, 255, 255, .06);
+  color: rgba(241, 245, 249, .92);
   font-family: inherit;
   font-size: 12px;
   font-weight: 500;
   border-radius: 10px;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
   transition: background-color .12s, color .12s, box-shadow .12s, transform .12s;
   text-align: left;
   width: 100%;
 }
 .moo-ball-action:hover {
-  background: var(--c-brand-soft, #eef2ff);
-  color: var(--c-brand);
-  box-shadow: 0 2px 5px rgba(79, 70, 229, .2);
+  background: rgba(99, 102, 241, .25);
+  color: #fff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .35);
+}
+@media (prefers-color-scheme: dark) {
+  .moo-ball-action {
+    background: #ffffff;
+    color: var(--c-text);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+  }
+  .moo-ball-action:hover {
+    background: var(--c-brand-soft, #eef2ff);
+    color: var(--c-brand);
+    box-shadow: 0 2px 5px rgba(79, 70, 229, .2);
+  }
 }
 .moo-ball-action:active { transform: scale(.98); }
 .moo-ball-action .ic {
