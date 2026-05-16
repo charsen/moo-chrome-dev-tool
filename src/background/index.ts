@@ -168,7 +168,7 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
   if (!project) return { ok: false, error: '找不到对应项目（可能项目刚被删除）。请回到 DevTools → Moo → 环境 重新选择' }
   const server = project.servers.find((s) => s.id === req.serverId)
   if (!server) return { ok: false, error: '找不到选中的上报服务器（可能刚被删除）。请回到 DevTools → Moo → 环境 重新选择' }
-  if (!server.endpoint) return { ok: false, error: `上报服务器「${server.name}」还没填 URL。请去 DevTools → Moo → 环境 → 上报服务器 填上 endpoint 后再试` }
+  if (!server.endpoint) return { ok: false, error: `上报服务器「${server.name}」还没填请求 URL。请去 DevTools → Moo → 环境 → 上报服务器，在「请求 URL」那一行填上后端地址后再试` }
 
   // 按项目白名单抓取页面 storage（localStorage 优先，找不到尝试 sessionStorage）
   const storageKeys = project.capture?.storageKeys ?? []

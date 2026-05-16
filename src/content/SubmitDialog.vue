@@ -74,8 +74,8 @@
               </option>
             </select>
             <div v-if="serverEndpointMissing" class="server-warn">
-              ⚠ 服务器「{{ currentServer?.name }}」还没填 URL，提交会失败。<br>
-              请打开 <b>DevTools → Moo → 环境</b>，找到这个服务器把 <b>endpoint</b> 字段填上（比如 <code>http://localhost:3000/bugs</code>），然后回来点提交。
+              ⚠ 服务器「{{ currentServer?.name }}」还没填请求 URL，提交会失败。<br>
+              请打开 <b>DevTools → Moo → 环境</b>，找到这个服务器，在「请求 URL」那一行填上后端地址（比如 <code>http://localhost:3000/bugs</code>），然后回来点提交。
             </div>
           </div>
         </div>
@@ -404,7 +404,7 @@ async function onPreview() {
       })) as PreviewPayloadRes
       preview.value = res.rendered
     } catch (err) {
-      preview.value = `生成预览时出错：${(err as Error).message}\n（可能 payload 模板里有语法问题，去 DevTools → Moo → 环境 → 上报服务器 → Payload 模板 检查一下）`
+      preview.value = `生成预览时出错：${(err as Error).message}\n（可能「Payload 模板」里有语法问题，去 DevTools → Moo → 环境 → 上报服务器 → Payload 模板 检查一下）`
     }
   } finally {
     previewing.value = false

@@ -318,10 +318,10 @@ async function flushQueue() {
     let msg: string
     if (processed > 0) msg = `成功重发 ${processed} 条`
     else if (total === 0) msg = '队列里没有待重试的内容，不用重试'
-    else msg = `${total} 条都还在失败状态（可能服务端没起 / endpoint 不通）`
+    else msg = `${total} 条都还在失败（可能后端没起，或者「请求 URL」写错了）`
     showToast(msg, processed > 0 ? 'success' : 'info')
   } catch (e) {
-    showToast(`没能联系上 background 后台：${(e as Error).message}。请刷新页面或重新加载扩展`, 'error')
+    showToast(`没能联系上扩展后台：${(e as Error).message}。请刷新页面或重新加载扩展`, 'error')
   } finally {
     busy.value = ''
   }

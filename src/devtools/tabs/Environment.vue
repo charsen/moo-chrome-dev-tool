@@ -128,7 +128,7 @@
             <button class="danger-btn small" @click="removeServer(s.id)">删除</button>
           </div>
           <div class="row">
-            <label>请求</label>
+            <label>请求 URL</label>
             <select v-model="s.method" class="method">
               <option>POST</option>
               <option>PUT</option>
@@ -386,7 +386,7 @@ async function removeServer(id: string) {
   const srv = activeProject.value.servers.find((s) => s.id === id)
   const ok = await confirmDialog({
     title: `删除服务器「${srv?.name || '(未命名)'}」？`,
-    message: '服务器配置（endpoint / headers / 模板）会被删除，0.8 秒后自动保存。\n如果是当前项目的唯一服务器，删完后这个项目暂时无法上报。',
+    message: '这台服务器的所有配置（请求 URL / 请求头 / Payload 模板）会被删除，0.8 秒后自动保存。\n如果是当前项目的唯一服务器，删完后这个项目暂时无法上报。',
     danger: true,
     confirmText: '确认删除'
   })

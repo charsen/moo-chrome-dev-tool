@@ -131,7 +131,7 @@ async function syncRemoteStatus() {
     await safeSendMessage({ type: MSG.REFRESH_HISTORY_STATUS, source: 'devtools' })
     await reload()
   } catch (e) {
-    showToast(`没能从服务端拉到最新状态：${(e as Error).message}。可能 endpoint 不可达，请确认服务端在线`, 'error')
+    showToast(`没能从服务端拉到最新状态：${(e as Error).message}。可能后端没起，或者「请求 URL」写错了`, 'error')
   } finally {
     syncing.value = false
   }
@@ -271,7 +271,7 @@ async function resubmit(e: BugHistoryEntry) {
       const { message } = formatSubmitResult(res)
       showToast(message, res.ok ? 'success' : 'error')
     } catch (err) {
-      showToast(`重发失败：${(err as MessagingError).message}。可能 background 后台被回收，请刷新页面后重试`, 'error')
+      showToast(`重发失败：${(err as MessagingError).message}。扩展后台可能刚被浏览器回收，请刷新页面后再点一次`, 'error')
     }
   } finally {
     busyId.value = ''

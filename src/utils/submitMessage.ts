@@ -39,12 +39,12 @@ export function formatSubmitResult(res: SubmitBugRes): { ok: boolean; message: s
 
 /** 把光秃秃的 HTTP 状态码翻译成更可操作的提示 */
 function httpStatusHint(status: number): string {
-  if (status === 0) return '服务端没响应（可能网络不通或 endpoint 不存在）'
-  if (status === 401) return `服务端拒收（HTTP 401 未授权）—— 请检查项目 Token`
+  if (status === 0) return '服务端没响应（可能网络不通，或者请求 URL 写错了 / 后端没起）'
+  if (status === 401) return `服务端拒收（HTTP 401 未授权）—— 请检查项目 Token 是否填对`
   if (status === 403) return `服务端拒收（HTTP 403 无权限）—— 当前账号可能没有提交 bug 的权限`
-  if (status === 404) return `服务端找不到这个 endpoint（HTTP 404）—— 请检查上报服务器配置的 URL`
-  if (status === 413) return `提交内容太大（HTTP 413）—— 截图/录像可能超过服务端上限`
-  if (status === 422) return `服务端拒绝了请求格式（HTTP 422）—— 可能 payload 模板和后端 schema 不匹配`
+  if (status === 404) return `服务端找不到这个地址（HTTP 404）—— 请检查上报服务器的「请求 URL」是否写对`
+  if (status === 413) return `提交内容太大（HTTP 413）—— 截图 / 录像可能超过了服务端的大小限制`
+  if (status === 422) return `服务端不认这份数据格式（HTTP 422）—— 字段和后端要的对不上，去「Payload 模板」检查一下字段名`
   if (status >= 500) return `服务端报错（HTTP ${status}）—— 不是你的问题，已自动加入重试队列`
   if (status >= 400) return `请求被拒（HTTP ${status}）`
   return `提交未成功（HTTP ${status}）`
