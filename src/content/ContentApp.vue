@@ -74,7 +74,10 @@ const recordElapsed = computed(() => recorder.elapsed.value)
 /** 录制浮条的定位：读悬浮球最后存的坐标（FloatingBall.vue 同样的 'moo-ball-pos' key），
  * 进入 recording 状态时锁定一份，避免拖动后再变化导致浮条乱跳。
  * 浮条约 245px 宽，按视口边缘 clamp 防溢出。 */
+// resizeTick 在窗口 resize 时累加，强制 recBarStyle 重新求值（clamp 到新视口）
+const resizeTick = ref(0)
 const recBarStyle = computed(() => {
+  void resizeTick.value // 让计算依赖 resizeTick，resize 时重算
   const fallback: Record<string, string> = {}
   if (state.value !== 'recording') return fallback
   try {
@@ -152,6 +155,8 @@ onMounted(async () => {
   }, 1000)
   // 快捷键：Cmd/Ctrl + Shift + B
   window.addEventListener('keydown', onKeydown, true)
+  // 窗口 resize 时让录制浮条重算位置（clamp 到新视口边缘）
+  window.addEventListener('resize', onWindowResize)
   // 接收 background 通过 chrome.commands 触发的录屏（user gesture 保留在 onCommand 上下文，
   // 这里只负责开 UI / 接管计时）
   chrome.runtime.onMessage.addListener((msg) => {
@@ -173,7 +178,12 @@ onBeforeUnmount(() => {
   if (spaTimer) clearInterval(spaTimer)
   if (toastTimer) clearTimeout(toastTimer)
   window.removeEventListener('keydown', onKeydown, true)
+  window.removeEventListener('resize', onWindowResize)
 })
+
+function onWindowResize() {
+  resizeTick.value++
+}
 
 async function startCapture() {
   if (state.value !== 'idle') return

@@ -229,6 +229,12 @@ onMounted(async () => {
     ctx.drawImage(img, 0, 0)
     redraw()
   }
+  // 截图 dataUrl 损坏 / 跨域 / 解码失败时，img 不会触发 onload，用户卡在空 canvas
+  // → emit cancel 让外层退出，避免无限等待
+  img.onerror = () => {
+    console.error('[Moo:annotator] 截图加载失败（dataUrl 可能损坏或被宿主页 CSP 阻塞）')
+    emit('cancel')
+  }
   img.src = props.image
   window.addEventListener('keydown', onKey)
 })

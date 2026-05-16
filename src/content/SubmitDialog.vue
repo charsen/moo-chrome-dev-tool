@@ -264,18 +264,23 @@ const filtered = computed(() => {
 
 const reversedErrors = computed(() => props.errors.slice().reverse())
 
-// 默认勾选范围跟时间窗口同步：用户看到 N 条就有 N 条被勾选，不会出现
-// "我看到这么多请求但只勾了几条"的心智落差。用户切换 windowMs 时也跟着重算。
+// 默认勾选范围跟时间窗口同步：用户看到 N 条就有 N 条被勾选。
+// 但**不覆盖**用户主动取消勾选的状态——用 prevFilteredIds 跟踪上次见过的 id 集合，
+// 只把**真新增**的 id 自动勾上；不在新 filtered 里的 id（被过滤掉）保留勾选状态
+// （即使在 dialog 内不可见，buildContext 时也会被纳入提交）
+let prevFilteredIds = new Set<string>()
 watch(
   () => filtered.value,
   (arr) => {
-    selectedIds.value = new Set(arr.map((r) => r.id))
+    const next = new Set(selectedIds.value)
+    for (const r of arr) {
+      if (!prevFilteredIds.has(r.id)) next.add(r.id)
+    }
+    prevFilteredIds = new Set(arr.map((r) => r.id))
+    selectedIds.value = next
   },
   { immediate: true }
 )
-// URL 过滤改变时不重置勾选（用户可能想搜了之后只勾搜到的，再搜别的不该清空）—— 上面 watch 依赖 filtered 已经满足；
-// 但若用户主动手动取消勾选某条，再调窗口/过滤，会被这个 watch 覆盖。
-// 当前定位是"打开 dialog → 默认全勾"为主路径，手动调整后切窗口会重算，可接受。
 
 // 跟随 props.errors 变化：dialog 打开后新进来的 error 也自动勾选
 // （之前是一次性赋值，新 error 不会被默认勾上，跟 selectedIds 的 watch 行为不一致）

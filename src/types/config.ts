@@ -153,12 +153,33 @@ function normalizeServer(raw: unknown): BugServer {
     id: typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID(),
     name: typeof r.name === 'string' ? r.name : '服务器',
     method: r.method === 'PUT' || r.method === 'PATCH' ? r.method : 'POST',
-    endpoint: typeof r.endpoint === 'string' ? r.endpoint : '',
+    endpoint: sanitizeEndpoint(r.endpoint),
     headers: cleanHeaders,
     imageField: typeof r.imageField === 'string' ? r.imageField : 'image',
     imageFormat: r.imageFormat === 'multipart' ? 'multipart' : 'base64',
     payloadTemplate: typeof r.payloadTemplate === 'string' ? r.payloadTemplate : DEFAULT_PAYLOAD_TEMPLATE
   }
+}
+
+/**
+ * endpoint 协议白名单：仅允许 http / https；其他协议（javascript: / data: / file: / ftp:）
+ * 一律清空。导入恶意 JSON 时这是关键防线——`collectEndpoints` 在确认 dialog 里显示给用户看的
+ * 是文本，但如果不在这里清掉，确认后真的会拿 `javascript://...` 去 fetch。
+ */
+function sanitizeEndpoint(raw: unknown): string {
+  if (typeof raw !== 'string') return ''
+  const s = raw.trim()
+  if (!s) return ''
+  // 空字符串、相对路径、看起来像主机名 — 这些都不会发请求，留着；后端真要 fetch 时再校验
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(s)) return s
+  // 有协议头时强校验
+  try {
+    const u = new URL(s)
+    if (u.protocol === 'http:' || u.protocol === 'https:') return s
+  } catch {
+    // URL 解析失败也算可疑，清掉
+  }
+  return ''
 }
 
 export function createDefaultServer(name = '新服务器'): BugServer {

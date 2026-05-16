@@ -193,6 +193,22 @@ onMounted(async () => {
   loaded.value = true
 })
 
+// 用户在 Environment 删了当前激活的项目时，这里 activeId 会变成 stale id，
+// active computed 返回 undefined，整张表单消失。watch projects 变化时 re-pick
+watch(
+  () => config.value.projects,
+  (projects) => {
+    if (!projects.length) {
+      activeId.value = ''
+      return
+    }
+    if (!projects.find((p) => p.id === activeId.value)) {
+      activeId.value = projects[0].id
+    }
+  },
+  { deep: false }
+)
+
 // 仅在 mounted 后才允许自动保存（避免 onMounted 写一份 default config 进去）
 const ready = ref(false)
 watch(loaded, (v) => { if (v) ready.value = true })

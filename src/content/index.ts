@@ -36,7 +36,9 @@ if (!document.getElementById(HOST_ID)) {
   host.style.cssText = 'all: initial; position: fixed; inset: 0; pointer-events: none; z-index: 2147483600;'
   document.documentElement.appendChild(host)
 
-  const shadow = host.attachShadow({ mode: 'open' })
+  // mode: 'closed' 阻止宿主页脚本通过 host.shadowRoot 读到扩展 UI 内容
+  //（用户在 SubmitDialog 输入的标题/描述、截图 dataUrl 等敏感内容）
+  const shadow = host.attachShadow({ mode: 'closed' })
 
   const style = document.createElement('style')
   style.textContent = SHADOW_CSS
