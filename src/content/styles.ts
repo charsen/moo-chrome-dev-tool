@@ -172,6 +172,11 @@ export const SHADOW_CSS = `
     background: rgba(15, 23, 42, .08);
   }
 }
+/* hover 时 button 整体变 indigo，kbd-tag 必须跟着切浅色，不然在 indigo 上是橄榄黄 */
+.moo-ball-btn--with-kbd:hover .kbd-tag {
+  color: rgba(255, 255, 255, .95);
+  background: rgba(255, 255, 255, .22);
+}
 .moo-ball-btn--logo .moo-ball-icon {
   width: 100%;
   height: 100%;
