@@ -2,7 +2,7 @@
   <div class="panel">
     <header class="head">
       <div class="brand">
-        <span class="logo">M</span>
+        <img class="logo" :src="logoUrl" alt="Moo" />
         <div class="brand-text">
           <div class="brand-name">Moo Dev Tool</div>
           <div class="brand-meta" :title="hostname ? `Tab #${tabId} · ${hostname}` : `Tab #${tabId}`">
@@ -67,6 +67,7 @@ import Settings from './tabs/Settings.vue'
 
 const tabId = ref(chrome.devtools.inspectedWindow.tabId)
 const hostname = ref('')
+const logoUrl = chrome.runtime.getURL('icons/icon-48.png')
 
 // 图标按 key 在 template 里 v-if 选 SVG（统一线条粗细/圆角，比之前 ◰⚙⌛☰ 杂烩 Unicode 视觉一致得多）
 const tabs = [
@@ -126,6 +127,7 @@ onBeforeUnmount(() => {
   flex: none;
   display: flex;
   align-items: stretch;
+  min-height: 56px;
   border-bottom: 1px solid var(--moo-c-border);
   background: var(--moo-c-bg);
 }
@@ -133,34 +135,33 @@ onBeforeUnmount(() => {
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 16px;
+  gap: 12px;
+  padding: 8px 16px;
   border-right: 1px solid var(--moo-c-divider);
-  min-width: 200px;
+  min-width: 220px;
 }
 .logo {
-  width: 28px; height: 28px;
-  border-radius: var(--moo-r-md);
-  background: var(--moo-c-brand);
-  color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 14px;
-  letter-spacing: -.02em;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: block;
+  flex: none;
 }
-.brand-text { line-height: 1.2; }
+.brand-text { line-height: 1.25; min-width: 0; }
 .brand-name {
   font-size: var(--moo-fs-md);
   font-weight: 600;
   letter-spacing: -.01em;
   color: var(--moo-c-text);
+  margin-bottom: 2px;
 }
 .brand-meta {
   font-size: var(--moo-fs-xs);
   color: var(--moo-c-text-dim);
   font-family: var(--moo-ff-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
 }
 
 .tabs {

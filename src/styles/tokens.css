@@ -5,6 +5,19 @@
    独立，颜色等值在 src/content/styles.ts 中保持同步。
    ============================================================ */
 
+/* 根级 reset：消掉 body 默认 8px margin + 让 html/body 跟随主题底色
+   (panel.html / popup/index.html 都是空壳，没有自己的样式)
+   color-scheme 让原生表单控件、滚动条等跟主题走 */
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--moo-c-bg);
+  color: var(--moo-c-text);
+}
+html {
+  color-scheme: light dark;
+}
+
 :root {
   /* === 中性色（slate 风） === */
   --moo-c-bg:           #ffffff;
@@ -23,6 +36,8 @@
   --moo-c-brand:        #4f46e5;   /* indigo-600 */
   --moo-c-brand-hover:  #4338ca;
   --moo-c-brand-soft:   #eef2ff;
+  /* focus ring 用单独 token，深色模式会被覆盖成亮一点的 indigo */
+  --moo-c-focus-ring:   rgba(79, 70, 229, .22);
   --moo-c-brand-fg:     #ffffff;
 
   /* === 状态色 === */
@@ -107,6 +122,7 @@
     --moo-c-brand-hover:  #818cf8;
     --moo-c-brand-soft:   rgba(99, 102, 241, .18);
     --moo-c-brand-fg:     #ffffff;
+    --moo-c-focus-ring:   rgba(129, 140, 248, .35);
 
     /* === 状态色：soft 用低透明度叠在深底；fg 用浅亮色保证可读 === */
     --moo-c-success:      #22c55e;

@@ -235,14 +235,15 @@ async function save() {
 // 缓冲条数行内校验：input 时显示错误，blur/change 时 clamp 并保存。
 // 这样用户在键入过程中能看到「5–500」范围提示，不用等失焦才发现输错了。
 const bufferSizeDraft = ref<string>('')
+// 双 ?. 兼容老存储里可能缺 capture 字段的 Project（防御性）
 watch(
-  () => active.value?.capture.requestBufferSize,
+  () => active.value?.capture?.requestBufferSize,
   (n) => { bufferSizeDraft.value = n != null ? String(n) : '' },
   { immediate: true }
 )
 
 const bufferSizeError = computed<string>(() => {
-  const v = bufferSizeDraft.value.trim()
+  const v = String(bufferSizeDraft.value ?? '').trim()
   if (!v) return '不能为空'
   const n = Number(v)
   if (!Number.isFinite(n)) return '需为数字'
@@ -252,12 +253,12 @@ const bufferSizeError = computed<string>(() => {
 })
 
 function onBufferSizeCommit() {
-  if (!active.value) return
-  const v = bufferSizeDraft.value.trim()
+  if (!active.value || !active.value.capture) return
+  const v = String(bufferSizeDraft.value ?? '').trim()
   const n = Number(v)
   // 无效输入：snap 回当前已保存值，让 UI 与 state 同步（避免红边一直挂着）
   if (!Number.isFinite(n) || n < 5 || n > 500) {
-    bufferSizeDraft.value = String(active.value.capture.requestBufferSize)
+    bufferSizeDraft.value = String(active.value.capture.requestBufferSize ?? 50)
     return
   }
   const clamped = Math.max(5, Math.min(500, Math.round(n)))
@@ -552,7 +553,7 @@ const TagInput = (props: { modelValue: string[]; placeholder?: string }, { emit 
 }
 .taginput:focus-within {
   border-color: var(--moo-c-brand);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, .15);
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
 }
 .tag {
   display: inline-flex;

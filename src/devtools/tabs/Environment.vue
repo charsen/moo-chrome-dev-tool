@@ -565,7 +565,7 @@ function collectEndpoints(projects: unknown[]): string[] {
 .project-search input:focus {
   outline: none;
   border-color: var(--moo-c-brand);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, .15);
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
 }
 
 /* 主体（侧栏 + 详情） */
@@ -701,7 +701,7 @@ function collectEndpoints(projects: unknown[]): string[] {
 .row select:focus {
   outline: none;
   border-color: var(--moo-c-brand);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, .15);
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
 }
 
 /* Token 输入框 + 显隐切换 */
@@ -754,7 +754,7 @@ function collectEndpoints(projects: unknown[]): string[] {
 .patterns:focus, .template:focus {
   outline: none;
   border-color: var(--moo-c-brand);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, .15);
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
 }
 
 /* 段落标题 */
@@ -806,7 +806,7 @@ function collectEndpoints(projects: unknown[]): string[] {
 .kv-row input:focus {
   outline: none;
   border-color: var(--moo-c-brand);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, .15);
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
 }
 
 /* 通用按钮 */

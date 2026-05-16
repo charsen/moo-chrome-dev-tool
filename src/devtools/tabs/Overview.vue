@@ -418,7 +418,7 @@ onBeforeUnmount(() => {
 .toolbar .filter:focus {
   outline: none;
   border-color: var(--moo-c-brand);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, .15);
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
 }
 .toolbar .select {
   height: 28px;
@@ -635,7 +635,7 @@ onBeforeUnmount(() => {
 .body-search:focus {
   outline: none;
   border-color: var(--moo-c-brand);
-  box-shadow: 0 0 0 2px rgba(79, 70, 229, .15);
+  box-shadow: 0 0 0 2px var(--moo-c-focus-ring);
 }
 .row-detail .mono :deep(mark) {
   background: var(--moo-c-warn);

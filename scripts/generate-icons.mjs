@@ -25,11 +25,18 @@ try {
   process.exit(1)
 }
 
-const sourcePath = resolve(root, 'src/assets/eagle-source.jpg')
-if (!existsSync(sourcePath)) {
-  console.error(`找不到源图: ${sourcePath}`)
+// 源图按优先级查找：先看 f2.png（新版 logo · 鹰头 + reticle 设计稿）；
+// fallback 到 eagle-source.jpg（早期写实鹰头照片，保留作为历史）
+const candidates = [
+  resolve(root, 'src/assets/f2.png'),
+  resolve(root, 'src/assets/eagle-source.jpg')
+]
+const sourcePath = candidates.find((p) => existsSync(p))
+if (!sourcePath) {
+  console.error(`找不到源图，尝试过：\n  ${candidates.join('\n  ')}`)
   process.exit(1)
 }
+console.log(`使用源图: ${sourcePath}`)
 
 const outDir = resolve(root, 'public/icons')
 mkdirSync(outDir, { recursive: true })

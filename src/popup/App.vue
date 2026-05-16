@@ -2,7 +2,7 @@
   <div class="popup">
     <header class="head">
       <div class="brand">
-        <span class="logo">M</span>
+        <img class="logo" :src="logoUrl" alt="Moo" />
         <h1>Moo Dev Tool</h1>
       </div>
       <span class="moo-chip">v{{ version }}</span>
@@ -83,6 +83,7 @@ import type { Project } from '@/types/config'
 import { loadConfig, urlMatches } from '@/storage/config'
 
 const version = ref(chrome.runtime.getManifest().version)
+const logoUrl = chrome.runtime.getURL('icons/icon-48.png')
 const matched = ref<Project[]>([])
 const projects = ref<Project[]>([])
 const currentUrl = ref('')
@@ -124,16 +125,11 @@ onMounted(async () => {
 }
 .brand { display: flex; align-items: center; gap: 8px; }
 .logo {
-  width: 24px; height: 24px;
-  border-radius: var(--moo-r-sm);
-  background: var(--moo-c-brand);
-  color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: -.02em;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: block;
+  flex: none;
+  /* 图标本身已是圆形深底 + 金眼，直接用，不需要额外背景 */
 }
 .head h1 {
   margin: 0;

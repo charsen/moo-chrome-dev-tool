@@ -306,7 +306,7 @@ async function resubmit(e: BugHistoryEntry) {
 .toolbar .filter:focus {
   outline: none;
   border-color: var(--moo-c-brand);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, .15);
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
 }
 .toolbar .count {
   font-size: var(--moo-fs-xs);
