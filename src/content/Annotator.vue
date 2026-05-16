@@ -249,6 +249,9 @@ function detachPointer() {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)
   detachPointer()
+  // 卸载前如果还有 pending nudge action，立刻 commit；timer 也清
+  if (nudgeCommitTimer) { clearTimeout(nudgeCommitTimer); nudgeCommitTimer = undefined }
+  if (nudgePending) { commitAction(); nudgePending = false }
 })
 
 const TOOL_KEY_MAP: Record<string, Mode> = {
@@ -287,6 +290,19 @@ function onKey(e: KeyboardEvent) {
     e.preventDefault()
     deleteSelected()
     return
+  }
+  // 方向键微移选中（无修饰 1px / Shift 10px），鼠标精度不够时用得上
+  if (selectedIdx.value >= 0 && !mod && !e.altKey) {
+    const ARROW: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]
+    }
+    const delta = ARROW[e.key]
+    if (delta) {
+      e.preventDefault()
+      const step = e.shiftKey ? 10 : 1
+      nudgeSelected(delta[0] * step, delta[1] * step)
+      return
+    }
   }
   if (e.key === 'Escape') {
     // 优先取消选中（如果有），其次才退出 Annotator
@@ -703,6 +719,38 @@ function deleteSelected() {
   selectedIdx.value = -1
   commitAction()
   redraw()
+}
+
+/**
+ * 方向键微移选中对象（dx/dy 是画布坐标，不是屏幕坐标）。
+ * 连续按方向键时，多次小位移合并为**单次** history action，避免按 10 下方向键就要撤销 10 次。
+ * 实现：500ms 内的连续 nudge 只在第一次 beginAction，之后追加位移，500ms 无操作后才 commit。
+ */
+let nudgeCommitTimer: number | undefined
+let nudgePending = false
+function nudgeSelected(dx: number, dy: number) {
+  const idx = selectedIdx.value
+  if (idx < 0 || idx >= items.value.length) return
+  if (!nudgePending) {
+    beginAction()
+    nudgePending = true
+  }
+  const it = items.value[idx]
+  if (it.type === 'arrow') {
+    it.x1 += dx; it.y1 += dy; it.x2 += dx; it.y2 += dy
+  } else {
+    it.x += dx; it.y += dy
+  }
+  redraw()
+  // 500ms 内继续按方向键 → 同一次动作；停手 500ms 后才 commit
+  if (nudgeCommitTimer) clearTimeout(nudgeCommitTimer)
+  nudgeCommitTimer = window.setTimeout(() => {
+    if (nudgePending) {
+      commitAction()
+      nudgePending = false
+    }
+    nudgeCommitTimer = undefined
+  }, 500)
 }
 
 function clearAll() {

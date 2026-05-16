@@ -9,8 +9,8 @@
       @record="startRecord"
     />
 
-    <!-- 录制中浮条 -->
-    <div v-if="state === 'recording'" class="moo-rec-bar">
+    <!-- 录制中浮条：从悬浮球的最后位置浮起，避免"动作在 A、反馈在屏幕顶"的视觉断裂 -->
+    <div v-if="state === 'recording'" class="moo-rec-bar" :style="recBarStyle">
       <span class="rec-dot" />
       <span class="rec-time">{{ fmtDuration(recordElapsed) }}</span>
       <button class="moo-btn small" @click="stopRecording">⏹ 停止</button>
@@ -70,6 +70,27 @@ let spaTimer: number | undefined
 
 const recorder = useRecorder({ maxSeconds: 30 })
 const recordElapsed = computed(() => recorder.elapsed.value)
+
+/** 录制浮条的定位：读悬浮球最后存的坐标（FloatingBall.vue 同样的 'moo-ball-pos' key），
+ * 进入 recording 状态时锁定一份，避免拖动后再变化导致浮条乱跳。
+ * 浮条约 245px 宽，按视口边缘 clamp 防溢出。 */
+const recBarStyle = computed(() => {
+  const fallback: Record<string, string> = {}
+  if (state.value !== 'recording') return fallback
+  try {
+    const saved = localStorage.getItem('moo-ball-pos')
+    if (!saved) return fallback
+    const parsed = JSON.parse(saved) as { x: unknown; y: unknown }
+    if (typeof parsed.x !== 'number' || typeof parsed.y !== 'number') return fallback
+    const BAR_W = 245
+    const BAR_H = 42
+    const left = Math.max(8, Math.min(window.innerWidth - BAR_W - 8, parsed.x))
+    const top = Math.max(8, Math.min(window.innerHeight - BAR_H - 8, parsed.y))
+    return { left: `${left}px`, top: `${top}px`, transform: 'none' }
+  } catch {
+    return fallback
+  }
+})
 
 const reqApi = useRequests()
 const errApi = useErrors()
