@@ -29,17 +29,19 @@
       <section class="moo-card">
         <div class="moo-card__hd">
           <h3>项目设置</h3>
-          <select
-            v-if="config.projects.length"
-            v-model="activeId"
-            class="moo-field proj-picker"
-          >
-            <option v-for="p in config.projects" :key="p.id" :value="p.id">{{ p.name || '(未命名)' }}</option>
-          </select>
+          <span v-if="active" class="card-hd-meta">{{ active.name || '(未命名)' }} · 改动自动保存</span>
         </div>
 
         <div v-if="active" class="moo-card__bd">
-          <h4 class="sub">抓取</h4>
+          <!-- 多项目时把切换器放进 body 顶部并加 label，避免和卡片标题挤一起 -->
+          <div v-if="config.projects.length > 1" class="proj-switcher">
+            <span class="proj-switcher-label">当前项目</span>
+            <select v-model="activeId" class="moo-field proj-picker">
+              <option v-for="p in config.projects" :key="p.id" :value="p.id">{{ p.name || '(未命名)' }}</option>
+            </select>
+          </div>
+
+          <h4 class="sub"><span class="sub-bar" />抓取</h4>
           <Row label="网络请求" desc="抓取页面发起的 fetch / XHR，最多保留 N 条">
             <Switch v-model="active.capture.requests" @update:modelValue="save" />
           </Row>
@@ -67,7 +69,7 @@
             </div>
           </Row>
 
-          <h4 class="sub">脱敏</h4>
+          <h4 class="sub"><span class="sub-bar" />脱敏</h4>
           <Row label="密码框遮罩" desc="截图前给 type=password 输入框盖一层灰条">
             <Switch v-model="active.redact.maskPasswordInputs" @update:modelValue="save" />
           </Row>
@@ -86,7 +88,7 @@
             />
           </Row>
 
-          <h4 class="sub">localStorage 白名单</h4>
+          <h4 class="sub"><span class="sub-bar" />localStorage 白名单</h4>
           <Row label="抓取这些 key" desc="提交时一并附上对应值（按页面 localStorage 优先）" class="kv-row">
             <TagInput
               :model-value="active.capture.storageKeys"
@@ -470,37 +472,78 @@ const TagInput = (props: { modelValue: string[]; placeholder?: string }, { emit 
   font-weight: 600;
   letter-spacing: -.005em;
 }
-.proj-picker { width: 200px; }
-.moo-card__bd .sub {
-  margin: 16px 0 8px;
+.card-hd-meta {
   font-size: var(--moo-fs-xs);
-  font-weight: 600;
+  color: var(--moo-c-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 当前项目切换器（body 顶部，不再挤在 card 标题里） */
+.proj-switcher {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 14px;
+  margin-bottom: 6px;
+  border-bottom: 1px dashed var(--moo-c-border);
+}
+.proj-switcher-label {
+  font-size: var(--moo-fs-xs);
   color: var(--moo-c-text-dim);
   text-transform: uppercase;
   letter-spacing: .04em;
+  font-weight: 600;
+  flex: none;
+}
+.proj-picker { width: 240px; }
+
+/* 子分区头部：加左侧竖条 accent，比纯文字 uppercase 更显眼 */
+.moo-card__bd .sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 6px;
+  font-size: var(--moo-fs-sm);
+  font-weight: 600;
+  color: var(--moo-c-text);
+  letter-spacing: -.005em;
 }
 .moo-card__bd .sub:first-child { margin-top: 0; }
+.moo-card__bd .sub .sub-bar {
+  display: inline-block;
+  width: 3px;
+  height: 14px;
+  background: var(--moo-c-brand);
+  border-radius: 2px;
+  flex: none;
+}
 
 .row {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 10px 0;
+  padding: 14px 0;
   border-top: 1px solid var(--moo-c-divider);
+  transition: background-color var(--moo-motion-fast);
 }
 .row:first-child, .moo-card__bd > .sub + .row { border-top: none; }
+.row:hover { background: rgba(0, 0, 0, .015); }
+@media (prefers-color-scheme: dark) {
+  .row:hover { background: rgba(255, 255, 255, .025); }
+}
 .row-text { flex: 1; min-width: 0; }
 .row-label {
   font-size: var(--moo-fs-sm);
   font-weight: 500;
   color: var(--moo-c-text);
+  line-height: 1.4;
 }
 .row-desc {
   font-size: var(--moo-fs-xs);
   color: var(--moo-c-text-dim);
-  margin-top: 2px;
-  line-height: 1.55;
+  margin-top: 3px;
+  line-height: 1.6;
 }
 .row-ctrl {
   flex: none;
