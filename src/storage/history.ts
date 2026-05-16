@@ -9,26 +9,33 @@ async function read(): Promise<BugHistoryEntry[]> {
   return Array.isArray(list) ? list : []
 }
 
-async function write(list: BugHistoryEntry[]): Promise<void> {
+/** write() 结果：trimmed = 因 quota 不够被丢掉的最旧条数（0 表示一切顺利） */
+interface WriteResult {
+  trimmed: number
+}
+
+async function write(list: BugHistoryEntry[]): Promise<WriteResult> {
   // 写入失败（一般是配额超出）时，**逐条**丢最旧的（list[0] 是最新，pop 末尾 = 最旧）。
   // 之前的做法是二分丢一半 + 兜底清空，单次配额触顶可能直接掉掉一大半历史。
   let attempt = list.slice()
+  const initialLen = attempt.length
   while (attempt.length > 0) {
     try {
       await chrome.storage.local.set({ [KEY]: attempt })
-      return
+      return { trimmed: initialLen - attempt.length }
     } catch {
       attempt.pop()
     }
   }
   // 空数组也写不进去，说明 storage 整体异常 —— 静默放弃，下次 addHistoryEntry 会再试
+  return { trimmed: initialLen }
 }
 
-export async function addHistoryEntry(entry: BugHistoryEntry): Promise<void> {
+export async function addHistoryEntry(entry: BugHistoryEntry): Promise<WriteResult> {
   const list = await read()
   list.unshift(entry)
   if (list.length > MAX_ENTRIES) list.length = MAX_ENTRIES
-  await write(list)
+  return write(list)
 }
 
 export async function listHistory(): Promise<BugHistoryEntry[]> {

@@ -32,6 +32,22 @@ chrome.alarms?.onAlarm.addListener((alarm) => {
   if (alarm.name === RETRY_ALARM) void flushRetryQueue()
 })
 
+// SW 每次 spin-up（不止 onStartup）都立刻 flush 一次：MV3 SW 空闲 ~30s 被回收，
+// 中途任何消息/alarm 唤醒都走这条路径。之前只 onStartup 主动 flush，意味着
+// 用户在浏览器中途的失败 submit 要干等 alarm 周期（5min）才会重试。
+;(async () => {
+  try {
+    const r = await chrome.storage.local.get(RETRY_QUEUE_KEY)
+    const list = (r[RETRY_QUEUE_KEY] as QueuedRequest[]) ?? []
+    if (list.length > 0) {
+      console.log('[Moo] SW boot: 立即 flush', list.length, '条重试队列')
+      await flushRetryQueue()
+    }
+  } catch (e) {
+    console.warn('[Moo] SW boot flush 失败', e)
+  }
+})()
+
 // 录屏入口必须由用户手势触发：chrome.commands 命中算手势，并直接把当前 tab 传进来。
 // 悬浮球的 click 经 content script → message 转一道后手势就丢了，tabCapture.getMediaStreamId
 // 会拒绝。所以 onCommand 内务必尽快（避免多余 await）调到 startTabRecording，让
@@ -229,7 +245,12 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
     remoteHeaders: pickPropagatedHeaders(applyAuthHeaders(project, { ...server.headers }))
   }
   try {
-    await addHistoryEntry(entry)
+    const writeRes = await addHistoryEntry(entry)
+    if (writeRes.trimmed > 0) {
+      // storage quota 满，旧历史被丢了 trimmed 条。把信息透传给前端 toast 提示用户，
+      // 不能再让它静默丢
+      result.trimmedHistory = writeRes.trimmed
+    }
   } catch (e) {
     console.warn('[Moo] failed to save history', e)
   }

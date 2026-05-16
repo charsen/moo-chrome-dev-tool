@@ -59,6 +59,8 @@ export interface SubmitBugRes {
   remoteId?: string
   /** 是否进入了重试队列（网络失败 / 5xx） */
   queued?: boolean
+  /** 本地历史因 storage quota 不够被自动丢弃的最旧条数（>0 时 UI 应提示用户） */
+  trimmedHistory?: number
 }
 
 export interface PreviewPayloadReq {

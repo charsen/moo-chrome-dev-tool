@@ -13,7 +13,12 @@ import type { SubmitBugRes } from '@/types/messages'
  */
 export function formatSubmitResult(res: SubmitBugRes): { ok: boolean; message: string } {
   if (res.ok) {
-    return { ok: true, message: `提交成功 (${res.status ?? 200})` }
+    let msg = `提交成功 (${res.status ?? 200})`
+    if (res.trimmedHistory && res.trimmedHistory > 0) {
+      // storage 配额已满，旧历史被自动丢弃。让用户知道有数据丢失，可去 设置 → 存储 清空
+      msg += `（本地历史已满，自动丢弃 ${res.trimmedHistory} 条最旧记录）`
+    }
+    return { ok: true, message: msg }
   }
 
   // 1. fetch 异常
