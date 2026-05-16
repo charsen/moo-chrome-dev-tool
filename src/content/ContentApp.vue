@@ -32,6 +32,8 @@
       :errors="capturedErrors"
       @cancel="reset"
       @submitted="onSubmitted"
+      @reannotate="onReannotate"
+      @recapture="onRecapture"
     />
     <div v-if="toast" :class="['moo-toast', toastKind]">{{ toast }}</div>
   </div>
@@ -62,7 +64,7 @@ const rawImage = ref('')
 const annotatedImage = ref('')
 const recordedVideo = ref<RecordingResult | null>(null)
 const toast = ref('')
-const toastKind = ref<'success' | 'error' | ''>('')
+const toastKind = ref<'success' | 'error' | 'info' | ''>('')
 let toastTimer: number | undefined
 let spaTimer: number | undefined
 
@@ -193,9 +195,9 @@ function onAnnotated(dataUrl: string) {
 }
 
 // 悬浮球点录屏 —— 受 Chrome MV3 限制无法在 content script 链路保留 user gesture，
-// 这里只显示快捷键提示，真正的录制入口在 chrome.commands。
+// 这里显示中性提示（不是错误）。按钮本身已经在 UI 上挂了 ⌥⇧R 标签提示用法。
 function startRecord() {
-  showToast('请按 ⌥⇧R（Alt+Shift+R）开始录屏。可在 chrome://extensions/shortcuts 改键。', 'error')
+  showToast('录屏请按 ⌥⇧R（Alt+Shift+R）。可在 chrome://extensions/shortcuts 改键。', 'info')
 }
 
 async function beginRecordingFromCommand() {
@@ -226,8 +228,35 @@ function fmtDuration(s: number): string {
 }
 
 function onSubmitted(ok: boolean, message: string) {
-  showToast(message, ok ? 'success' : 'error')
-  if (ok) reset()
+  // 成功时 SubmitDialog 已经在内嵌反馈面板里展示了 ✓，不再用 toast 抢戏；
+  // 失败时弹窗保留打开，toast 提示原因，方便用户改后重提。
+  if (ok) {
+    reset()
+  } else {
+    showToast(message, 'error')
+  }
+}
+
+// 用户在 SubmitDialog 上点"重新标注"：退回 Annotator 用 rawImage 重画一遍。
+// 已经标好的内容会丢失（Annotator 内部状态不跨 mount 保留），录屏和已选请求/错误保留。
+function onReannotate() {
+  if (!rawImage.value) {
+    showToast('原始截图已丢失，无法重新标注', 'error')
+    return
+  }
+  annotatedImage.value = ''
+  state.value = 'annotating'
+}
+
+// 用户在 SubmitDialog 上点"重新截图"：清掉旧截图重新触发屏幕捕获。
+// 录屏 / 已收集的请求/错误保留——只重做画面这一项。
+async function onRecapture() {
+  rawImage.value = ''
+  annotatedImage.value = ''
+  state.value = 'idle'
+  // 等 Vue 卸载 SubmitDialog 一帧，再走 startCapture 的"等悬浮球隐藏 → 截屏"流程
+  await new Promise((r) => requestAnimationFrame(r))
+  void startCapture()
 }
 
 function reset() {
@@ -237,7 +266,7 @@ function reset() {
   recordedVideo.value = null
 }
 
-function showToast(msg: string, kind: 'success' | 'error') {
+function showToast(msg: string, kind: 'success' | 'error' | 'info') {
   toast.value = msg
   toastKind.value = kind
   if (toastTimer) clearTimeout(toastTimer)

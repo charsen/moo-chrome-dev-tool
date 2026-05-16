@@ -172,22 +172,53 @@ onMounted(async () => {
   color: var(--moo-c-text);
 }
 
-.state--matched { border-color: #bbf7d0; background: #f0fdf4; }
-.state--nomatch { border-color: #fed7aa; background: #fffbeb; }
+.state--matched {
+  border-color: var(--moo-c-success-soft);
+  background: var(--moo-c-success-soft);
+}
+.state--nomatch {
+  border-color: var(--moo-c-warn-soft);
+  background: var(--moo-c-warn-soft);
+}
 .state--empty   { text-align: center; padding: 20px 16px; }
 
+/* 状态点：除颜色外还用形状/字符区分（色弱可读）。
+   on  → 绿色实心圆 + 内嵌 ✓
+   warn → 橙色圆角方块 + 内嵌 !
+   off → 灰色空心圆（描边） */
 .status-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
+  width: 12px; height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: none;
+  font-size: 8px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+  box-sizing: border-box;
 }
-.status-dot--on   { background: var(--moo-c-success); box-shadow: 0 0 0 3px rgba(22, 163, 74, .12); }
-.status-dot--warn { background: var(--moo-c-warn);    box-shadow: 0 0 0 3px rgba(217, 119, 6, .12); }
-.status-dot--off  { background: var(--moo-c-text-faint); }
+.status-dot--on {
+  border-radius: 50%;
+  background: var(--moo-c-success);
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, .14);
+}
+.status-dot--on::before { content: '✓'; }
+.status-dot--warn {
+  border-radius: 3px;
+  background: var(--moo-c-warn);
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, .14);
+}
+.status-dot--warn::before { content: '!'; }
+.status-dot--off {
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid var(--moo-c-text-faint);
+}
 
 .proj-card {
   background: var(--moo-c-bg);
-  border: 1px solid #bbf7d0;
+  border: 1px solid var(--moo-c-border);
   border-radius: var(--moo-r-md);
   padding: 10px 12px;
   margin-bottom: 8px;

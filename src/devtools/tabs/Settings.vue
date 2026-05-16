@@ -46,15 +46,25 @@
           <Row label="Console 错误" desc="抓取 window.onerror / unhandledrejection / console.error">
             <Switch v-model="active.capture.consoleErrors" @update:modelValue="save" />
           </Row>
-          <Row label="请求缓冲条数" desc="环形缓冲上限，超过会按 FIFO 滚动">
-            <input
-              type="number"
-              min="5"
-              max="500"
-              class="moo-field narrow"
-              :value="active.capture.requestBufferSize"
-              @change="onBufferSize(($event.target as HTMLInputElement).value)"
-            />
+          <Row label="请求缓冲条数" desc="环形缓冲上限（5–500），超过会按 FIFO 滚动">
+            <div class="num-input-wrap">
+              <input
+                type="number"
+                min="5"
+                max="500"
+                class="moo-field narrow"
+                :class="{ 'is-invalid': bufferSizeError }"
+                :value="bufferSizeDraft"
+                :aria-invalid="!!bufferSizeError"
+                :aria-describedby="bufferSizeError ? 'buffer-size-err' : undefined"
+                @input="bufferSizeDraft = ($event.target as HTMLInputElement).value"
+                @change="onBufferSizeCommit"
+                @blur="onBufferSizeCommit"
+              />
+              <span v-if="bufferSizeError" id="buffer-size-err" class="field-err">
+                {{ bufferSizeError }}
+              </span>
+            </div>
           </Row>
 
           <h4 class="sub">脱敏</h4>
@@ -151,6 +161,7 @@ import { loadConfig, saveConfig } from '@/storage/config'
 import { listHistory, clearHistory } from '@/storage/history'
 import { MSG } from '@/types/messages'
 import { safeSendMessage } from '@/utils/messaging'
+import { confirmDialog } from '../components/confirm'
 
 const HISTORY_MAX = 30
 
@@ -221,18 +232,51 @@ async function save() {
   }
 }
 
-function onBufferSize(v: string) {
+// 缓冲条数行内校验：input 时显示错误，blur/change 时 clamp 并保存。
+// 这样用户在键入过程中能看到「5–500」范围提示，不用等失焦才发现输错了。
+const bufferSizeDraft = ref<string>('')
+watch(
+  () => active.value?.capture.requestBufferSize,
+  (n) => { bufferSizeDraft.value = n != null ? String(n) : '' },
+  { immediate: true }
+)
+
+const bufferSizeError = computed<string>(() => {
+  const v = bufferSizeDraft.value.trim()
+  if (!v) return '不能为空'
   const n = Number(v)
-  if (!Number.isFinite(n) || n < 5) return
-  if (active.value) {
-    active.value.capture.requestBufferSize = Math.min(500, Math.round(n))
+  if (!Number.isFinite(n)) return '需为数字'
+  if (n < 5) return '不能小于 5'
+  if (n > 500) return '不能大于 500'
+  return ''
+})
+
+function onBufferSizeCommit() {
+  if (!active.value) return
+  const v = bufferSizeDraft.value.trim()
+  const n = Number(v)
+  // 无效输入：snap 回当前已保存值，让 UI 与 state 同步（避免红边一直挂着）
+  if (!Number.isFinite(n) || n < 5 || n > 500) {
+    bufferSizeDraft.value = String(active.value.capture.requestBufferSize)
+    return
+  }
+  const clamped = Math.max(5, Math.min(500, Math.round(n)))
+  bufferSizeDraft.value = String(clamped)
+  if (active.value.capture.requestBufferSize !== clamped) {
+    active.value.capture.requestBufferSize = clamped
     save()
   }
 }
 
 async function clearHistoryAll() {
   const n = historyCount.value
-  if (!confirm(`清空所有 ${n} 条历史记录？`)) return
+  const ok = await confirmDialog({
+    title: '清空所有历史记录',
+    message: `将删除 ${n} 条记录，操作不可恢复。`,
+    danger: true,
+    confirmText: '清空'
+  })
+  if (!ok) return
   busy.value = 'history'
   try {
     await clearHistory()
@@ -261,7 +305,13 @@ async function flushQueue() {
 
 async function clearQueue() {
   const n = queueCount.value
-  if (!confirm(`清空 ${n} 条未上报队列？这些 bug 将丢失。`)) return
+  const ok = await confirmDialog({
+    title: '清空未上报队列',
+    message: `将丢弃 ${n} 条待重试的 bug，操作不可恢复。`,
+    danger: true,
+    confirmText: '清空'
+  })
+  if (!ok) return
   busy.value = 'clearQueue'
   try {
     await chrome.storage.local.set({ mooRetryQueue: [] })
@@ -316,7 +366,11 @@ const TagInput = (props: { modelValue: string[]; placeholder?: string }, { emit 
     ...props.modelValue.map((tag, i) =>
       h('span', { class: 'tag' }, [
         tag,
-        h('button', { class: 'tag-x', onClick: () => remove(i), type: 'button' }, '×')
+        h(
+          'button',
+          { class: 'tag-x', onClick: () => remove(i), type: 'button', 'aria-label': `移除 ${tag}` },
+          '×'
+        )
       ])
     ),
     h('input', {
@@ -451,6 +505,23 @@ const TagInput = (props: { modelValue: string[]; placeholder?: string }, { emit 
 .row.kv-row .row-ctrl { width: 100%; }
 
 .narrow { width: 96px; }
+
+/* 数值输入的行内校验：红边 + 副文案，blur 时若仍非法会 snap 回上次有效值 */
+.num-input-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.num-input-wrap .moo-field.is-invalid {
+  border-color: var(--moo-c-danger);
+  box-shadow: 0 0 0 3px var(--moo-c-danger-soft);
+}
+.num-input-wrap .field-err {
+  font-size: var(--moo-fs-xs);
+  color: var(--moo-c-danger-fg);
+  line-height: 1.2;
+}
 .row-stats {
   display: flex;
   align-items: center;

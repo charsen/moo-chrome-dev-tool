@@ -100,6 +100,7 @@ import type { BugHistoryEntry } from '@/types/history'
 import { formatSubmitResult } from '@/utils/submitMessage'
 import { safeSendMessage, MessagingError } from '@/utils/messaging'
 import type { Project } from '@/types/config'
+import { confirmDialog } from '../components/confirm'
 
 const list = ref<BugHistoryEntry[]>([])
 const loading = ref(false)
@@ -195,7 +196,8 @@ function formatDur(s: number): string {
   if (!s || s < 0) return ''
   const m = Math.floor(s / 60)
   const ss = s % 60
-  return m > 0 ? `${m}:${String(ss).padStart(2, '0')}` : `${ss}s`
+  // 统一带单位避免"1:23 vs 45s"混排：< 60s 显示 "45s"，>= 60s 显示 "1m23s"
+  return m > 0 ? `${m}m${ss}s` : `${ss}s`
 }
 
 function formatTime(ts: number) {
@@ -205,12 +207,24 @@ function formatTime(ts: number) {
 }
 
 async function remove(id: string) {
-  if (!confirm('删除该记录？')) return
+  const ok = await confirmDialog({
+    title: '删除该条记录',
+    message: '该记录将从本地历史中移除。',
+    danger: true,
+    confirmText: '删除'
+  })
+  if (!ok) return
   await removeHistory(id)
 }
 
 async function clearAll() {
-  if (!confirm('清空全部历史记录？')) return
+  const ok = await confirmDialog({
+    title: '清空全部历史',
+    message: '将删除所有本地历史记录，操作不可恢复。',
+    danger: true,
+    confirmText: '清空'
+  })
+  if (!ok) return
   await clearHistory()
 }
 

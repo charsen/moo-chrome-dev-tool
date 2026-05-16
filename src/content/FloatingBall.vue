@@ -15,7 +15,12 @@
         @click="onPickProject(p.id)"
       >
         <span class="ic">📁</span>
-        <span class="lab">{{ p.name || '(未命名)' }}</span>
+        <span class="lab-stack">
+          <span class="lab">{{ p.name || '(未命名)' }}</span>
+          <span class="lab-sub" :title="p.matchPatterns.join(', ')">
+            {{ p.matchPatterns.length ? p.matchPatterns.join(' · ') : '(无 URL 规则)' }}
+          </span>
+        </span>
       </button>
     </div>
 
@@ -39,14 +44,15 @@
         </svg>
       </button>
       <button
-        class="moo-ball-btn"
-        title="录屏（按 ⌥⇧R 开始，Chrome 限制录屏必须由快捷键触发）"
+        class="moo-ball-btn moo-ball-btn--with-kbd"
+        title="录屏快捷键：⌥⇧R / Alt+Shift+R（Chrome MV3 限制录屏必须由快捷键触发）"
         @click.stop="onTriggerRecord"
       >
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="m22 8-6 4 6 4V8Z" />
           <rect width="14" height="12" x="2" y="6" rx="2" ry="2" />
         </svg>
+        <span class="kbd-tag" aria-hidden="true">⌥⇧R</span>
       </button>
     </div>
   </div>

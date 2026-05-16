@@ -1,101 +1,160 @@
 <template>
   <div class="overview">
     <header class="toolbar">
-      <div class="mode-tabs">
-        <button :class="['mode', { active: mode === 'req' }]" @click="mode = 'req'">请求 ({{ requests.length }})</button>
-        <button :class="['mode', { active: mode === 'err' }]" @click="mode = 'err'">错误 ({{ errors.length }})</button>
+      <div class="kind-filters" role="group" aria-label="按类型筛选">
+        <button
+          :class="['kind-chip', { active: kinds.has('request') }]"
+          :aria-pressed="kinds.has('request')"
+          @click="toggleKind('request')"
+        >
+          <span class="kind-dot kind-dot--req" />
+          请求
+          <span class="kind-count">{{ requests.length }}</span>
+        </button>
+        <button
+          :class="['kind-chip', { active: kinds.has('error') }]"
+          :aria-pressed="kinds.has('error')"
+          @click="toggleKind('error')"
+        >
+          <span class="kind-dot kind-dot--err" />
+          错误
+          <span class="kind-count">{{ errors.length }}</span>
+        </button>
       </div>
-      <input v-model="filter" :placeholder="mode === 'req' ? '按 URL 过滤' : '按 message 过滤'" class="filter" />
-      <select v-model.number="windowMs" class="select">
+      <input v-model="filter" placeholder="按 URL / 错误信息过滤" class="filter" />
+      <select v-model.number="windowMs" class="select" aria-label="时间窗口">
         <option :value="5000">最近 5s</option>
         <option :value="15000">最近 15s</option>
         <option :value="30000">最近 30s</option>
         <option :value="60000">最近 60s</option>
         <option :value="-1">全部</option>
       </select>
-      <label class="inline">
-        <input type="checkbox" v-model="autoRefresh" /> 自动刷新
-      </label>
-      <button class="btn" @click="refresh" :disabled="loading">刷新</button>
-      <button class="btn danger" @click="clearAll">清空</button>
-      <span class="count">{{ mode === 'req' ? `${filtered.length} / ${requests.length}` : `${filteredErrors.length} / ${errors.length}` }}</span>
+      <button
+        class="icon-btn"
+        :class="{ 'is-on': autoRefresh }"
+        :title="autoRefresh ? '自动刷新：开（点击关）' : '自动刷新：关（点击开）'"
+        :aria-pressed="autoRefresh"
+        @click="autoRefresh = !autoRefresh"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 6V3l-4 4 4 4V8a6 6 0 1 1-6 6"/>
+        </svg>
+        <span v-if="autoRefresh" class="icon-btn-pulse" aria-hidden="true" />
+      </button>
+      <button class="icon-btn" title="刷新" :disabled="loading" @click="refresh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12a9 9 0 1 1 3 6.7"/>
+          <path d="M3 21v-5h5"/>
+        </svg>
+      </button>
+      <button class="icon-btn danger" title="清空当前 Tab 数据" @click="clearAll">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"/>
+          <path d="M10 11v6M14 11v6"/>
+        </svg>
+      </button>
+      <span class="count">{{ timeline.length }} / {{ requests.length + errors.length }}</span>
     </header>
 
     <div class="status-bar" v-if="error">{{ error }}</div>
 
-    <div class="list" v-if="mode === 'req' && filtered.length">
-      <div
-        v-for="r in filtered"
-        :key="r.id"
-        :class="['row', { open: openId === r.id }]"
-      >
-        <div class="row-head" @click="toggle(r.id)">
-          <span :class="['method', r.method.toLowerCase()]">{{ r.method }}</span>
-          <span :class="['status', statusClass(r.status)]">{{ r.status || 'ERR' }}</span>
-          <span class="url" :title="r.url">{{ shortUrl(r.url) }}</span>
-          <span class="dur">{{ Math.round(r.duration) }}ms</span>
-          <span class="time">{{ formatTime(r.startedAt) }}</span>
+    <div class="list" v-if="timeline.length">
+      <template v-for="item in timeline" :key="item.kind + ':' + item.data.id">
+        <!-- 请求行 -->
+        <div
+          v-if="item.kind === 'request'"
+          :class="['row', { open: openId === item.data.id }]"
+        >
+          <div class="row-head" @click="toggle(item.data.id)">
+            <span class="kind-tag kind-tag--req" title="网络请求">REQ</span>
+            <span :class="['method', item.data.method.toLowerCase()]">{{ item.data.method }}</span>
+            <span :class="['status', statusClass(item.data.status)]">{{ item.data.status || 'ERR' }}</span>
+            <span class="url" :title="item.data.url">{{ shortUrl(item.data.url) }}</span>
+            <span class="dur">{{ Math.round(item.data.duration) }}ms</span>
+            <span class="time">{{ formatTime(item.data.startedAt) }}</span>
+          </div>
+          <div class="row-detail" v-if="openId === item.data.id">
+            <div class="kv"><span class="k">URL</span><span class="v mono">{{ item.data.url }}</span></div>
+            <div class="kv"><span class="k">Kind</span><span class="v">{{ item.data.kind }}</span></div>
+            <div class="kv" v-if="item.data.error"><span class="k">Error</span><span class="v err">{{ item.data.error }}</span></div>
+            <div v-if="item.data.requestBody || item.data.responseBody" class="body-search-wrap">
+              <input
+                v-model="bodySearch"
+                type="search"
+                class="body-search"
+                placeholder="在 body 内搜索（高亮匹配，大小写不敏感）"
+                aria-label="在 body 内搜索"
+              />
+            </div>
+            <section v-if="Object.keys(item.data.requestHeaders).length">
+              <h5>Request Headers</h5>
+              <pre class="mono">{{ formatHeaders(item.data.requestHeaders) }}</pre>
+            </section>
+            <section v-if="item.data.requestBody">
+              <h5>Request Body</h5>
+              <pre class="mono" v-html="highlightBody(item.data.requestBody, bodySearch)" />
+            </section>
+            <section v-if="Object.keys(item.data.responseHeaders).length">
+              <h5>Response Headers</h5>
+              <pre class="mono">{{ formatHeaders(item.data.responseHeaders) }}</pre>
+            </section>
+            <section v-if="item.data.responseBody">
+              <h5>Response Body ({{ item.data.responseSizeBytes }}b)</h5>
+              <pre class="mono" v-html="highlightBody(item.data.responseBody, bodySearch)" />
+            </section>
+          </div>
         </div>
-        <div class="row-detail" v-if="openId === r.id">
-          <div class="kv"><span class="k">URL</span><span class="v mono">{{ r.url }}</span></div>
-          <div class="kv"><span class="k">Kind</span><span class="v">{{ r.kind }}</span></div>
-          <div class="kv" v-if="r.error"><span class="k">Error</span><span class="v err">{{ r.error }}</span></div>
-          <section v-if="Object.keys(r.requestHeaders).length">
-            <h5>Request Headers</h5>
-            <pre class="mono">{{ formatHeaders(r.requestHeaders) }}</pre>
-          </section>
-          <section v-if="r.requestBody">
-            <h5>Request Body</h5>
-            <pre class="mono">{{ r.requestBody }}</pre>
-          </section>
-          <section v-if="Object.keys(r.responseHeaders).length">
-            <h5>Response Headers</h5>
-            <pre class="mono">{{ formatHeaders(r.responseHeaders) }}</pre>
-          </section>
-          <section v-if="r.responseBody">
-            <h5>Response Body ({{ r.responseSizeBytes }}b)</h5>
-            <pre class="mono">{{ r.responseBody }}</pre>
-          </section>
-        </div>
-      </div>
-    </div>
 
-    <div class="list" v-else-if="mode === 'err' && filteredErrors.length">
-      <div
-        v-for="e in filteredErrors"
-        :key="e.id"
-        :class="['row', { open: openId === e.id }]"
-      >
-        <div class="row-head" @click="toggle(e.id)">
-          <span :class="['status', e.level === 'rejection' ? 'err' : e.level === 'console' ? 'warn' : 'err']">
-            {{ e.level === 'rejection' ? 'REJ' : e.level === 'console' ? 'CON' : 'ERR' }}
-          </span>
-          <span class="url" :title="e.message">{{ e.message }}</span>
-          <span class="time">{{ formatTime(e.startedAt) }}</span>
+        <!-- 错误行 -->
+        <div
+          v-else
+          :class="['row', 'row--err', { open: openId === item.data.id }]"
+        >
+          <div class="row-head" @click="toggle(item.data.id)">
+            <span
+              :class="['kind-tag', 'kind-tag--err']"
+              :title="errLevelTitle(item.data.level)"
+            >{{ errLevelLabel(item.data.level) }}</span>
+            <span class="url err-msg" :title="item.data.message">{{ item.data.message }}</span>
+            <span class="time">{{ formatTime(item.data.startedAt) }}</span>
+          </div>
+          <div class="row-detail" v-if="openId === item.data.id">
+            <div class="kv" v-if="item.data.source"><span class="k">Source</span><span class="v mono">{{ item.data.source }}:{{ item.data.line }}:{{ item.data.col }}</span></div>
+            <section v-if="item.data.stack">
+              <h5>Stack</h5>
+              <pre class="mono">{{ item.data.stack }}</pre>
+            </section>
+          </div>
         </div>
-        <div class="row-detail" v-if="openId === e.id">
-          <div class="kv" v-if="e.source"><span class="k">Source</span><span class="v mono">{{ e.source }}:{{ e.line }}:{{ e.col }}</span></div>
-          <section v-if="e.stack">
-            <h5>Stack</h5>
-            <pre class="mono">{{ e.stack }}</pre>
-          </section>
-        </div>
-      </div>
+      </template>
     </div>
 
     <div class="empty" v-else>
       <p v-if="loading">加载中…</p>
-      <p v-else-if="mode === 'req'">暂无请求。注入脚本只能抓取脚本注入之后的请求 —— 安装/刷新扩展后，刷新页面即可开始捕获。</p>
-      <p v-else>暂无错误。<br>捕获范围：window.onerror、unhandledrejection、console.error。</p>
+      <p v-else-if="kinds.size === 0">两个类型都已隐藏；点上方筛选重新开启。</p>
+      <template v-else>
+        <p class="empty-title">还没捕获到任何请求或错误</p>
+        <p class="empty-hint">
+          扩展只能抓到「页面加载时已经在场」之后发起的内容。
+          <br>
+          如果你刚装好扩展或刚改完配置，先刷新一下页面再操作。
+        </p>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { CapturedRequest } from '@/types/requests'
 import type { ConsoleError } from '@/types/errors'
 import { MSG, type GetErrorsRes, type GetRequestsRes } from '@/types/messages'
+import { confirmDialog } from '../components/confirm'
+
+type Kind = 'request' | 'error'
+type TimelineItem =
+  | { kind: 'request'; data: CapturedRequest; ts: number }
+  | { kind: 'error'; data: ConsoleError; ts: number }
 
 const tabId = chrome.devtools.inspectedWindow.tabId
 const requests = ref<CapturedRequest[]>([])
@@ -106,7 +165,8 @@ const filter = ref('')
 const windowMs = ref(30000)
 const autoRefresh = ref(true)
 const openId = ref('')
-const mode = ref<'req' | 'err'>('req')
+/** 请求/错误两个 kind 的开关。默认都看 —— 这是合并时间线的关键 UX 改进。 */
+const kinds = ref<Set<Kind>>(new Set(['request', 'error']))
 
 let timer: number | undefined
 
@@ -143,49 +203,84 @@ async function refresh() {
 }
 
 async function clearAll() {
-  const label = mode.value === 'req' ? '请求' : '错误'
-  if (!confirm(`清空当前 Tab 的${label}记录？`)) return
-  if (mode.value === 'req') {
-    await send({ type: MSG.CLEAR_REQUESTS })
-    requests.value = []
-  } else {
-    await send({ type: MSG.CLEAR_ERRORS })
-    errors.value = []
-  }
+  // 一次性清空当前 Tab 的两类数据；分别清比来回切 mode 再清要顺手得多
+  const ok = await confirmDialog({
+    title: '清空当前 Tab 数据',
+    message: '将清空已捕获的请求和错误。',
+    danger: true,
+    confirmText: '清空'
+  })
+  if (!ok) return
+  await Promise.all([
+    send({ type: MSG.CLEAR_REQUESTS }),
+    send({ type: MSG.CLEAR_ERRORS })
+  ])
+  requests.value = []
+  errors.value = []
 }
 
-// 注：time-window 过滤用 startedAt（wall clock），不用 startTime。
-// startTime 来自网页主世界的 performance.now()，跟 devtools panel 的 performance.now()
-// 是两个独立时钟原点，跨上下文比较永远过不了窗口。
-const filtered = computed(() => {
-  const now = Date.now()
-  let arr = windowMs.value < 0
-    ? requests.value
-    : requests.value.filter((r) => {
-        const ts = new Date(r.startedAt).getTime()
-        return ts + r.duration >= now - windowMs.value
-      })
-  if (filter.value.trim()) {
-    const f = filter.value.trim().toLowerCase()
-    arr = arr.filter((r) => r.url.toLowerCase().includes(f))
-  }
-  return arr.slice().reverse()
-})
+function toggleKind(k: Kind) {
+  const next = new Set(kinds.value)
+  if (next.has(k)) next.delete(k)
+  else next.add(k)
+  kinds.value = next
+}
 
-const filteredErrors = computed(() => {
+// 合并时间线：按 startedAt 倒排（最新在上）。
+// 注：time-window 过滤用 startedAt（wall clock），不用 startTime（performance.now
+// 跨上下文不可比）。
+const timeline = computed<TimelineItem[]>(() => {
   const now = Date.now()
-  let arr = windowMs.value < 0
-    ? errors.value
-    : errors.value.filter((e) => new Date(e.startedAt).getTime() >= now - windowMs.value)
-  if (filter.value.trim()) {
-    const f = filter.value.trim().toLowerCase()
-    arr = arr.filter((e) => e.message.toLowerCase().includes(f))
+  const cutoff = windowMs.value < 0 ? -Infinity : now - windowMs.value
+  const f = filter.value.trim().toLowerCase()
+
+  const items: TimelineItem[] = []
+  if (kinds.value.has('request')) {
+    for (const r of requests.value) {
+      const ts = new Date(r.startedAt).getTime()
+      if (ts + r.duration < cutoff) continue
+      if (f && !r.url.toLowerCase().includes(f)) continue
+      items.push({ kind: 'request', data: r, ts })
+    }
   }
-  return arr.slice().reverse()
+  if (kinds.value.has('error')) {
+    for (const e of errors.value) {
+      const ts = new Date(e.startedAt).getTime()
+      if (ts < cutoff) continue
+      if (f && !e.message.toLowerCase().includes(f)) continue
+      items.push({ kind: 'error', data: e, ts })
+    }
+  }
+  items.sort((a, b) => b.ts - a.ts)
+  return items
 })
 
 function toggle(id: string) {
   openId.value = openId.value === id ? '' : id
+}
+
+/** Body 搜索 query —— 切换展开的行时重置，避免上一个搜索状态串到下一行 */
+const bodySearch = ref('')
+watch(openId, () => { bodySearch.value = '' })
+
+function highlightBody(text: string | undefined, query: string): string {
+  if (!text) return ''
+  const escaped = escapeHtml(text)
+  const q = query.trim()
+  if (!q) return escaped
+  // 先 escape body，再用已 escape 的 query 做 regex 替换，结果是安全的（不会注入 HTML）
+  const rx = new RegExp(escapeRegex(escapeHtml(q)), 'gi')
+  return escaped.replace(rx, (m) => `<mark>${m}</mark>`)
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c] as string))
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function shortUrl(url: string): string {
@@ -202,6 +297,17 @@ function statusClass(s: number) {
   if (s >= 500) return 'err'
   if (s >= 400) return 'warn'
   return 'ok'
+}
+
+function errLevelLabel(level: ConsoleError['level']): string {
+  if (level === 'rejection') return 'REJ'
+  if (level === 'console') return 'CON'
+  return 'ERR'
+}
+function errLevelTitle(level: ConsoleError['level']): string {
+  if (level === 'rejection') return 'Unhandled Promise Rejection'
+  if (level === 'console') return 'console.error 调用'
+  return 'window.onerror（运行时错误）'
 }
 
 function formatTime(iso: string) {
@@ -250,32 +356,51 @@ onBeforeUnmount(() => {
   background: var(--moo-c-bg);
 }
 
-/* 模式切换（请求 / 错误） */
-.mode-tabs {
+/* 类型筛选 chip（请求 / 错误，可独立开关） */
+.kind-filters {
   display: flex;
+  gap: 4px;
   background: var(--moo-c-bg-elev);
   border-radius: var(--moo-r-md);
   padding: 2px;
 }
-.mode-tabs .mode {
+.kind-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: transparent;
   border: none;
-  padding: 4px 12px;
+  padding: 4px 10px;
   height: 24px;
   font-size: var(--moo-fs-xs);
   font-weight: 500;
   font-family: inherit;
-  color: var(--moo-c-text-muted);
+  color: var(--moo-c-text-dim);
   border-radius: var(--moo-r-sm);
   cursor: pointer;
   transition: background-color var(--moo-motion-fast), color var(--moo-motion-fast);
 }
-.mode-tabs .mode:hover { color: var(--moo-c-text); }
-.mode-tabs .mode.active {
+.kind-chip:hover { color: var(--moo-c-text); }
+.kind-chip.active {
   background: var(--moo-c-bg);
   color: var(--moo-c-text);
   box-shadow: var(--moo-sh-sm);
 }
+.kind-chip .kind-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .8;
+}
+.kind-chip.active .kind-dot--req { background: var(--moo-c-info); opacity: 1; }
+.kind-chip.active .kind-dot--err { background: var(--moo-c-danger); opacity: 1; }
+.kind-chip .kind-count {
+  font-family: var(--moo-ff-mono);
+  font-size: var(--moo-fs-xs);
+  color: var(--moo-c-text-dim);
+}
+.kind-chip.active .kind-count { color: var(--moo-c-text-muted); }
 
 .toolbar .filter {
   flex: 1;
@@ -313,24 +438,54 @@ onBeforeUnmount(() => {
   color: var(--moo-c-text-muted);
   cursor: pointer;
 }
-.toolbar .btn {
+/* 二级动作图标按钮（刷新 / 清空 / 自动刷新 toggle）—— 28×28 方形，title 揭示功能 */
+.toolbar .icon-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  height: 26px;
-  padding: 0 12px;
-  font-size: var(--moo-fs-xs);
-  font-weight: 500;
-  font-family: inherit;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 1px solid var(--moo-c-border);
   background: var(--moo-c-bg);
-  color: var(--moo-c-text);
+  color: var(--moo-c-text-muted);
   border-radius: var(--moo-r-md);
   cursor: pointer;
-  transition: background-color var(--moo-motion-fast), border-color var(--moo-motion-fast);
+  transition: background-color var(--moo-motion-fast), border-color var(--moo-motion-fast), color var(--moo-motion-fast);
 }
-.toolbar .btn:hover { background: var(--moo-c-bg-soft); border-color: var(--moo-c-text-faint); }
-.toolbar .btn.danger { color: var(--moo-c-danger-fg); }
-.toolbar .btn.danger:hover { background: var(--moo-c-danger-soft); border-color: var(--moo-c-danger-soft); }
+.toolbar .icon-btn:hover:not(:disabled) {
+  background: var(--moo-c-bg-soft);
+  border-color: var(--moo-c-text-faint);
+  color: var(--moo-c-text);
+}
+.toolbar .icon-btn:disabled { opacity: .5; cursor: not-allowed; }
+.toolbar .icon-btn svg { width: 14px; height: 14px; display: block; }
+.toolbar .icon-btn.is-on {
+  background: var(--moo-c-brand-soft);
+  border-color: var(--moo-c-brand);
+  color: var(--moo-c-brand);
+}
+.toolbar .icon-btn.is-on:hover { background: var(--moo-c-brand-soft); }
+.toolbar .icon-btn.danger { color: var(--moo-c-danger-fg); }
+.toolbar .icon-btn.danger:hover:not(:disabled) {
+  background: var(--moo-c-danger-soft);
+  border-color: var(--moo-c-danger-soft);
+}
+.icon-btn-pulse {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--moo-c-brand);
+  animation: icon-btn-pulse 1.6s ease-in-out infinite;
+}
+@keyframes icon-btn-pulse {
+  0%, 100% { transform: scale(1); opacity: .7; }
+  50% { transform: scale(1.25); opacity: 1; }
+}
 .toolbar .count {
   font-size: var(--moo-fs-xs);
   color: var(--moo-c-text-dim);
@@ -373,6 +528,26 @@ onBeforeUnmount(() => {
   padding: 6px 12px;
   cursor: pointer;
 }
+
+/* kind 标识（合并时间线的关键视觉）—— 一眼区分这行是请求还是错误 */
+.kind-tag {
+  flex: 0 0 30px;
+  font-size: 9px;
+  padding: 2px 4px;
+  border-radius: var(--moo-r-sm);
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: .03em;
+}
+.kind-tag--req {
+  background: var(--moo-c-info-soft);
+  color: var(--moo-c-info);
+}
+.kind-tag--err {
+  background: var(--moo-c-danger-soft);
+  color: var(--moo-c-danger-fg);
+}
+
 .row-head .method {
   flex: 0 0 50px;
   font-weight: 600;
@@ -400,6 +575,7 @@ onBeforeUnmount(() => {
   color: var(--moo-c-text);
   font-size: var(--moo-fs-xs);
 }
+.row-head .err-msg { color: var(--moo-c-danger-fg); }
 .row-head .dur {
   flex: 0 0 60px;
   text-align: right;
@@ -441,6 +617,34 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   letter-spacing: .04em;
 }
+.body-search-wrap {
+  margin: 8px 0 4px;
+}
+.body-search {
+  width: 100%;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-sm);
+  font-size: var(--moo-fs-xs);
+  font-family: inherit;
+  background: var(--moo-c-bg);
+  color: var(--moo-c-text);
+  transition: border-color var(--moo-motion-fast);
+}
+.body-search:focus {
+  outline: none;
+  border-color: var(--moo-c-brand);
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, .15);
+}
+.row-detail .mono :deep(mark) {
+  background: var(--moo-c-warn);
+  color: var(--moo-c-bg);
+  padding: 0 2px;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
 .row-detail .mono {
   background: var(--moo-c-bg-soft);
   border: 1px solid var(--moo-c-border);
@@ -463,15 +667,29 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   color: var(--moo-c-text-dim);
   font-size: var(--moo-fs-sm);
   padding: 40px;
   text-align: center;
+  max-width: 480px;
+  margin: 0 auto;
 }
 .empty::before {
   content: "🌐";
   font-size: 32px;
   opacity: .5;
+  margin-bottom: 4px;
+}
+.empty .empty-title {
+  color: var(--moo-c-text-muted);
+  font-size: var(--moo-fs-base);
+  font-weight: 500;
+  margin: 0;
+}
+.empty .empty-hint {
+  margin: 0;
+  line-height: 1.55;
+  font-size: var(--moo-fs-xs);
 }
 </style>

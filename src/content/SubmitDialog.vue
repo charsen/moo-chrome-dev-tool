@@ -1,17 +1,58 @@
 <template>
   <ElementPicker v-if="picking" @pick="onElementPicked" @cancel="picking = false" />
 
-  <div v-show="!picking" class="moo-dialog-mask" @click.self="emit('cancel')">
-    <div class="moo-dialog">
+  <div v-show="!picking" class="moo-dialog-mask" @click.self="onMaskClick">
+    <div class="moo-dialog" role="dialog" aria-modal="true" aria-labelledby="moo-submit-title">
       <header class="moo-dialog-head">
-        <h3>提交 Bug — {{ project.name }}</h3>
-        <button class="moo-close-btn" @click="emit('cancel')">×</button>
+        <h3 id="moo-submit-title">提交 Bug — {{ project.name }}</h3>
+        <button class="moo-close-btn" aria-label="关闭" @click="emit('cancel')">×</button>
       </header>
-      <div class="moo-dialog-body">
+
+      <!-- 提交成功内嵌反馈：取代 toast 一闪而过的反馈方式 -->
+      <div v-if="successInfo" class="moo-submit-success">
+        <div class="moo-success-icon" aria-hidden="true">✓</div>
+        <div class="moo-success-title">提交成功</div>
+        <div v-if="successInfo.remoteId" class="moo-success-id">
+          已记录为 <code>#{{ successInfo.remoteId }}</code>
+        </div>
+        <div class="moo-success-msg">{{ successInfo.message }}</div>
+      </div>
+
+      <div v-else class="moo-dialog-body">
+        <!-- ① 标题（必填，置顶） -->
+        <div class="moo-form-row">
+          <label for="moo-title">标题 *</label>
+          <input
+            id="moo-title"
+            ref="titleInput"
+            v-model="title"
+            placeholder="一句话描述问题"
+          />
+        </div>
+
+        <!-- ② 描述 -->
+        <div class="moo-form-row">
+          <label for="moo-desc">描述</label>
+          <textarea id="moo-desc" v-model="description" rows="3" placeholder="复现步骤、预期、实际…" />
+        </div>
+
+        <!-- ③ 截图缩略 -->
         <div class="moo-form-row" v-if="image">
           <label>截图</label>
-          <img class="moo-thumb" :src="image" />
+          <div class="moo-thumb-wrap">
+            <img class="moo-thumb moo-thumb--sm" :src="image" alt="截图预览" />
+            <div class="moo-thumb-overlay">
+              <button class="moo-thumb-action" type="button" @click="onReannotate">
+                <span aria-hidden="true">✎</span> 重新标注
+              </button>
+              <button class="moo-thumb-action" type="button" @click="onRecapture">
+                <span aria-hidden="true">🔄</span> 重新截图
+              </button>
+            </div>
+          </div>
         </div>
+
+        <!-- ④ 录像 -->
         <div class="moo-form-row" v-if="video">
           <label>录像</label>
           <div class="req-panel">
@@ -21,106 +62,119 @@
             </div>
           </div>
         </div>
-        <div class="moo-form-row">
-          <label>标题</label>
-          <input v-model="title" placeholder="一句话描述问题" />
-        </div>
-        <div class="moo-form-row">
-          <label>描述</label>
-          <textarea v-model="description" rows="3" placeholder="复现步骤、预期、实际…" />
-        </div>
-        <div class="moo-form-row">
-          <label>服务器</label>
-          <select v-model="serverId">
+
+        <!-- ⑤ 服务器（仅 0 或 >1 时显示；恰好 1 个时使用默认值，UI 中隐藏减少噪音） -->
+        <div class="moo-form-row" v-if="project.servers.length !== 1">
+          <label for="moo-server">服务器</label>
+          <select id="moo-server" v-model="serverId">
+            <option v-if="!project.servers.length" disabled value="">无可用服务器，请先在 DevTools 配置</option>
             <option v-for="s in project.servers" :key="s.id" :value="s.id">
               {{ s.name }} — {{ s.endpoint || '(未配置 endpoint)' }}
             </option>
-            <option v-if="!project.servers.length" disabled value="">无可用服务器，请先在 DevTools 配置</option>
           </select>
         </div>
 
-        <div class="moo-form-row moo-req-row">
-          <label>
-            附带请求
-            <div class="req-count">{{ selectedIds.size }} / {{ filtered.length }}</div>
-          </label>
-          <div class="req-panel">
-            <div class="req-controls">
-              <select v-model="windowMs" class="req-window">
-                <option :value="5000">最近 5s</option>
-                <option :value="15000">最近 15s</option>
-                <option :value="30000">最近 30s</option>
-                <option :value="60000">最近 60s</option>
-                <option :value="-1">全部</option>
-              </select>
-              <input v-model="urlFilter" placeholder="按 URL 过滤" class="req-filter" />
-              <button class="moo-btn small" @click="selectAll">全选</button>
-              <button class="moo-btn small" @click="selectNone">清空</button>
-            </div>
-            <div class="req-list" v-if="filtered.length">
-              <label v-for="r in filtered" :key="r.id" class="req-item">
-                <input type="checkbox" :checked="selectedIds.has(r.id)" @change="toggle(r.id)" />
-                <span :class="['method', r.method.toLowerCase()]">{{ r.method }}</span>
-                <span :class="['status', statusClass(r.status)]">{{ r.status || 'ERR' }}</span>
-                <span class="url" :title="r.url">{{ shortUrl(r.url) }}</span>
-                <span class="dur">{{ Math.round(r.duration) }}ms</span>
-              </label>
-            </div>
-            <div v-else class="req-empty">
-              暂无符合条件的请求。提示：MAIN world 脚本只能抓到注入之后发起的请求，安装/刷新后才有数据。
-            </div>
-          </div>
-        </div>
-
-        <div class="moo-form-row moo-req-row" v-if="errors.length">
-          <label>
-            附带错误
-            <div class="req-count">{{ selectedErrIds.size }} / {{ errors.length }}</div>
-          </label>
-          <div class="req-panel">
-            <div class="req-list">
-              <label v-for="e in errors.slice().reverse()" :key="e.id" class="req-item">
-                <input type="checkbox" :checked="selectedErrIds.has(e.id)" @change="toggleErr(e.id)" />
-                <span :class="['status', e.level === 'error' ? 'err' : e.level === 'rejection' ? 'err' : 'warn']">
-                  {{ e.level === 'rejection' ? 'REJ' : e.level === 'console' ? 'CON' : 'ERR' }}
-                </span>
-                <span class="url" :title="e.message">{{ e.message }}</span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <div class="moo-form-row moo-req-row">
-          <label>
-            附带元素
-            <div class="req-count">{{ pickedElements.length }} 个</div>
-          </label>
-          <div class="req-panel">
-            <div class="req-controls">
-              <button class="moo-btn small" @click="picking = true">📍 选元素</button>
-              <button v-if="pickedElements.length" class="moo-btn small" @click="pickedElements = []">清空</button>
-              <span class="req-hint" v-if="!pickedElements.length">点击"选元素"，在页面上指定 bug 涉及的具体 DOM</span>
-            </div>
-            <div v-if="pickedElements.length" class="req-list">
-              <div v-for="(el, i) in pickedElements" :key="i" class="req-item el-item">
-                <span class="method" :title="'tag: ' + el.tag">{{ el.tag }}</span>
-                <span class="url" :title="el.selector">{{ el.selector }}</span>
-                <button class="moo-close-btn" @click="pickedElements.splice(i, 1)">×</button>
+        <!-- ⑥ 附件折叠组：请求 / 错误 / 元素 -->
+        <details class="moo-attach" open>
+          <summary class="moo-attach-hd">
+            <span class="moo-attach-chev" aria-hidden="true">▸</span>
+            <span class="moo-attach-title">附带请求</span>
+            <span class="moo-attach-count">{{ selectedIds.size }} / {{ filtered.length }}</span>
+          </summary>
+          <div class="moo-attach-bd">
+            <div class="req-panel">
+              <div class="req-controls">
+                <select v-model.number="windowMs" class="req-window" aria-label="时间窗口">
+                  <option :value="5000">最近 5s</option>
+                  <option :value="15000">最近 15s</option>
+                  <option :value="30000">最近 30s</option>
+                  <option :value="60000">最近 60s</option>
+                  <option :value="-1">全部</option>
+                </select>
+                <input v-model="urlFilter" placeholder="按 URL 过滤" class="req-filter" />
+                <button class="moo-btn small" @click="selectAll">全选</button>
+                <button class="moo-btn small" @click="selectNone">清空</button>
+              </div>
+              <div class="req-list" v-if="filtered.length">
+                <label v-for="r in filtered" :key="r.id" class="req-item">
+                  <input type="checkbox" :checked="selectedIds.has(r.id)" @change="toggle(r.id)" />
+                  <span :class="['method', r.method.toLowerCase()]">{{ r.method }}</span>
+                  <span :class="['status', statusClass(r.status)]">{{ r.status || 'ERR' }}</span>
+                  <span class="url" :title="r.url">{{ shortUrl(r.url) }}</span>
+                  <span class="dur">{{ Math.round(r.duration) }}ms</span>
+                </label>
+              </div>
+              <div v-else class="req-empty">
+                <div>当前时间窗口内没有可附带的请求。</div>
+                <div class="req-empty-hint">
+                  如果你刚装好扩展或刚改完配置，刷新一下页面再操作即可。
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </details>
 
+        <details class="moo-attach" v-if="errors.length">
+          <summary class="moo-attach-hd">
+            <span class="moo-attach-chev" aria-hidden="true">▸</span>
+            <span class="moo-attach-title">附带错误</span>
+            <span class="moo-attach-count">{{ selectedErrIds.size }} / {{ errors.length }}</span>
+          </summary>
+          <div class="moo-attach-bd">
+            <div class="req-panel">
+              <div class="req-list">
+                <label v-for="e in reversedErrors" :key="e.id" class="req-item">
+                  <input type="checkbox" :checked="selectedErrIds.has(e.id)" @change="toggleErr(e.id)" />
+                  <span
+                    :class="['status', e.level === 'console' ? 'warn' : 'err']"
+                    :title="errLevelTitle(e.level)"
+                  >
+                    {{ errLevelLabel(e.level) }}
+                  </span>
+                  <span class="url" :title="e.message">{{ e.message }}</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <details class="moo-attach">
+          <summary class="moo-attach-hd">
+            <span class="moo-attach-chev" aria-hidden="true">▸</span>
+            <span class="moo-attach-title">附带元素</span>
+            <span class="moo-attach-count">{{ pickedElements.length }} 个</span>
+          </summary>
+          <div class="moo-attach-bd">
+            <div class="req-panel">
+              <div class="req-controls">
+                <button class="moo-btn small" @click="picking = true">📍 选元素</button>
+                <button v-if="pickedElements.length" class="moo-btn small" @click="pickedElements = []">清空</button>
+                <span class="req-hint" v-if="!pickedElements.length">点击"选元素"，在页面上指定 bug 涉及的具体 DOM</span>
+              </div>
+              <div v-if="pickedElements.length" class="req-list">
+                <div v-for="(el, i) in pickedElements" :key="i" class="req-item el-item">
+                  <span class="method" :title="'tag: ' + el.tag">{{ el.tag }}</span>
+                  <span class="url" :title="el.selector">{{ el.selector }}</span>
+                  <button class="moo-close-btn" aria-label="移除此元素" @click="pickedElements.splice(i, 1)">×</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- ⑦ 预览 payload（仅展开后显示） -->
         <div class="moo-form-row" v-if="preview">
           <label>预览</label>
           <pre class="moo-preview">{{ preview }}</pre>
         </div>
       </div>
-      <footer class="moo-dialog-foot">
-        <button class="moo-btn" @click="emit('cancel')">取消</button>
-        <button class="moo-btn" :disabled="!canPreview || previewing" @click="onPreview">{{ previewing ? '预览中…' : '预览 payload' }}</button>
+      <footer v-if="!successInfo" class="moo-dialog-foot">
+        <button class="moo-btn" @click="emit('cancel')">取消 <span class="kbd-hint">Esc</span></button>
+        <button class="moo-btn ghost" :disabled="!canPreview || previewing" @click="onPreview">
+          {{ previewing ? '预览中…' : '预览 payload' }}
+        </button>
         <button class="moo-btn primary" :disabled="!canSubmit || submitting" @click="onSubmit">
-          {{ submitting ? '提交中…' : '提交' }}
+          {{ submitting ? '提交中…' : '提交' }} <span class="kbd-hint">⌘↵</span>
         </button>
       </footer>
     </div>
@@ -128,7 +182,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Project } from '@/types/config'
 import type { CapturedRequest } from '@/types/requests'
 import type { ConsoleError } from '@/types/errors'
@@ -148,6 +202,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'cancel'): void
   (e: 'submitted', ok: boolean, message: string): void
+  /** 退回 Annotator 用原始截图重新画一遍（ContentApp 负责切状态） */
+  (e: 'reannotate'): void
+  /** 丢弃当前截图，重新触发屏幕捕获（ContentApp 负责切状态） */
+  (e: 'recapture'): void
 }>()
 
 const title = ref('')
@@ -155,6 +213,12 @@ const description = ref('')
 const serverId = ref(props.project.defaultServerId || props.project.servers[0]?.id || '')
 const preview = ref('')
 const submitting = ref(false)
+const titleInput = ref<HTMLInputElement | null>(null)
+
+/** 提交成功后的内嵌反馈视图。设值即覆盖 body/footer 展示 ✓ 卡片。 */
+const successInfo = ref<{ message: string; remoteId?: string } | null>(null)
+const SUCCESS_VIEW_MS = 1500
+let successTimer: number | undefined
 
 const windowMs = ref(30000)
 const urlFilter = ref('')
@@ -193,12 +257,22 @@ const filtered = computed(() => {
   return arr.slice().reverse() // 最新在上
 })
 
-// 打开时默认勾选最近 5 秒内的请求与所有错误
-{
-  const recent = props.requests.filter((r) => r.startTime + r.duration >= openedAt - 5000)
-  selectedIds.value = new Set(recent.map((r) => r.id))
-  selectedErrIds.value = new Set(props.errors.map((e) => e.id))
-}
+const reversedErrors = computed(() => props.errors.slice().reverse())
+
+// 默认勾选范围跟时间窗口同步：用户看到 N 条就有 N 条被勾选，不会出现
+// "我看到这么多请求但只勾了几条"的心智落差。用户切换 windowMs 时也跟着重算。
+watch(
+  () => filtered.value,
+  (arr) => {
+    selectedIds.value = new Set(arr.map((r) => r.id))
+  },
+  { immediate: true }
+)
+// URL 过滤改变时不重置勾选（用户可能想搜了之后只勾搜到的，再搜别的不该清空）—— 上面 watch 依赖 filtered 已经满足；
+// 但若用户主动手动取消勾选某条，再调窗口/过滤，会被这个 watch 覆盖。
+// 当前定位是"打开 dialog → 默认全勾"为主路径，手动调整后切窗口会重算，可接受。
+
+selectedErrIds.value = new Set(props.errors.map((e) => e.id))
 
 function toggle(id: string) {
   const next = new Set(selectedIds.value)
@@ -229,6 +303,17 @@ function statusClass(status: number): string {
   if (status >= 500) return 'err'
   if (status >= 400) return 'warn'
   return 'ok'
+}
+
+function errLevelLabel(level: ConsoleError['level']): string {
+  if (level === 'rejection') return 'REJ'
+  if (level === 'console') return 'CON'
+  return 'ERR'
+}
+function errLevelTitle(level: ConsoleError['level']): string {
+  if (level === 'rejection') return 'Unhandled Promise Rejection'
+  if (level === 'console') return 'console.error 调用'
+  return 'window.onerror（运行时错误）'
 }
 
 const canPreview = computed(() => !!serverId.value)
@@ -290,6 +375,7 @@ async function onPreview() {
 }
 
 async function onSubmit() {
+  if (!canSubmit.value || submitting.value || successInfo.value) return
   submitting.value = true
   try {
     const ctx = buildContext()
@@ -314,11 +400,62 @@ async function onSubmit() {
       payload: req
     })) as SubmitBugRes
     const { ok, message } = formatSubmitResult(res)
-    emit('submitted', ok, message)
+    if (ok) {
+      // 成功：展示 1.5s 的 ✓ 内嵌反馈再关闭。比 toast 一闪有更明确的"动作完成"感。
+      successInfo.value = { message, remoteId: res.remoteId }
+      successTimer = window.setTimeout(() => {
+        emit('submitted', true, message)
+      }, SUCCESS_VIEW_MS)
+    } else {
+      // 失败：dialog 不关，外层弹 toast 显示错误原因，用户可改后再提交
+      emit('submitted', false, message)
+    }
   } catch (err) {
     emit('submitted', false, `提交异常: ${(err as Error).message}`)
   } finally {
     submitting.value = false
   }
 }
+
+/** 成功面板期间禁止点遮罩取消，避免误关。失败/正常表单态 mask 点击仍走取消。 */
+function onMaskClick() {
+  if (successInfo.value) return
+  emit('cancel')
+}
+
+function onReannotate() {
+  if (submitting.value || successInfo.value) return
+  emit('reannotate')
+}
+
+function onRecapture() {
+  if (submitting.value || successInfo.value) return
+  emit('recapture')
+}
+
+// 键盘快捷键：Esc 取消，⌘/Ctrl+Enter 提交
+function onKeydown(e: KeyboardEvent) {
+  if (picking.value) return // 选元素状态由 ElementPicker 自己接管
+  if (successInfo.value) return // 成功视图期间快捷键全部禁用，等待自动关闭
+  if (e.key === 'Escape') {
+    e.stopPropagation()
+    emit('cancel')
+    return
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault()
+    void onSubmit()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown, true)
+  // 自动聚焦标题输入，省一次点击
+  nextTick(() => titleInput.value?.focus())
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown, true)
+  if (successTimer) clearTimeout(successTimer)
+})
 </script>

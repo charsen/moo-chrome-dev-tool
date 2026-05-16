@@ -2,15 +2,15 @@
   <div v-if="!loaded" class="loading">加载配置中…</div>
   <div v-else class="env-wrap">
     <div v-if="toast" :class="['moo-toast', `moo-toast--${toastKind}`]">{{ toast }}</div>
-    <div class="save-bar" :class="{ dirty }">
+    <div class="save-bar" :class="`is-${saveState}`">
       <span class="status-msg">
-        <template v-if="dirty">● 有未保存的更改</template>
-        <template v-else>✓ 已保存</template>
+        <template v-if="saveState === 'saving'">保存中…</template>
+        <template v-else-if="saveState === 'error'">
+          ⚠ 保存失败 — 检查 chrome.storage 配额或重试
+          <button class="retry-btn" @click="retrySave">重试</button>
+        </template>
+        <template v-else>✓ 已自动保存</template>
       </span>
-      <button class="btn primary" :disabled="!dirty || saving" @click="onSave">
-        {{ saving ? '保存中…' : '保存' }}
-      </button>
-      <button class="btn" :disabled="!dirty || saving" @click="onRevert">撤销</button>
     </div>
     <div class="env">
       <aside class="sidebar">
@@ -22,9 +22,18 @@
             <button class="icon-btn" title="导出配置" @click="exportConfig">↑</button>
           </div>
         </div>
+        <!-- 项目数 > 6 才显示搜索框：少量项目时一眼能看完，搜索反而占空间 -->
+        <div v-if="draft.projects.length > 6" class="project-search">
+          <input
+            v-model="projectFilter"
+            type="search"
+            placeholder="搜索项目"
+            aria-label="搜索项目"
+          />
+        </div>
         <ul class="project-list">
           <li
-            v-for="p in draft.projects"
+            v-for="p in filteredProjects"
             :key="p.id"
             :class="['project-item', { active: p.id === activeId }]"
             @click="activeId = p.id"
@@ -34,6 +43,7 @@
             <span class="count">{{ p.servers.length }}</span>
           </li>
           <li v-if="!draft.projects.length" class="empty">暂无项目，点击 + 新建</li>
+          <li v-else-if="!filteredProjects.length" class="empty">未匹配到项目</li>
         </ul>
       </aside>
 
@@ -69,11 +79,23 @@
         </div>
         <div class="row">
           <label>Token</label>
-          <input
-            v-model="activeProject.token"
-            placeholder="从 /scaffold/accounts 获取你的个人 token"
-            class="grow"
-          />
+          <div class="token-input">
+            <input
+              v-model="activeProject.token"
+              :type="tokenVisible ? 'text' : 'password'"
+              placeholder="从 /scaffold/accounts 获取你的个人 token"
+              autocomplete="off"
+              spellcheck="false"
+              class="grow"
+            />
+            <button
+              type="button"
+              class="token-toggle"
+              :aria-label="tokenVisible ? '隐藏 token' : '显示 token'"
+              :title="tokenVisible ? '隐藏' : '显示'"
+              @click="tokenVisible = !tokenVisible"
+            >{{ tokenVisible ? '🙈' : '👁' }}</button>
+          </div>
         </div>
         <div class="tpl-hint">
           上报时会自动注入 <code class="inline-code">Authorization: Bearer …</code> 与
@@ -129,7 +151,11 @@
                 @input="onHeaderValChange(s, i, ($event.target as HTMLInputElement).value)"
                 placeholder="value"
               />
-              <button class="icon-btn" @click="removeHeader(s, headerEntries(s)[i][0])">×</button>
+              <button
+                class="icon-btn"
+                :aria-label="`移除 Header ${headerEntries(s)[i][0]}`"
+                @click="removeHeader(s, headerEntries(s)[i][0])"
+              >×</button>
             </div>
             <button class="btn small" @click="addHeader(s)">+ 添加 Header</button>
           </div>
@@ -142,8 +168,11 @@
               <option value="multipart">multipart</option>
             </select>
           </div>
-          <div class="row">
+          <div class="row template-row-head">
             <label>Payload 模板</label>
+            <button class="btn small" type="button" @click="openTemplateEditor(s)">
+              ⤢ 大尺寸编辑
+            </button>
           </div>
           <textarea v-model="s.payloadTemplate" class="template" rows="8" />
           <div class="tpl-hint">
@@ -165,6 +194,13 @@
         <p>左侧选择或新建一个项目开始配置。</p>
       </main>
     </div>
+
+    <PayloadEditorModal
+      v-if="editingTemplate"
+      :model-value="editingTemplate.server.payloadTemplate"
+      @save="onTemplateSave"
+      @cancel="editingTemplate = null"
+    />
   </div>
 </template>
 
@@ -179,13 +215,45 @@ import {
   type Project
 } from '@/types/config'
 import { clone } from '@/utils/clone'
+import { confirmDialog } from '../components/confirm'
+import PayloadEditorModal from '../components/PayloadEditorModal.vue'
 
 const { config, loaded, save } = useConfig()
 
 const draft = ref<MooConfig>({ projects: [], globalEnabled: true })
 const activeId = ref<string>('')
-const saving = ref(false)
 const initialized = ref(false)
+/** Token 输入框默认遮罩，眼睛按钮切换显示。录屏/演示场景不暴露明文。 */
+const tokenVisible = ref(false)
+/** 项目列表搜索（项目 > 6 个时显示搜索框） */
+const projectFilter = ref('')
+
+const filteredProjects = computed(() => {
+  const f = projectFilter.value.trim().toLowerCase()
+  if (!f) return draft.value.projects
+  return draft.value.projects.filter((p) => (p.name || '').toLowerCase().includes(f))
+})
+
+/** 大尺寸 payload 模板编辑器：记住当前在编哪个 server 的模板 */
+const editingTemplate = ref<{ server: BugServer } | null>(null)
+function openTemplateEditor(server: BugServer) {
+  editingTemplate.value = { server }
+}
+function onTemplateSave(value: string) {
+  if (editingTemplate.value) {
+    editingTemplate.value.server.payloadTemplate = value
+  }
+  editingTemplate.value = null
+}
+
+// === 自动保存：draft 任何深层变化触发 800ms 防抖，再提交到 config 并落盘 ===
+// 沿用了原有 draft 层是为了在用户高频输入（如 URL 模板）期间避免每次 keystroke
+// 都触发 onConfigChanged → 内容脚本重新匹配的"在键入中已被部分应用"问题。
+type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+const SAVE_DEBOUNCE_MS = 800
+const saveState = ref<SaveState>('idle')
+let saveDebounceTimer: number | undefined
+let savedHideTimer: number | undefined
 
 const toast = ref('')
 const toastKind = ref<'success' | 'error' | 'info'>('info')
@@ -219,25 +287,49 @@ const activeProject = computed<Project | undefined>(() =>
   draft.value.projects.find((p) => p.id === activeId.value)
 )
 
-async function onSave() {
-  saving.value = true
+// 任何 draft 变更 → 防抖 800ms → 落盘
+watch(
+  draft,
+  () => {
+    if (!initialized.value) return
+    if (!dirty.value) return // draft 与 config 等价，不需要再写
+    scheduleSave()
+  },
+  { deep: true }
+)
+
+function scheduleSave() {
+  saveState.value = 'saving'
+  if (saveDebounceTimer) clearTimeout(saveDebounceTimer)
+  saveDebounceTimer = window.setTimeout(doSave, SAVE_DEBOUNCE_MS)
+}
+
+async function doSave() {
+  // 标记防抖 timer 已 fire；若 save 期间用户继续输入会再次 scheduleSave 把它设回 number
+  saveDebounceTimer = undefined
   try {
     config.value = clone(draft.value)
     await save()
-    showToast('已保存', 'success')
+    // 仅在没有后续保存还在路上时才切到 saved，避免来回闪
+    if (!saveDebounceTimer) {
+      saveState.value = 'saved'
+      if (savedHideTimer) clearTimeout(savedHideTimer)
+      savedHideTimer = window.setTimeout(() => {
+        if (saveState.value === 'saved') saveState.value = 'idle'
+      }, 1500)
+    }
   } catch (e) {
-    showToast(`保存失败: ${(e as Error).message}`, 'error')
-  } finally {
-    saving.value = false
+    saveState.value = 'error'
+    showToast(`自动保存失败: ${(e as Error).message}`, 'error')
   }
 }
 
-function onRevert() {
-  if (!confirm('放弃所有未保存修改？')) return
-  draft.value = clone(config.value)
-  if (!draft.value.projects.find((p) => p.id === activeId.value)) {
-    activeId.value = draft.value.projects[0]?.id ?? ''
+function retrySave() {
+  if (saveDebounceTimer) {
+    clearTimeout(saveDebounceTimer)
+    saveDebounceTimer = undefined
   }
+  void doSave()
 }
 
 function addProject() {
@@ -246,8 +338,15 @@ function addProject() {
   activeId.value = p.id
 }
 
-function removeProject(id: string) {
-  if (!confirm('确认删除该项目？(还需点保存生效)')) return
+async function removeProject(id: string) {
+  const proj = draft.value.projects.find((p) => p.id === id)
+  const ok = await confirmDialog({
+    title: '删除项目',
+    message: `项目「${proj?.name || id}」会从草稿中移除；点击"保存"后生效。`,
+    danger: true,
+    confirmText: '删除'
+  })
+  if (!ok) return
   draft.value.projects = draft.value.projects.filter((p) => p.id !== id)
   if (activeId.value === id) {
     activeId.value = draft.value.projects[0]?.id ?? ''
@@ -272,9 +371,16 @@ function addServer() {
   }
 }
 
-function removeServer(id: string) {
+async function removeServer(id: string) {
   if (!activeProject.value) return
-  if (!confirm('确认删除该服务器？(还需点保存生效)')) return
+  const srv = activeProject.value.servers.find((s) => s.id === id)
+  const ok = await confirmDialog({
+    title: '删除服务器',
+    message: `服务器「${srv?.name || id}」会从草稿中移除；点击"保存"后生效。`,
+    danger: true,
+    confirmText: '删除'
+  })
+  if (!ok) return
   activeProject.value.servers = activeProject.value.servers.filter((s) => s.id !== id)
   if (activeProject.value.defaultServerId === id) {
     activeProject.value.defaultServerId = activeProject.value.servers[0]?.id ?? ''
@@ -337,11 +443,16 @@ function importConfig() {
       // 列出所有 host 让用户在落盘前看清楚，避免被预置的恶意 endpoint 偷数据。
       const endpoints = collectEndpoints(parsed.projects)
       if (endpoints.length > 0) {
-        const lines = endpoints.map((e) => `  • ${e}`).join('\n')
-        if (!confirm(
-          `这份配置会把抓取到的数据上报到下列地址：\n\n${lines}\n\n` +
-          `导入后，匹配规则命中时本机的请求 / cookie / storage / 截图都会发往以上地址。\n确认导入？`
-        )) return
+        const ok = await confirmDialog({
+          title: '确认导入配置',
+          message:
+            `这份配置会把抓取到的数据上报到下列地址：\n\n` +
+            endpoints.map((e) => `  • ${e}`).join('\n') +
+            `\n\n导入后，匹配规则命中时本机的请求 / cookie / storage / 截图都会发往以上地址。`,
+          danger: true,
+          confirmText: '导入'
+        })
+        if (!ok) return
       }
       draft.value = {
         projects: parsed.projects,
@@ -399,49 +510,62 @@ function collectEndpoints(projects: unknown[]): string[] {
   background: var(--moo-c-bg);
 }
 
-/* 顶部保存栏 */
+/* 顶部保存状态条（自动保存语义，无手动按钮） */
 .save-bar {
   flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 14px;
+  padding: 6px 14px;
   border-bottom: 1px solid var(--moo-c-border);
   background: var(--moo-c-bg);
-  font-size: var(--moo-fs-sm);
+  font-size: var(--moo-fs-xs);
+  min-height: 28px;
 }
-.save-bar.dirty {
-  background: var(--moo-c-warn-soft);
-  border-bottom-color: #fde68a;
-}
-.save-bar .status-msg { flex: 1; color: var(--moo-c-text-muted); }
-.save-bar.dirty .status-msg { color: var(--moo-c-warn-fg); font-weight: 500; }
-.save-bar .btn {
+.save-bar .status-msg {
+  flex: 1;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  height: 26px;
-  padding: 0 14px;
-  font-size: var(--moo-fs-sm);
-  font-weight: 500;
-  font-family: inherit;
-  border: 1px solid var(--moo-c-border);
-  background: var(--moo-c-bg);
-  color: var(--moo-c-text);
-  border-radius: var(--moo-r-md);
+  gap: 8px;
+  color: var(--moo-c-text-muted);
+  transition: color var(--moo-motion-fast);
+}
+.save-bar.is-saving .status-msg { color: var(--moo-c-text); }
+.save-bar.is-saved  .status-msg { color: var(--moo-c-success); font-weight: 500; }
+.save-bar.is-error  .status-msg { color: var(--moo-c-danger);  font-weight: 500; }
+.save-bar .retry-btn {
+  background: transparent;
+  border: 1px solid var(--moo-c-danger);
+  color: var(--moo-c-danger);
+  border-radius: var(--moo-r-sm);
+  padding: 1px 8px;
+  font-size: var(--moo-fs-xs);
   cursor: pointer;
-  transition: background-color var(--moo-motion-fast), border-color var(--moo-motion-fast);
+  font-family: inherit;
 }
-.save-bar .btn:hover:not(:disabled) { background: var(--moo-c-bg-soft); }
-.save-bar .btn:disabled { opacity: .5; cursor: not-allowed; }
-.save-bar .btn.primary {
-  background: var(--moo-c-brand);
-  color: #fff;
+.save-bar .retry-btn:hover { background: var(--moo-c-danger-soft); }
+
+/* 项目搜索框（项目 > 6 时显示） */
+.project-search {
+  padding: 4px 10px 6px;
+  border-bottom: 1px solid var(--moo-c-divider);
+}
+.project-search input {
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-md);
+  background: var(--moo-c-bg);
+  font-size: var(--moo-fs-xs);
+  font-family: inherit;
+  color: var(--moo-c-text);
+  transition: border-color var(--moo-motion-fast), box-shadow var(--moo-motion-fast);
+}
+.project-search input:focus {
+  outline: none;
   border-color: var(--moo-c-brand);
-}
-.save-bar .btn.primary:hover:not(:disabled) {
-  background: var(--moo-c-brand-hover);
-  border-color: var(--moo-c-brand-hover);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, .15);
 }
 
 /* 主体（侧栏 + 详情） */
@@ -556,6 +680,7 @@ function collectEndpoints(projects: unknown[]): string[] {
   cursor: pointer;
 }
 .row input[type="text"],
+.row input[type="password"],
 .row input:not([type]),
 .row select {
   height: 28px;
@@ -571,15 +696,45 @@ function collectEndpoints(projects: unknown[]): string[] {
   transition: border-color var(--moo-motion-fast), box-shadow var(--moo-motion-fast);
 }
 .row input[type="text"]:focus,
+.row input[type="password"]:focus,
 .row input:not([type]):focus,
 .row select:focus {
   outline: none;
   border-color: var(--moo-c-brand);
   box-shadow: 0 0 0 3px rgba(79, 70, 229, .15);
 }
+
+/* Token 输入框 + 显隐切换 */
+.token-input {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.token-input input { font-family: var(--moo-ff-mono); }
+.token-toggle {
+  flex: 0 0 28px;
+  height: 28px;
+  border: 1px solid var(--moo-c-border);
+  background: var(--moo-c-bg);
+  border-radius: var(--moo-r-md);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  transition: background-color var(--moo-motion-fast), border-color var(--moo-motion-fast);
+}
+.token-toggle:hover { background: var(--moo-c-bg-soft); border-color: var(--moo-c-text-faint); }
 .row .narrow { flex: 0 0 130px; }
 .row .grow   { flex: 1; }
 .row .method { flex: 0 0 90px; }
+
+/* Payload 模板行的头：label + "大尺寸编辑" 按钮齐高 */
+.template-row-head {
+  align-items: center;
+}
+.template-row-head label { flex: 1; }
 
 /* 多行文本 */
 .patterns, .template {

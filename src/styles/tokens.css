@@ -81,6 +81,58 @@
 }
 
 /* ============================================================
+   暗色主题（DevTools 默认深色 + 系统级深色偏好）
+   ------------------------------------------------------------
+   只覆盖 tokens；所有用 var(--moo-c-*) 的组件自动跟随。
+   Content scripts (shadow DOM) 不受影响——它们叠在用户网页上，
+   保持浅色防止和宿主页面冲突。
+   ============================================================ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* === 中性色：反相 + 略微暖一点的深底 === */
+    --moo-c-bg:           #0f172a;   /* slate-900 */
+    --moo-c-bg-soft:      #1e293b;   /* slate-800 */
+    --moo-c-bg-elev:      #334155;   /* slate-700 */
+    --moo-c-border:       #334155;
+    --moo-c-border-soft:  #1e293b;
+    --moo-c-divider:      #1e293b;
+
+    --moo-c-text:         #f1f5f9;   /* slate-100 */
+    --moo-c-text-muted:   #cbd5e1;
+    --moo-c-text-dim:     #94a3b8;
+    --moo-c-text-faint:   #475569;
+
+    /* === 品牌色：深底上调亮 === */
+    --moo-c-brand:        #6366f1;   /* indigo-500 */
+    --moo-c-brand-hover:  #818cf8;
+    --moo-c-brand-soft:   rgba(99, 102, 241, .18);
+    --moo-c-brand-fg:     #ffffff;
+
+    /* === 状态色：soft 用低透明度叠在深底；fg 用浅亮色保证可读 === */
+    --moo-c-success:      #22c55e;
+    --moo-c-success-soft: rgba(34, 197, 94, .18);
+    --moo-c-success-fg:   #86efac;
+
+    --moo-c-warn:         #f59e0b;
+    --moo-c-warn-soft:    rgba(245, 158, 11, .2);
+    --moo-c-warn-fg:      #fcd34d;
+
+    --moo-c-danger:       #ef4444;
+    --moo-c-danger-soft:  rgba(239, 68, 68, .2);
+    --moo-c-danger-fg:    #fca5a5;
+
+    --moo-c-info:         #3b82f6;
+    --moo-c-info-soft:    rgba(59, 130, 246, .2);
+    --moo-c-info-fg:      #93c5fd;
+
+    /* === 阴影：深底上原本的浅阴影几乎看不见，改用更深 + 更高透明 === */
+    --moo-sh-sm: 0 1px 2px rgba(0, 0, 0, .35);
+    --moo-sh-md: 0 4px 12px rgba(0, 0, 0, .4);
+    --moo-sh-lg: 0 12px 32px rgba(0, 0, 0, .55);
+  }
+}
+
+/* ============================================================
    基础组件类（popup / devtools 通用）
    ============================================================ */
 
@@ -135,6 +187,21 @@
 .moo-btn--danger:hover:not(:disabled) {
   background: var(--moo-c-danger-soft);
   border-color: var(--moo-c-danger-soft);
+}
+
+/* 实心危险按钮：用于不可逆操作的主确认（清空历史、删除项目等） */
+.moo-btn--danger-solid {
+  background: var(--moo-c-danger);
+  border-color: var(--moo-c-danger);
+  color: #fff;
+}
+.moo-btn--danger-solid:hover:not(:disabled) {
+  background: var(--moo-c-danger-fg);
+  border-color: var(--moo-c-danger-fg);
+}
+.moo-btn--danger-solid:focus-visible {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, .25);
+  border-color: var(--moo-c-danger);
 }
 
 .moo-btn--ghost {
@@ -233,6 +300,31 @@ textarea.moo-field {
   text-align: center;
 }
 .moo-empty__title { color: var(--moo-c-text-muted); font-size: var(--moo-fs-base); margin-bottom: 4px; }
+
+/* === 关闭按钮（dialog 右上角 ×）===
+   提供一致的视觉 + 默认 aria-label 通过组件使用方覆盖。用 .moo-close-btn 类即可，
+   避免每个对话框各自重复定义。 */
+.moo-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--moo-c-text-dim);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--moo-r-sm);
+  transition: color var(--moo-motion-fast), background-color var(--moo-motion-fast);
+  font-family: inherit;
+}
+.moo-close-btn:hover {
+  color: var(--moo-c-text);
+  background: var(--moo-c-bg-soft);
+}
+.moo-close-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, .22);
+  color: var(--moo-c-text);
+}
 
 /* === Switch（toggle 开关） ===
    写在全局是因为 Settings.vue 里用 h() 渲染的 functional component，

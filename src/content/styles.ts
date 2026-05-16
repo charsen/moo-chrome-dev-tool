@@ -113,6 +113,26 @@ export const SHADOW_CSS = `
 }
 .moo-ball-btn--logo:hover { background: linear-gradient(135deg, #4338ca 0%, #4f46e5 100%); }
 .moo-ball-row.dragging .moo-ball-btn--logo { cursor: grabbing; }
+
+/* 带快捷键标识的按钮（录屏按钮）—— 标签内联显示用户必须用快捷键的事实，
+   不再让用户对一个看似可点击却只弹 toast 的按钮产生错误预期 */
+.moo-ball-btn.moo-ball-btn--with-kbd {
+  width: auto;
+  padding: 0 8px 0 6px;
+  gap: 5px;
+  border-radius: 14px;
+}
+.moo-ball-btn--with-kbd .kbd-tag {
+  font-size: 10px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  background: rgba(15, 23, 42, .08);
+  padding: 1px 5px;
+  border-radius: 4px;
+  line-height: 1.4;
+  letter-spacing: .02em;
+}
 .moo-ball-btn--logo .moo-ball-icon {
   width: 100%;
   height: 100%;
@@ -181,6 +201,24 @@ export const SHADOW_CSS = `
 }
 .moo-ball-action .lab {
   flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 多匹配 picker：项目名 + 下一行 matchPatterns 灰色小字（让用户分清"这俩为什么都匹配"） */
+.moo-ball-action .lab-stack {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+  text-align: left;
+}
+.moo-ball-action .lab-stack .lab { flex: none; line-height: 1.3; }
+.moo-ball-action .lab-stack .lab-sub {
+  font-size: 10px;
+  color: var(--c-text-dim);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -383,10 +421,99 @@ export const SHADOW_CSS = `
 .moo-toolbar button.tool.active {
   background: var(--c-mark);
   color: #fff;
+  /* 强化选中态：内嵌阴影 + 外环，让"当前在哪个工具"一眼可读 */
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .35),
+    inset 0 -2px 0 rgba(0, 0, 0, .18),
+    0 0 0 2px rgba(239, 68, 68, .22);
 }
 .moo-toolbar button.tool.active:hover {
   background: #dc2626;
   color: #fff;
+}
+
+/* 色板 swatch：圆形色块，选中态加白边 + 外环 */
+.moo-toolbar button.swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .85);
+  box-shadow: 0 0 0 1px var(--c-border);
+  transition: transform .12s, box-shadow .12s;
+}
+.moo-toolbar button.swatch:hover { transform: scale(1.08); background: inherit; }
+.moo-toolbar button.swatch.active {
+  box-shadow:
+    0 0 0 1px var(--c-text),
+    0 0 0 4px rgba(15, 23, 42, .12);
+}
+
+/* 线宽按钮：方形按钮内嵌一个圆点表示线宽 */
+.moo-toolbar button.width-btn {
+  width: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.moo-toolbar button.width-btn .width-dot {
+  display: inline-block;
+  border-radius: 50%;
+  background: var(--c-text-muted);
+  transition: background .12s;
+}
+.moo-toolbar button.width-btn.active {
+  background: var(--c-bg-elev);
+  box-shadow: inset 0 0 0 1px var(--c-text-faint, var(--c-border));
+}
+
+/* Annotator 取消保护小卡（已绘标注时点取消会弹这个） */
+.moo-cancel-guard {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  background: rgba(15, 23, 42, .55);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: moo-mask-in .15s;
+}
+.moo-cancel-guard-card {
+  background: var(--c-bg);
+  border-radius: var(--r-lg);
+  padding: 18px 20px 14px;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  box-shadow: var(--sh-lg);
+  animation: moo-dialog-in .18s cubic-bezier(.4, 0, .2, 1);
+}
+.moo-cancel-guard-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text);
+  margin-bottom: 6px;
+}
+.moo-cancel-guard-msg {
+  font-size: 12px;
+  color: var(--c-text-muted);
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+.moo-cancel-guard-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.moo-cancel-guard-actions .moo-btn.primary.danger-confirm {
+  background: var(--c-danger);
+  border-color: var(--c-danger);
+  color: #fff;
+}
+.moo-cancel-guard-actions .moo-btn.primary.danger-confirm:hover {
+  background: var(--c-danger-fg);
+  border-color: var(--c-danger-fg);
 }
 
 /* ============================================
@@ -630,10 +757,16 @@ export const SHADOW_CSS = `
   color: var(--c-text-dim);
 }
 .req-empty {
-  padding: 18px;
+  padding: 16px;
   font-size: 11px;
-  color: var(--c-text-dim);
+  color: var(--c-text-muted);
   text-align: center;
+  line-height: 1.55;
+}
+.req-empty .req-empty-hint {
+  color: var(--c-text-dim);
+  margin-top: 4px;
+  font-size: 10px;
 }
 
 .moo-close-btn {
@@ -650,6 +783,186 @@ export const SHADOW_CSS = `
 .moo-close-btn:hover {
   color: var(--c-text);
   background: var(--c-bg-soft);
+}
+
+/* 缩略图小尺寸：截图作为附件展示，不需要占太大空间 */
+.moo-thumb--sm {
+  max-height: 96px;
+  width: auto;
+}
+
+/* 缩略图容器 + hover overlay（提供"重新标注 / 重新截图"快速入口） */
+.moo-thumb-wrap {
+  position: relative;
+  display: inline-block;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  line-height: 0;
+}
+.moo-thumb-wrap .moo-thumb {
+  display: block;
+  border-radius: var(--r-md);
+}
+.moo-thumb-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, .66);
+  opacity: 0;
+  transition: opacity .15s;
+  line-height: 1.4;
+}
+.moo-thumb-wrap:hover .moo-thumb-overlay,
+.moo-thumb-overlay:focus-within {
+  opacity: 1;
+}
+.moo-thumb-action {
+  background: rgba(255, 255, 255, .96);
+  border: 1px solid rgba(15, 23, 42, .1);
+  color: var(--c-text);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background .12s, transform .12s;
+}
+.moo-thumb-action:hover { background: #fff; transform: translateY(-1px); }
+.moo-thumb-action:active { transform: translateY(0); }
+
+/* Ghost 按钮：用于 dev/debug 二级动作（如"预览 payload"），视觉弱化避免和主提交按钮抢焦点 */
+.moo-btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--c-text-muted);
+}
+.moo-btn.ghost:hover:not(:disabled) {
+  background: var(--c-bg-soft);
+  border-color: var(--c-border);
+  color: var(--c-text);
+}
+
+/* 按钮内的快捷键提示（Esc / ⌘↵） */
+.kbd-hint {
+  margin-left: 6px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--c-text-dim);
+  background: var(--c-bg-elev);
+  border-radius: 3px;
+  line-height: 1.4;
+}
+.moo-btn.primary .kbd-hint {
+  background: rgba(255, 255, 255, .22);
+  color: rgba(255, 255, 255, .9);
+}
+
+/* 提交成功的内嵌反馈面板（替代仅靠 toast 一闪而过） */
+.moo-submit-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 44px 24px 48px;
+  text-align: center;
+  animation: moo-success-in .2s cubic-bezier(.4, 0, .2, 1);
+}
+@keyframes moo-success-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.moo-success-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--c-success);
+  color: #fff;
+  font-size: 32px;
+  line-height: 56px;
+  margin-bottom: 14px;
+  box-shadow: 0 0 0 6px rgba(22, 163, 74, .14);
+  animation: moo-success-pop .35s cubic-bezier(.34, 1.56, .64, 1);
+}
+@keyframes moo-success-pop {
+  from { transform: scale(.4); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+.moo-success-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--c-text);
+  margin-bottom: 8px;
+}
+.moo-success-id {
+  font-size: 12px;
+  color: var(--c-text-muted);
+  margin-bottom: 6px;
+}
+.moo-success-id code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  background: var(--c-bg-elev);
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  color: var(--c-text);
+  font-size: 12px;
+}
+.moo-success-msg {
+  font-size: 11px;
+  color: var(--c-text-dim);
+}
+
+/* 折叠附件组（请求 / 错误 / 元素）——基于原生 <details> 实现，
+   a11y 和键盘交互（Enter/Space 展开）由浏览器内置 */
+.moo-attach {
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-bg);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.moo-attach-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  background: var(--c-bg-soft);
+  font-size: 12px;
+  color: var(--c-text);
+  font-weight: 500;
+  transition: background .12s;
+}
+.moo-attach-hd:hover { background: var(--c-bg-elev); }
+.moo-attach-hd::-webkit-details-marker { display: none; }
+.moo-attach-chev {
+  display: inline-block;
+  font-size: 10px;
+  color: var(--c-text-dim);
+  transition: transform .15s;
+  flex: 0 0 10px;
+}
+.moo-attach[open] > .moo-attach-hd > .moo-attach-chev { transform: rotate(90deg); }
+.moo-attach-title { flex: 0 0 auto; }
+.moo-attach-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--c-text-dim);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+.moo-attach-bd {
+  padding: 10px 12px 12px;
+  background: var(--c-bg);
+}
+.moo-attach-bd > .req-panel {
+  /* 在 attach-bd 容器里 req-panel 不再需要外框，直接展开内容 */
+  border: none;
 }
 
 /* ============================================
