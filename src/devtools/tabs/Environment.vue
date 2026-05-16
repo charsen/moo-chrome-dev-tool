@@ -205,11 +205,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useConfig } from '@/composables/useConfig'
 import {
   createDefaultProject,
   createDefaultServer,
+  normalizeProject,
   type BugServer,
   type MooConfig,
   type Project
@@ -331,6 +332,14 @@ function retrySave() {
   }
   void doSave()
 }
+
+// 切 tab 时清掉所有 pending timer，否则切走后 doSave 还会执行写陈旧 draft，
+// savedHideTimer / toastTimer 同样要清，避免 setState 到已销毁的 ref
+onBeforeUnmount(() => {
+  if (saveDebounceTimer) { clearTimeout(saveDebounceTimer); saveDebounceTimer = undefined }
+  if (savedHideTimer)    { clearTimeout(savedHideTimer);    savedHideTimer = undefined }
+  if (toastTimer)        { clearTimeout(toastTimer);        toastTimer = undefined }
+})
 
 function addProject() {
   const p = createDefaultProject(`项目 ${draft.value.projects.length + 1}`)
@@ -454,8 +463,10 @@ function importConfig() {
         })
         if (!ok) return
       }
+      // 逐个 project normalize：导入他人或老版本 JSON 时可能缺 capture/redact/servers 等字段，
+      // 走 normalize 兜底，避免后续 UI 读取 active.capture.xxx 时炸
       draft.value = {
-        projects: parsed.projects,
+        projects: parsed.projects.map(normalizeProject),
         globalEnabled: typeof parsed.globalEnabled === 'boolean' ? parsed.globalEnabled : true
       }
       activeId.value = draft.value.projects[0]?.id ?? ''

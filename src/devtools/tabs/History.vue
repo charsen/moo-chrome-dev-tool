@@ -159,7 +159,10 @@ onMounted(async () => {
   dispose = onHistoryChanged(() => reload())
 })
 
-onBeforeUnmount(() => dispose?.())
+onBeforeUnmount(() => {
+  dispose?.()
+  if (toastTimer) { clearTimeout(toastTimer); toastTimer = undefined }
+})
 
 const filtered = computed(() => {
   if (!filter.value.trim()) return list.value

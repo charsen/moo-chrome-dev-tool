@@ -272,7 +272,23 @@ watch(
 // 但若用户主动手动取消勾选某条，再调窗口/过滤，会被这个 watch 覆盖。
 // 当前定位是"打开 dialog → 默认全勾"为主路径，手动调整后切窗口会重算，可接受。
 
-selectedErrIds.value = new Set(props.errors.map((e) => e.id))
+// 跟随 props.errors 变化：dialog 打开后新进来的 error 也自动勾选
+// （之前是一次性赋值，新 error 不会被默认勾上，跟 selectedIds 的 watch 行为不一致）
+// 用 prevErrorIds 记住"上次看到的 id"，只把**真新增**的 id 加入勾选，
+// 不会覆盖用户主动取消勾选的状态
+let prevErrorIds = new Set<string>()
+watch(
+  () => props.errors,
+  (arr) => {
+    const next = new Set(selectedErrIds.value)
+    for (const e of arr) {
+      if (!prevErrorIds.has(e.id)) next.add(e.id)
+    }
+    prevErrorIds = new Set(arr.map((e) => e.id))
+    selectedErrIds.value = next
+  },
+  { immediate: true }
+)
 
 function toggle(id: string) {
   const next = new Set(selectedIds.value)

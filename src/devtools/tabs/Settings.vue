@@ -155,7 +155,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, ref, onMounted, watch } from 'vue'
+import { computed, h, ref, onBeforeUnmount, onMounted, watch } from 'vue'
 import type { MooConfig, Project } from '@/types/config'
 import { loadConfig, saveConfig } from '@/storage/config'
 import { listHistory, clearHistory } from '@/storage/history'
@@ -324,6 +324,12 @@ async function clearQueue() {
     busy.value = ''
   }
 }
+
+// 切 tab 时清掉 pending timer，避免在已销毁组件上 setState
+onBeforeUnmount(() => {
+  if (savedTimer) { clearTimeout(savedTimer); savedTimer = undefined }
+  if (toastTimer) { clearTimeout(toastTimer); toastTimer = undefined }
+})
 
 // ===================================================================
 // 子组件（保持本文件简短，inline 定义）

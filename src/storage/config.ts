@@ -1,4 +1,5 @@
 import type { BugServer, MooConfig, Project } from '@/types/config'
+import { normalizeProject } from '@/types/config'
 
 const CONFIG_KEY = 'mooConfig'
 
@@ -10,7 +11,9 @@ const DEFAULT_CONFIG: MooConfig = {
 function normalizeConfig(raw: Partial<MooConfig> | undefined | null): MooConfig {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_CONFIG }
   return {
-    projects: Array.isArray(raw.projects) ? raw.projects : [],
+    // 逐个 project normalize：兜底老 storage 里缺 capture/redact 等字段的项目，
+    // 避免下游访问 active.capture.requestBufferSize 时 throw
+    projects: Array.isArray(raw.projects) ? raw.projects.map(normalizeProject) : [],
     globalEnabled: typeof raw.globalEnabled === 'boolean' ? raw.globalEnabled : true
   }
 }

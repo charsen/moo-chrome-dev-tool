@@ -233,9 +233,22 @@ onMounted(async () => {
   window.addEventListener('keydown', onKey)
 })
 
+// 跟踪活跃的 pointer capture，用户在拖拽中 Esc / 关闭 Annotator 时能释放
+let activeCaptureEl: HTMLElement | null = null
+let activeCapturePid: number | null = null
+function detachPointer() {
+  window.removeEventListener('pointermove', onMove)
+  window.removeEventListener('pointerup', onUp)
+  if (activeCaptureEl != null && activeCapturePid != null) {
+    try { activeCaptureEl.releasePointerCapture(activeCapturePid) } catch {}
+  }
+  activeCaptureEl = null
+  activeCapturePid = null
+}
+
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)
-  window.removeEventListener('pointermove', onMove)
+  detachPointer()
 })
 
 const TOOL_KEY_MAP: Record<string, Mode> = {
@@ -307,7 +320,9 @@ function onDown(e: PointerEvent) {
     redraw() // 把选中高亮立刻画出来
     beginAction()
     moving = { idx: hit, startPX: p.x, startPY: p.y, orig: clone(items.value[hit]) }
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    activeCaptureEl = e.currentTarget as HTMLElement
+    activeCapturePid = e.pointerId
+    activeCaptureEl.setPointerCapture(activeCapturePid)
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp, { once: true })
     return
@@ -346,7 +361,9 @@ function onDown(e: PointerEvent) {
   } else if (mode.value === 'mosaic') {
     items.value.push({ type: 'mosaic', x: p.x, y: p.y, w: 0, h: 0, block: mosaicBlock })
   }
-  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  activeCaptureEl = e.currentTarget as HTMLElement
+  activeCapturePid = e.pointerId
+  activeCaptureEl.setPointerCapture(activeCapturePid)
   window.addEventListener('pointermove', onMove)
   window.addEventListener('pointerup', onUp, { once: true })
 }
@@ -388,7 +405,7 @@ function onMove(e: PointerEvent) {
 }
 
 function onUp() {
-  window.removeEventListener('pointermove', onMove)
+  detachPointer()
   if (moving) {
     // 没拖动 = 单纯选中（selectedIdx 已在 onDown 设过）；丢弃 pendingSnapshot
     // 拖动了 = 一次有效"移动"动作，commit 进 history
@@ -711,6 +728,8 @@ function cancel() {
 function doCancel() {
   cancelGuard.value = false
   window.removeEventListener('keydown', onKey)
+  // 拖拽中按 Esc → cancel 时如果 pointer capture 还在身上，必须释放
+  detachPointer()
   emit('cancel')
 }
 

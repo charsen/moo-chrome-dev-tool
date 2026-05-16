@@ -108,6 +108,59 @@ export function createDefaultProject(name = '新项目'): Project {
   }
 }
 
+/**
+ * 把任意 raw 数据补齐成合法 Project：未知/缺失字段用默认值兜底。
+ * 用于：
+ * - storage/config.ts loadConfig：老 storage 里 v0.0.x 时缺 capture/redact 的 project
+ * - Environment.vue importConfig：用户导入他人 JSON 时可能没有所有字段
+ *
+ * **不抛**，能容忍多脏数据；返回的对象一定满足 Project schema，所有读取点直接用即可。
+ */
+export function normalizeProject(raw: unknown): Project {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<Project>
+  const capture = (r.capture && typeof r.capture === 'object' ? r.capture : {}) as Partial<CaptureConfig>
+  const redact = (r.redact && typeof r.redact === 'object' ? r.redact : {}) as Partial<RedactConfig>
+  return {
+    id: typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID(),
+    name: typeof r.name === 'string' ? r.name : '新项目',
+    matchPatterns: Array.isArray(r.matchPatterns) ? r.matchPatterns.filter((x): x is string => typeof x === 'string') : [],
+    servers: Array.isArray(r.servers) ? r.servers.map(normalizeServer) : [],
+    defaultServerId: typeof r.defaultServerId === 'string' ? r.defaultServerId : '',
+    capture: {
+      requests: typeof capture.requests === 'boolean' ? capture.requests : DEFAULT_CAPTURE.requests,
+      consoleErrors: typeof capture.consoleErrors === 'boolean' ? capture.consoleErrors : DEFAULT_CAPTURE.consoleErrors,
+      storageKeys: Array.isArray(capture.storageKeys) ? capture.storageKeys.filter((x): x is string => typeof x === 'string') : [],
+      requestBufferSize: typeof capture.requestBufferSize === 'number' && capture.requestBufferSize >= 5 ? Math.min(500, Math.round(capture.requestBufferSize)) : DEFAULT_CAPTURE.requestBufferSize
+    },
+    redact: {
+      headerKeys: Array.isArray(redact.headerKeys) ? redact.headerKeys.filter((x): x is string => typeof x === 'string') : [...DEFAULT_REDACT.headerKeys],
+      bodyKeys: Array.isArray(redact.bodyKeys) ? redact.bodyKeys.filter((x): x is string => typeof x === 'string') : [...DEFAULT_REDACT.bodyKeys],
+      maskPasswordInputs: typeof redact.maskPasswordInputs === 'boolean' ? redact.maskPasswordInputs : DEFAULT_REDACT.maskPasswordInputs
+    },
+    enabled: typeof r.enabled === 'boolean' ? r.enabled : true,
+    token: typeof r.token === 'string' ? r.token : undefined
+  }
+}
+
+function normalizeServer(raw: unknown): BugServer {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<BugServer>
+  const headers = (r.headers && typeof r.headers === 'object' ? r.headers : {}) as Record<string, unknown>
+  const cleanHeaders: Record<string, string> = {}
+  for (const [k, v] of Object.entries(headers)) {
+    if (typeof v === 'string') cleanHeaders[k] = v
+  }
+  return {
+    id: typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID(),
+    name: typeof r.name === 'string' ? r.name : '服务器',
+    method: r.method === 'PUT' || r.method === 'PATCH' ? r.method : 'POST',
+    endpoint: typeof r.endpoint === 'string' ? r.endpoint : '',
+    headers: cleanHeaders,
+    imageField: typeof r.imageField === 'string' ? r.imageField : 'image',
+    imageFormat: r.imageFormat === 'multipart' ? 'multipart' : 'base64',
+    payloadTemplate: typeof r.payloadTemplate === 'string' ? r.payloadTemplate : DEFAULT_PAYLOAD_TEMPLATE
+  }
+}
+
 export function createDefaultServer(name = '新服务器'): BugServer {
   return {
     id: crypto.randomUUID(),
