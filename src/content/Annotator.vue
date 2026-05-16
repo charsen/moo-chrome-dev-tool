@@ -291,6 +291,17 @@ function onKey(e: KeyboardEvent) {
     deleteSelected()
     return
   }
+  // ⌘C 复制选中、⌘V 粘贴（clipboard 仅在 Annotator 内存活，不跨 session）
+  if (mod && (e.key === 'c' || e.key === 'C') && selectedIdx.value >= 0) {
+    e.preventDefault()
+    copySelected()
+    return
+  }
+  if (mod && (e.key === 'v' || e.key === 'V') && annoClipboard) {
+    e.preventDefault()
+    pasteFromClipboard()
+    return
+  }
   // 方向键微移选中（无修饰 1px / Shift 10px），鼠标精度不够时用得上
   if (selectedIdx.value >= 0 && !mod && !e.altKey) {
     const ARROW: Record<string, [number, number]> = {
@@ -717,6 +728,29 @@ function deleteSelected() {
   beginAction()
   items.value.splice(idx, 1)
   selectedIdx.value = -1
+  commitAction()
+  redraw()
+}
+
+/** 复制粘贴：模块内存级 clipboard（不接 navigator.clipboard，因为我们存 Item 对象不是字符串） */
+let annoClipboard: Item | null = null
+function copySelected() {
+  const it = items.value[selectedIdx.value]
+  if (!it) return
+  annoClipboard = clone(it)
+}
+function pasteFromClipboard() {
+  if (!annoClipboard) return
+  beginAction()
+  const it = clone(annoClipboard)
+  const OFFSET = 20
+  if (it.type === 'arrow') {
+    it.x1 += OFFSET; it.y1 += OFFSET; it.x2 += OFFSET; it.y2 += OFFSET
+  } else {
+    it.x += OFFSET; it.y += OFFSET
+  }
+  items.value.push(it)
+  selectedIdx.value = items.value.length - 1
   commitAction()
   redraw()
 }

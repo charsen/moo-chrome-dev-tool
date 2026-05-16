@@ -59,11 +59,21 @@
       <p class="hint">在 DevTools → <b>Moo</b> → <b>环境</b> 中修改匹配规则后保存。</p>
     </section>
 
-    <!-- 3. 完全没配置 -->
+    <!-- 3. 完全没配置 = 首次使用引导 -->
     <section v-else class="state state--empty">
-      <div class="empty-illust">📋</div>
-      <div class="state-title">还没有项目</div>
-      <p class="hint">打开 DevTools（F12）→ <b>Moo</b> 面板 → "环境" Tab 新建项目。</p>
+      <div class="empty-illust">👋</div>
+      <div class="state-title">{{ firstRun ? '欢迎使用 Moo Dev Tool' : '还没有项目' }}</div>
+      <p class="hint" v-if="firstRun">
+        这是个前后端调试工具，配好<b>项目</b> + <b>上报服务器</b>后，
+        网页里会出现悬浮球——一键截图/录屏 + 自动抓现场，提交到你的 bug 系统。
+      </p>
+      <ol class="onboard-steps">
+        <li>按 <span class="kbd">F12</span> 打开 DevTools</li>
+        <li>切到 <b>Moo</b> 面板 → <b>环境</b> Tab</li>
+        <li>点 <b>+</b> 新建项目，填名字 + URL 匹配规则（如 <code>https://*.example.com/*</code>）</li>
+        <li v-if="firstRun">配好后回到这个页面，悬浮球会自动出现</li>
+      </ol>
+      <button v-if="firstRun" class="onboard-cta" @click="dismissOnboard">我看完了 →</button>
     </section>
 
     <footer class="foot">
@@ -84,6 +94,15 @@ import { loadConfig, urlMatches } from '@/storage/config'
 
 const version = ref(chrome.runtime.getManifest().version)
 const logoUrl = chrome.runtime.getURL('icons/icon-48.png')
+const ONBOARD_KEY = 'mooOnboardedAt'
+const firstRun = ref(false)
+
+async function dismissOnboard() {
+  firstRun.value = false
+  try {
+    await chrome.storage.local.set({ [ONBOARD_KEY]: Date.now() })
+  } catch {}
+}
 const matched = ref<Project[]>([])
 const projects = ref<Project[]>([])
 const currentUrl = ref('')
@@ -100,6 +119,11 @@ onMounted(async () => {
       matched.value = cfg.projects.filter(
         (p) => p.enabled && p.matchPatterns.some((pat) => urlMatches(tab.url!, pat))
       )
+    }
+    // 首次使用判定：没建过项目 + 没标记过"看完引导"。两条都满足才算"new user"
+    if (projects.value.length === 0) {
+      const r = await chrome.storage.local.get(ONBOARD_KEY)
+      if (!r[ONBOARD_KEY]) firstRun.value = true
     }
   } finally {
     loading.value = false
@@ -270,7 +294,40 @@ onMounted(async () => {
   text-align: right;
 }
 
-.empty-illust { font-size: 28px; opacity: .6; margin-bottom: 6px; }
+.empty-illust { font-size: 28px; opacity: .8; margin-bottom: 6px; }
+
+.onboard-steps {
+  text-align: left;
+  margin: 10px 0 0;
+  padding-left: 22px;
+  font-size: var(--moo-fs-xs);
+  color: var(--moo-c-text-muted);
+  line-height: 1.7;
+}
+.onboard-steps li { margin: 2px 0; }
+.onboard-steps b { color: var(--moo-c-text); font-weight: 600; }
+.onboard-steps code {
+  font-family: var(--moo-ff-mono);
+  font-size: 10px;
+  background: var(--moo-c-bg-elev);
+  padding: 1px 5px;
+  border-radius: var(--moo-r-sm);
+  color: var(--moo-c-text);
+}
+.onboard-cta {
+  margin-top: 12px;
+  background: var(--moo-c-brand);
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: var(--moo-r-md);
+  font-family: inherit;
+  font-size: var(--moo-fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--moo-motion-fast);
+}
+.onboard-cta:hover { background: var(--moo-c-brand-hover); }
 
 .hint {
   margin: 10px 0 0;

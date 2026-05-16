@@ -168,9 +168,15 @@ const filtered = computed(() => {
   if (!filter.value.trim()) return list.value
   const f = filter.value.trim().toLowerCase()
   return list.value.filter((e) =>
+    // 列表字段
     e.title.toLowerCase().includes(f) ||
     e.url.toLowerCase().includes(f) ||
-    e.description.toLowerCase().includes(f)
+    e.description.toLowerCase().includes(f) ||
+    // 详情字段：附带请求 URL / 错误 message（之前只能匹配标题，深层 grep 找不到）
+    e.requests.some((r) => r.url.toLowerCase().includes(f)) ||
+    e.errors.some((err) => err.message.toLowerCase().includes(f)) ||
+    // 服务端响应正文（如果存了）
+    (e.result.body?.toLowerCase().includes(f) ?? false)
   )
 })
 

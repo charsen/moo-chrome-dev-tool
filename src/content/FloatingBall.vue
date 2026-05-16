@@ -103,13 +103,66 @@ let downAt = { x: 0, y: 0 }
 let originPos = { x: 0, y: 0 }
 let moved = false
 
+/** 估算的悬浮球尺寸（实际 156×46，留一点 safety margin 给 hover 阴影） */
+const BALL_W = 170
+const BALL_H = 56
+const MARGIN = 16
+
+let hasSavedPos = false
 try {
   const saved = localStorage.getItem(POS_KEY)
   if (saved) {
     const obj = JSON.parse(saved)
-    if (typeof obj.x === 'number' && typeof obj.y === 'number') pos.value = obj
+    if (typeof obj.x === 'number' && typeof obj.y === 'number') {
+      pos.value = obj
+      hasSavedPos = true
+    }
   }
 } catch {}
+
+/**
+ * 检测候选位置是否被宿主页面的 fixed/sticky 元素遮挡。
+ * 用 elementsFromPoint 采样 5 个点（4 角 + 中心），比起遍历 querySelectorAll('*')
+ * + getComputedStyle 在大页面上快一个数量级。
+ */
+function isBlockedByFixed(x: number, y: number): boolean {
+  const points: [number, number][] = [
+    [x + 4, y + 4],
+    [x + BALL_W - 4, y + 4],
+    [x + 4, y + BALL_H - 4],
+    [x + BALL_W - 4, y + BALL_H - 4],
+    [x + BALL_W / 2, y + BALL_H / 2]
+  ]
+  for (const [px, py] of points) {
+    if (px < 0 || py < 0 || px >= window.innerWidth || py >= window.innerHeight) continue
+    const els = document.elementsFromPoint(px, py)
+    for (const el of els) {
+      if (el === document.documentElement || el === document.body) continue
+      // 注意：自己的 shadow host 也会出现在这里，跳过它本身
+      if (el.id === '__moo_dev_tool_host__') continue
+      const cs = window.getComputedStyle(el)
+      if (cs.position === 'fixed' || cs.position === 'sticky') return true
+    }
+  }
+  return false
+}
+
+/** 默认位置候选：从右下开始，按"用户最不可能放真东西"的顺序回退 */
+function pickGoodDefaultPos(): { x: number; y: number } {
+  const W = window.innerWidth
+  const H = window.innerHeight
+  const candidates: { x: number; y: number }[] = [
+    { x: W - BALL_W - MARGIN, y: H - BALL_H - MARGIN }, // 右下（首选）
+    { x: MARGIN,              y: H - BALL_H - MARGIN }, // 左下
+    { x: W - BALL_W - MARGIN, y: MARGIN              }, // 右上
+    { x: MARGIN,              y: MARGIN              }, // 左上
+    { x: W - BALL_W - MARGIN, y: Math.round(H / 2)    } // 中右
+  ]
+  for (const c of candidates) {
+    if (!isBlockedByFixed(c.x, c.y)) return c
+  }
+  return candidates[0] // 全冲突也只能退回右下
+}
 
 /** 单匹配时进入页面就自动选定；多匹配则等用户点 picker */
 function autoPickIfSingle() {
@@ -123,6 +176,10 @@ function autoPickIfSingle() {
 }
 
 onMounted(() => {
+  // 没有用户保存过的位置时，按宿主页 fixed/sticky 元素挑一个不冲突的角落
+  if (!hasSavedPos) {
+    pos.value = pickGoodDefaultPos()
+  }
   autoPickIfSingle()
   window.addEventListener('resize', onResize)
 })
