@@ -131,7 +131,7 @@ async function syncRemoteStatus() {
     await safeSendMessage({ type: MSG.REFRESH_HISTORY_STATUS, source: 'devtools' })
     await reload()
   } catch (e) {
-    showToast(`同步失败: ${(e as Error).message}`, 'error')
+    showToast(`没能从服务端拉到最新状态：${(e as Error).message}。可能 endpoint 不可达，请确认服务端在线`, 'error')
   } finally {
     syncing.value = false
   }
@@ -217,10 +217,10 @@ function formatTime(ts: number) {
 
 async function remove(id: string) {
   const ok = await confirmDialog({
-    title: '删除该条记录',
-    message: '该记录将从本地历史中移除。',
+    title: '从本地历史里删掉这条？',
+    message: '只删本地的提交记录，服务端已经收到的 bug 不会受影响。删了之后无法找回。',
     danger: true,
-    confirmText: '删除'
+    confirmText: '确认删除'
   })
   if (!ok) return
   await removeHistory(id)
@@ -228,10 +228,10 @@ async function remove(id: string) {
 
 async function clearAll() {
   const ok = await confirmDialog({
-    title: '清空全部历史',
-    message: '将删除所有本地历史记录，操作不可恢复。',
+    title: `清空 ${list.value.length} 条本地历史？`,
+    message: '只清本地的提交记录，服务端已经收到的 bug 不会受影响。清完无法找回。',
     danger: true,
-    confirmText: '清空'
+    confirmText: '确认清空'
   })
   if (!ok) return
   await clearHistory()
@@ -271,7 +271,7 @@ async function resubmit(e: BugHistoryEntry) {
       const { message } = formatSubmitResult(res)
       showToast(message, res.ok ? 'success' : 'error')
     } catch (err) {
-      showToast(`重发失败: ${(err as MessagingError).message}`, 'error')
+      showToast(`重发失败：${(err as MessagingError).message}。可能 background 后台被回收，请刷新页面后重试`, 'error')
     }
   } finally {
     busyId.value = ''

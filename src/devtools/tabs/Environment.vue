@@ -6,7 +6,7 @@
       <span class="status-msg">
         <template v-if="saveState === 'saving'">保存中…</template>
         <template v-else-if="saveState === 'error'">
-          ⚠ 保存失败 — 检查 chrome.storage 配额或重试
+          ⚠ 保存没成功 — 可能 chrome.storage 配额满了，请点「重试」或清理一些项目
           <button class="retry-btn" @click="retrySave">重试</button>
         </template>
         <template v-else>✓ 已自动保存</template>
@@ -321,7 +321,7 @@ async function doSave() {
     }
   } catch (e) {
     saveState.value = 'error'
-    showToast(`自动保存失败: ${(e as Error).message}`, 'error')
+    showToast(`改动没保存成功：${(e as Error).message}。点击顶部的"重试"按钮再试一次`, 'error')
   }
 }
 
@@ -349,11 +349,12 @@ function addProject() {
 
 async function removeProject(id: string) {
   const proj = draft.value.projects.find((p) => p.id === id)
+  const serverCount = proj?.servers.length ?? 0
   const ok = await confirmDialog({
-    title: '删除项目',
-    message: `项目「${proj?.name || id}」会从草稿中移除；点击"保存"后生效。`,
+    title: `删除项目「${proj?.name || '(未命名)'}」？`,
+    message: `项目下的 ${serverCount} 个上报服务器配置会一起被删，0.8 秒后自动保存到本地。\n该域名下的网页不再显示悬浮球。`,
     danger: true,
-    confirmText: '删除'
+    confirmText: '确认删除'
   })
   if (!ok) return
   draft.value.projects = draft.value.projects.filter((p) => p.id !== id)
@@ -384,10 +385,10 @@ async function removeServer(id: string) {
   if (!activeProject.value) return
   const srv = activeProject.value.servers.find((s) => s.id === id)
   const ok = await confirmDialog({
-    title: '删除服务器',
-    message: `服务器「${srv?.name || id}」会从草稿中移除；点击"保存"后生效。`,
+    title: `删除服务器「${srv?.name || '(未命名)'}」？`,
+    message: '服务器配置（endpoint / headers / 模板）会被删除，0.8 秒后自动保存。\n如果是当前项目的唯一服务器，删完后这个项目暂时无法上报。',
     danger: true,
-    confirmText: '删除'
+    confirmText: '确认删除'
   })
   if (!ok) return
   activeProject.value.servers = activeProject.value.servers.filter((s) => s.id !== id)
@@ -445,7 +446,7 @@ function importConfig() {
       const text = await file.text()
       const parsed = JSON.parse(text)
       if (!Array.isArray(parsed.projects)) {
-        showToast('文件格式不正确', 'error')
+        showToast('这个 JSON 文件格式不对（应该有顶层 projects 数组）。请确认是 Moo 导出的配置文件', 'error')
         return
       }
       // 安全确认：导入他人配置 = 同意把本机抓取的请求/cookie/storage 发到这些 endpoint。
@@ -471,7 +472,7 @@ function importConfig() {
       }
       activeId.value = draft.value.projects[0]?.id ?? ''
     } catch (e) {
-      showToast(`导入失败: ${(e as Error).message}`, 'error')
+      showToast(`没能读取这个文件：${(e as Error).message}。请确认是 Moo 导出的 JSON 配置文件`, 'error')
     }
   }
   input.click()

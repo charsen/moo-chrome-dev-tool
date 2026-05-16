@@ -25,7 +25,7 @@
           :style="{ fontSize: textFontPx * displayScale + 'px' }"
           @keydown.enter.prevent="commitText"
           @keydown.escape.prevent="cancelText"
-          placeholder="输入文字 → ✓ 确认 / ✕ 取消"
+          placeholder="输入文字，回车确认 / Esc 取消"
         />
         <button class="moo-text-btn ok" @click="commitText" title="确认 (Enter)">✓</button>
         <button class="moo-text-btn cancel" @click="cancelText" title="取消 (Esc)">✕</button>

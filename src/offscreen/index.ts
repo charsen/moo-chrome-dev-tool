@@ -46,7 +46,7 @@ chrome.runtime.onMessage.addListener((msg: Msg, _sender, sendResponse) => {
 })
 
 async function handleStart(streamId: string): Promise<{ ok: boolean; error?: string }> {
-  if (recorder) return { ok: false, error: '已在录制中' }
+  if (recorder) return { ok: false, error: '当前已经在录制了，请先停止再开始新录制' }
   try {
     // tabCapture 拿到的 streamId 走这种"曾用名"路径取流；视频走 mandatory，audio 留给后续可选。
     // 必须显式给 min/max 分辨率：tabCapture 不指定时会默认 640x480，1920+ 的 tab 会被压成中间一小块、四周黑边。
@@ -67,7 +67,7 @@ async function handleStart(streamId: string): Promise<{ ok: boolean; error?: str
       }
     })
   } catch (e) {
-    return { ok: false, error: '获取流失败：' + (e as Error).message }
+    return { ok: false, error: '没拿到屏幕画面流：' + (e as Error).message + '（如果浏览器弹了选择窗口，需要点"分享"才能继续）' }
   }
 
   chunks = []
@@ -79,7 +79,7 @@ async function handleStart(streamId: string): Promise<{ ok: boolean; error?: str
       : new MediaRecorder(stream!)
   } catch (e) {
     cleanup()
-    return { ok: false, error: '创建 MediaRecorder 失败：' + (e as Error).message }
+    return { ok: false, error: '浏览器版本不支持录屏：' + (e as Error).message + '（需要 Chrome 109+）' }
   }
 
   recorder.ondataavailable = (e) => {
@@ -113,7 +113,7 @@ async function handleStart(streamId: string): Promise<{ ok: boolean; error?: str
 function handleStop(): Promise<{ ok: boolean; dataUrl?: string; bytes?: number; mime?: string; error?: string }> {
   return new Promise((resolve) => {
     if (!recorder) {
-      resolve({ ok: false, error: '当前未在录制' })
+      resolve({ ok: false, error: '没有正在进行的录制（可能扩展刚被重新加载，状态丢了。请重新开始录制）' })
       return
     }
     stopResolver = resolve
@@ -125,7 +125,7 @@ function handleStop(): Promise<{ ok: boolean; dataUrl?: string; bytes?: number; 
       }
     } else {
       // 状态异常，强制结束
-      resolve({ ok: false, error: 'recorder inactive' })
+      resolve({ ok: false, error: '录制器状态异常，强制结束。请重新开始录制' })
       stopResolver = null
       cleanup()
     }

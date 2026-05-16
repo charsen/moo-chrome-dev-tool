@@ -68,13 +68,14 @@
           <label for="moo-server">服务器</label>
           <div class="server-pick">
             <select id="moo-server" v-model="serverId">
-              <option v-if="!project.servers.length" disabled value="">无可用服务器，请先在 DevTools 配置</option>
+              <option v-if="!project.servers.length" disabled value="">还没有上报服务器 —— 请先到 DevTools → Moo → 环境 → 新建一个</option>
               <option v-for="s in project.servers" :key="s.id" :value="s.id">
-                {{ s.name }} — {{ s.endpoint || '(未配置 endpoint)' }}
+                {{ s.name }} — {{ s.endpoint || '(尚未填 URL)' }}
               </option>
             </select>
             <div v-if="serverEndpointMissing" class="server-warn">
-              ⚠ 该服务器 endpoint 是空的。请去 <b>DevTools → Moo → 环境</b> 给「{{ currentServer?.name }}」填上 URL 后再提交。
+              ⚠ 服务器「{{ currentServer?.name }}」还没填 URL，提交会失败。<br>
+              请打开 <b>DevTools → Moo → 环境</b>，找到这个服务器把 <b>endpoint</b> 字段填上（比如 <code>http://localhost:3000/bugs</code>），然后回来点提交。
             </div>
           </div>
         </div>
@@ -403,7 +404,7 @@ async function onPreview() {
       })) as PreviewPayloadRes
       preview.value = res.rendered
     } catch (err) {
-      preview.value = `预览失败: ${(err as Error).message}`
+      preview.value = `生成预览时出错：${(err as Error).message}\n（可能 payload 模板里有语法问题，去 DevTools → Moo → 环境 → 上报服务器 → Payload 模板 检查一下）`
     }
   } finally {
     previewing.value = false

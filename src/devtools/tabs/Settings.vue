@@ -262,11 +262,11 @@ watch(
 
 const bufferSizeError = computed<string>(() => {
   const v = String(bufferSizeDraft.value ?? '').trim()
-  if (!v) return '不能为空'
+  if (!v) return '请填一个数字（5–500 之间）'
   const n = Number(v)
-  if (!Number.isFinite(n)) return '需为数字'
-  if (n < 5) return '不能小于 5'
-  if (n > 500) return '不能大于 500'
+  if (!Number.isFinite(n)) return '只能填数字'
+  if (n < 5) return '至少留 5 条，否则页面只发 1-2 次请求就抓不到现场了'
+  if (n > 500) return '最多 500 条；再多会占用太多内存且没必要'
   return ''
 })
 
@@ -290,19 +290,19 @@ function onBufferSizeCommit() {
 async function clearHistoryAll() {
   const n = historyCount.value
   const ok = await confirmDialog({
-    title: '清空所有历史记录',
-    message: `将删除 ${n} 条记录，操作不可恢复。`,
+    title: `清空 ${n} 条历史记录？`,
+    message: `本地保留的 ${n} 条 bug 提交记录会全部删除，并且无法找回。\n服务端已经收到的 bug 数据不会受影响。`,
     danger: true,
-    confirmText: '清空'
+    confirmText: '确认清空'
   })
   if (!ok) return
   busy.value = 'history'
   try {
     await clearHistory()
     await refreshStats()
-    showToast(`已清空 ${n} 条历史`, 'success')
+    showToast(`已删除 ${n} 条本地历史`, 'success')
   } catch (e) {
-    showToast(`清空失败: ${(e as Error).message}`, 'error')
+    showToast(`没能清空：${(e as Error).message}`, 'error')
   } finally {
     busy.value = ''
   }
@@ -314,9 +314,14 @@ async function flushQueue() {
     const res = await safeSendMessage({ type: MSG.RETRY_QUEUE_FLUSH, source: 'devtools' })
     await refreshStats()
     const processed = (res as { processed?: number } | undefined)?.processed ?? 0
-    showToast(processed > 0 ? `重试完成，${processed} 条已上报` : '队列已空 / 全部失败，无变化', processed > 0 ? 'success' : 'info')
+    const total = queueCount.value
+    let msg: string
+    if (processed > 0) msg = `成功重发 ${processed} 条`
+    else if (total === 0) msg = '队列里没有待重试的内容，不用重试'
+    else msg = `${total} 条都还在失败状态（可能服务端没起 / endpoint 不通）`
+    showToast(msg, processed > 0 ? 'success' : 'info')
   } catch (e) {
-    showToast(`重试失败: ${(e as Error).message}`, 'error')
+    showToast(`没能联系上 background 后台：${(e as Error).message}。请刷新页面或重新加载扩展`, 'error')
   } finally {
     busy.value = ''
   }
@@ -325,19 +330,19 @@ async function flushQueue() {
 async function clearQueue() {
   const n = queueCount.value
   const ok = await confirmDialog({
-    title: '清空未上报队列',
-    message: `将丢弃 ${n} 条待重试的 bug，操作不可恢复。`,
+    title: `丢弃 ${n} 条没成功上报的 bug？`,
+    message: `这些 bug 之前提交时遇到了网络/服务端错误，被暂存在重试队列里。\n清空后它们彻底丢失，服务端不会再收到。如果你想保留这些数据，建议先点"立即重试"再清。`,
     danger: true,
-    confirmText: '清空'
+    confirmText: '确认丢弃'
   })
   if (!ok) return
   busy.value = 'clearQueue'
   try {
     await chrome.storage.local.set({ mooRetryQueue: [] })
     await refreshStats()
-    showToast(`已清空 ${n} 条`, 'success')
+    showToast(`已丢弃 ${n} 条`, 'success')
   } catch (e) {
-    showToast(`清空失败: ${(e as Error).message}`, 'error')
+    showToast(`没能清空：${(e as Error).message}`, 'error')
   } finally {
     busy.value = ''
   }

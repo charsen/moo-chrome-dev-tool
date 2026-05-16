@@ -165,10 +165,10 @@ async function captureScreenshot(windowId?: number): Promise<CaptureScreenshotRe
 async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRes> {
   const config = await loadConfig()
   const project = config.projects.find((p) => p.id === req.projectId)
-  if (!project) return { ok: false, error: 'project not found' }
+  if (!project) return { ok: false, error: '找不到对应项目（可能项目刚被删除）。请回到 DevTools → Moo → 环境 重新选择' }
   const server = project.servers.find((s) => s.id === req.serverId)
-  if (!server) return { ok: false, error: 'server not found' }
-  if (!server.endpoint) return { ok: false, error: 'server endpoint is empty' }
+  if (!server) return { ok: false, error: '找不到选中的上报服务器（可能刚被删除）。请回到 DevTools → Moo → 环境 重新选择' }
+  if (!server.endpoint) return { ok: false, error: `上报服务器「${server.name}」还没填 URL。请去 DevTools → Moo → 环境 → 上报服务器 填上 endpoint 后再试` }
 
   // 按项目白名单抓取页面 storage（localStorage 优先，找不到尝试 sessionStorage）
   const storageKeys = project.capture?.storageKeys ?? []
@@ -296,7 +296,7 @@ async function closeOffscreenDocument(): Promise<void> {
 }
 
 async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?: string }> {
-  if (!tabId) return { ok: false, error: '缺少 tabId' }
+  if (!tabId) return { ok: false, error: '没找到要录的标签页。请确保焦点在网页上（不要在 DevTools 内）再按 ⌥⇧R' }
 
   // 关键：getMediaStreamId 必须在 user activation 还有效时立即 invoke。
   // 任何 await（包括 ensureOffscreenDocument）放在它前面，都会让手势在 microtask 后丢失。
@@ -305,12 +305,12 @@ async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?:
     streamId = await new Promise<string>((resolve, reject) => {
       ;(chrome.tabCapture as any).getMediaStreamId({ targetTabId: tabId }, (id: string) => {
         const err = chrome.runtime.lastError
-        if (err || !id) reject(new Error(err?.message || '无法获取 streamId'))
+        if (err || !id) reject(new Error(err?.message || '获取屏幕流失败'))
         else resolve(id)
       })
     })
   } catch (e) {
-    return { ok: false, error: 'tabCapture 失败：' + (e as Error).message }
+    return { ok: false, error: '浏览器拒绝了录屏请求：' + (e as Error).message + '。建议直接按 ⌥⇧R（不要通过点击悬浮球），否则用户手势会失效' }
   }
 
   try {
@@ -322,7 +322,7 @@ async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?:
   const res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'START', streamId })
   if (!res?.ok) {
     await closeOffscreenDocument()
-    return { ok: false, error: res?.error || 'offscreen 启动失败' }
+    return { ok: false, error: res?.error || '录屏后台进程启动失败，请稍后重试' }
   }
   return { ok: true }
 }
@@ -330,7 +330,7 @@ async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?:
 async function stopTabRecording(): Promise<{ ok: boolean; dataUrl?: string; bytes?: number; mime?: string; error?: string }> {
   const res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'STOP' })
   await closeOffscreenDocument()
-  return res ?? { ok: false, error: '无响应' }
+  return res ?? { ok: false, error: '录屏后台没响应，可能已经被浏览器卸载。请重新开始录制' }
 }
 
 async function cancelTabRecording(): Promise<void> {

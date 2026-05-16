@@ -162,7 +162,7 @@ onMounted(async () => {
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type !== MSG.RECORD_EXTERNAL_STARTED) return
     if (!msg.ok) {
-      showToast(msg.error || '录屏启动失败', 'error')
+      showToast(msg.error || '录屏没能开始（可能浏览器拒了授权）。请按 ⌥⇧R 重试', 'error')
       return
     }
     // 录屏由快捷键触发，没有 UI 让用户挑项目；多匹配时 default 到首个，
@@ -204,7 +204,7 @@ async function startCapture() {
       source: 'content'
     })) as CaptureScreenshotRes
   } catch (err) {
-    showToast(`截图失败: ${(err as Error).message}`, 'error')
+    showToast(`没截到图：${(err as Error).message}。请刷新页面后重试`, 'error')
     state.value = 'idle'
     return
   } finally {
@@ -212,7 +212,7 @@ async function startCapture() {
   }
 
   if (!res.ok || !res.dataUrl) {
-    showToast(`截图失败: ${res.error ?? 'unknown'}`, 'error')
+    showToast(`没截到图：${res.error ?? '未知原因'}。可能 chrome.tabs 权限没开，或当前是 chrome:// / 应用商店等保护页`, 'error')
     state.value = 'idle'
     return
   }
@@ -228,7 +228,7 @@ function onAnnotated(dataUrl: string) {
 // 悬浮球点录屏 —— 受 Chrome MV3 限制无法在 content script 链路保留 user gesture，
 // 这里显示中性提示（不是错误）。按钮本身已经在 UI 上挂了 ⌥⇧R 标签提示用法。
 function startRecord() {
-  showToast('录屏请按 ⌥⇧R（Alt+Shift+R）。可在 chrome://extensions/shortcuts 改键。', 'info')
+  showToast('录屏需要键盘启动：按 ⌥⇧R（Mac）/ Alt+Shift+R（Win）。\nChrome 安全规则限制录屏必须由快捷键触发，悬浮球点击无法启动。\n如需改键：chrome://extensions/shortcuts', 'info')
 }
 
 async function beginRecordingFromCommand() {
@@ -236,7 +236,7 @@ async function beginRecordingFromCommand() {
   state.value = 'recording'
   const result = await recorder.startExternally()
   if (!result) {
-    showToast(recorder.error.value || '录制取消', 'error')
+    showToast(recorder.error.value || '录制已取消（或浏览器中断了屏幕共享）', 'info')
     state.value = 'idle'
     return
   }
@@ -272,7 +272,7 @@ function onSubmitted(ok: boolean, message: string) {
 // 已经标好的内容会丢失（Annotator 内部状态不跨 mount 保留），录屏和已选请求/错误保留。
 function onReannotate() {
   if (!rawImage.value) {
-    showToast('原始截图已丢失，无法重新标注', 'error')
+    showToast('原始截图找不到了（可能扩展刚被重新加载）。请关闭这个提交框，重新截一张', 'error')
     return
   }
   annotatedImage.value = ''
