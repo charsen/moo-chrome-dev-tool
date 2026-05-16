@@ -323,15 +323,29 @@ function formatHeaders(h: Record<string, string>): string {
   return Object.entries(h).map(([k, v]) => `${k}: ${v}`).join('\n')
 }
 
+// devtools panel 切到别的 tab 或最小化时不再空跑 refresh，避免后台 1500ms 一次的
+// 全量请求/错误拉取 + Vue 数据重 diff 烧 CPU
+function isPanelVisible(): boolean {
+  // Chrome 把不可见的 devtools panel iframe 设为 hidden，document.visibilityState 跟着变
+  return document.visibilityState === 'visible'
+}
+
 onMounted(() => {
   refresh()
   timer = window.setInterval(() => {
-    if (autoRefresh.value) refresh()
+    if (autoRefresh.value && isPanelVisible()) refresh()
   }, 1500)
+  // 从 hidden 切回 visible 时立即拉一次，让用户看到的不是过期数据
+  document.addEventListener('visibilitychange', onVisibilityChange)
 })
+
+function onVisibilityChange() {
+  if (isPanelVisible() && autoRefresh.value) refresh()
+}
 
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 </script>
 

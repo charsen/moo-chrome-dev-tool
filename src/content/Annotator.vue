@@ -532,7 +532,19 @@ function cancelText() {
   editing.value = null
 }
 
+// pointermove 期间 redraw 可能每帧多次被调（move handler + reactive watchers），
+// rAF coalesce 到每帧最多 1 次。视觉上感知不出差异，但 100+ 标注时拖拽明显流畅。
+let pendingRedraw = false
 function redraw() {
+  if (pendingRedraw) return
+  pendingRedraw = true
+  requestAnimationFrame(() => {
+    pendingRedraw = false
+    redrawNow()
+  })
+}
+
+function redrawNow() {
   const ctx = drawEl.value?.getContext('2d')
   if (!ctx) return
   ctx.clearRect(0, 0, canvasW.value, canvasH.value)
