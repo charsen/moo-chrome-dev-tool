@@ -63,15 +63,20 @@
           </div>
         </div>
 
-        <!-- ⑤ 服务器（仅 0 或 >1 时显示；恰好 1 个时使用默认值，UI 中隐藏减少噪音） -->
-        <div class="moo-form-row" v-if="project.servers.length !== 1">
+        <!-- ⑤ 服务器：0 / >1 / endpoint 空时都显示；恰好 1 个且 endpoint 正常才隐藏减噪音 -->
+        <div class="moo-form-row" v-if="showServerRow">
           <label for="moo-server">服务器</label>
-          <select id="moo-server" v-model="serverId">
-            <option v-if="!project.servers.length" disabled value="">无可用服务器，请先在 DevTools 配置</option>
-            <option v-for="s in project.servers" :key="s.id" :value="s.id">
-              {{ s.name }} — {{ s.endpoint || '(未配置 endpoint)' }}
-            </option>
-          </select>
+          <div class="server-pick">
+            <select id="moo-server" v-model="serverId">
+              <option v-if="!project.servers.length" disabled value="">无可用服务器，请先在 DevTools 配置</option>
+              <option v-for="s in project.servers" :key="s.id" :value="s.id">
+                {{ s.name }} — {{ s.endpoint || '(未配置 endpoint)' }}
+              </option>
+            </select>
+            <div v-if="serverEndpointMissing" class="server-warn">
+              ⚠ 该服务器 endpoint 是空的。请去 <b>DevTools → Moo → 环境</b> 给「{{ currentServer?.name }}」填上 URL 后再提交。
+            </div>
+          </div>
         </div>
 
         <!-- ⑥ 附件折叠组：请求 / 错误 / 元素 -->
@@ -333,7 +338,17 @@ function errLevelTitle(level: ConsoleError['level']): string {
 }
 
 const canPreview = computed(() => !!serverId.value)
-const canSubmit = computed(() => !!serverId.value && !!title.value.trim())
+const currentServer = computed(() => props.project.servers.find((s) => s.id === serverId.value))
+const serverEndpointMissing = computed(() => !!currentServer.value && !currentServer.value.endpoint?.trim())
+/** 显示服务器选择行的条件：0 个 / 多个 / 唯一服务器配错了。
+ * 单个且配置正确才隐藏（最常见的场景，减少表单噪音）。 */
+const showServerRow = computed(() => {
+  if (props.project.servers.length !== 1) return true
+  return serverEndpointMissing.value
+})
+const canSubmit = computed(() =>
+  !!serverId.value && !!title.value.trim() && !serverEndpointMissing.value
+)
 
 function selectedRequests(): CapturedRequest[] {
   const ids = selectedIds.value

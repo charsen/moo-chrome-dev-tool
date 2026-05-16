@@ -691,6 +691,26 @@ export const SHADOW_CSS = `
   border-radius: var(--r-md);
   display: block;
 }
+
+/* 服务器选择行：select + 配错时下方红色 warn 文案 */
+.server-pick {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.server-pick select { width: 100%; }
+.server-warn {
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 7px 10px;
+  border: 1px solid var(--c-warn-soft, #fef3c7);
+  background: var(--c-warn-soft, #fef3c7);
+  border-radius: var(--r-md);
+  color: var(--c-warn-fg, #b45309);
+}
+.server-warn b { color: var(--c-text); font-weight: 600; }
 .moo-preview {
   background: var(--c-bg-soft);
   border: 1px solid var(--c-border);
