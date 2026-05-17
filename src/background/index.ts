@@ -632,8 +632,11 @@ async function refreshHistoryStatus(): Promise<number> {
 
 function pickTokenHeaders(entry: BugHistoryEntry, config?: MooConfig): Record<string, string> {
   // 优先用 entry 自带的（每次提交时 snapshot 的 token，最贴近上报当时的状态）
+  // 写入路径（addHistoryEntry 那条）已经过了 pickPropagatedHeaders；但 v0.1.5
+  // 之前的老 entry 直接拷了 server.headers 进来，可能残留 Content-Type / 自定义
+  // X-Foo —— 状态回查是 GET，带这些既无用也徒增打到服务端的指纹。再过一遍 propagate 白名单。
   if (entry.remoteHeaders && Object.keys(entry.remoteHeaders).length > 0) {
-    return entry.remoteHeaders
+    return pickPropagatedHeaders(entry.remoteHeaders)
   }
   // fallback：从当前 config 找回项目 + 服务器，重新构造 auth header
   if (!config) return {}
