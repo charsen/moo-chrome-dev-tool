@@ -437,6 +437,10 @@ async function exportConfig() {
   URL.revokeObjectURL(url)
 }
 
+/** 导入配置上限 1MB —— 即使有 100 个项目 × 50 个 server × 64KB 模板，正常也只到几 MB；
+ *  超出大概率是恶意 / 损坏文件，避免 JSON.parse 阻塞 devtools 渲染进程几秒 */
+const IMPORT_MAX_BYTES = 1024 * 1024
+
 function importConfig() {
   const input = document.createElement('input')
   input.type = 'file'
@@ -444,23 +448,41 @@ function importConfig() {
   input.onchange = async () => {
     const file = input.files?.[0]
     if (!file) return
+    if (file.size > IMPORT_MAX_BYTES) {
+      showToast(`这个文件太大（${(file.size / 1024 / 1024).toFixed(1)} MB > 1 MB 上限）。Moo 导出的正常配置不会这么大，请确认文件是否损坏或被篡改`, 'error')
+      return
+    }
     try {
       const text = await file.text()
       const parsed = JSON.parse(text)
-      if (!Array.isArray(parsed.projects)) {
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.projects)) {
         showToast('这个 JSON 文件格式不对（应该有顶层 projects 数组）。请确认是 Moo 导出的配置文件', 'error')
         return
       }
       // 安全确认：导入他人配置 = 同意把本机抓取的请求/cookie/storage 发到这些 endpoint。
       // 列出所有 host 让用户在落盘前看清楚，避免被预置的恶意 endpoint 偷数据。
       const endpoints = collectEndpoints(parsed.projects)
-      if (endpoints.length > 0) {
+      // 同时数一下「带预置 token 的项目」—— 别人给你的配置里如果带了他的 token，
+      // 导入后你提交 bug 都会用他的身份记录到他的看板，是一种钓鱼手法。必须显式告知用户。
+      const tokenCount = countProjectsWithToken(parsed.projects)
+      if (endpoints.length > 0 || tokenCount > 0) {
+        const lines: string[] = []
+        if (endpoints.length > 0) {
+          lines.push(
+            '这份配置会把抓取到的数据上报到下列地址：',
+            '',
+            ...endpoints.map((e) => `  • ${e}`),
+            '',
+            '导入后，匹配规则命中时本机的请求 / cookie / storage / 截图都会发往以上地址。'
+          )
+        }
+        if (tokenCount > 0) {
+          if (lines.length) lines.push('')
+          lines.push(`⚠ 其中 ${tokenCount} 个项目自带了预置 token——使用 Moo 提交 bug 时会用「配置作者」的身份上报，不是你自己的。如果不认识这份配置的来源，建议导入后手动清空 token 字段，改成自己的。`)
+        }
         const ok = await confirmDialog({
           title: '确认导入配置',
-          message:
-            `这份配置会把抓取到的数据上报到下列地址：\n\n` +
-            endpoints.map((e) => `  • ${e}`).join('\n') +
-            `\n\n导入后，匹配规则命中时本机的请求 / cookie / storage / 截图都会发往以上地址。`,
+          message: lines.join('\n'),
           danger: true,
           confirmText: '导入'
         })
@@ -478,6 +500,16 @@ function importConfig() {
     }
   }
   input.click()
+}
+
+/** 数一下导入 JSON 里有多少个 project 带 .token 字段（仅做提示，不做拦截） */
+function countProjectsWithToken(projects: unknown[]): number {
+  let n = 0
+  for (const p of projects) {
+    const t = (p as { token?: unknown })?.token
+    if (typeof t === 'string' && t.trim()) n++
+  }
+  return n
 }
 
 /** 从 projects 数组里抽出所有 server.endpoint 的可读 host（带协议），去重保序。 */

@@ -138,27 +138,66 @@ export function normalizeProject(raw: unknown): Project {
       maskPasswordInputs: typeof redact.maskPasswordInputs === 'boolean' ? redact.maskPasswordInputs : DEFAULT_REDACT.maskPasswordInputs
     },
     enabled: typeof r.enabled === 'boolean' ? r.enabled : true,
-    token: typeof r.token === 'string' ? r.token : undefined
+    // token 限制为可见 ASCII + 长度 ≤ 512；防导入巨量字符串或带 CRLF 注入到 Authorization
+    token: typeof r.token === 'string' ? sanitizeToken(r.token) : undefined
   }
 }
+
+function sanitizeToken(raw: string): string | undefined {
+  const s = raw.trim()
+  if (!s) return undefined
+  if (s.length > 512) return undefined
+  // 只允许可打印 ASCII（包括 - . _ ~ + 等 OAuth token 常见字符），拒 CRLF / 控制符
+  if (!/^[\x21-\x7E]+$/.test(s)) return undefined
+  return s
+}
+
+/** 限制单条 header key/value 长度，防 4MB 大字段在 multipart 表头里溢出 */
+const HEADER_KEY_MAX = 256
+const HEADER_VAL_MAX = 4096
+/** HTTP token 字符集（RFC 7230 §3.2.6）—— 排除 :/= 等 header name 不能有的字符 */
+const HEADER_KEY_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
+/** payloadTemplate 64KB 上限，超过即说明配置异常 */
+const PAYLOAD_TEMPLATE_MAX = 64 * 1024
 
 function normalizeServer(raw: unknown): BugServer {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<BugServer>
   const headers = (r.headers && typeof r.headers === 'object' ? r.headers : {}) as Record<string, unknown>
   const cleanHeaders: Record<string, string> = {}
   for (const [k, v] of Object.entries(headers)) {
-    if (typeof v === 'string') cleanHeaders[k] = v
+    if (typeof v !== 'string') continue
+    // key 必须是合法 HTTP token + 长度上限；防导入 4MB header name 让 multipart 表头爆裂
+    if (typeof k !== 'string' || !k || k.length > HEADER_KEY_MAX) continue
+    if (!HEADER_KEY_PATTERN.test(k)) continue
+    // value 不能含 CRLF（防 header injection），不能超长
+    if (v.length > HEADER_VAL_MAX) continue
+    if (/[\r\n]/.test(v)) continue
+    cleanHeaders[k] = v
   }
+  const name = typeof r.name === 'string' ? r.name.slice(0, 100) : '服务器'
+  const imageField = typeof r.imageField === 'string'
+    ? sanitizeImageField(r.imageField)
+    : 'image'
+  const payloadTemplate = typeof r.payloadTemplate === 'string' && r.payloadTemplate.length <= PAYLOAD_TEMPLATE_MAX
+    ? r.payloadTemplate
+    : DEFAULT_PAYLOAD_TEMPLATE
   return {
     id: typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID(),
-    name: typeof r.name === 'string' ? r.name : '服务器',
+    name,
     method: r.method === 'PUT' || r.method === 'PATCH' ? r.method : 'POST',
     endpoint: sanitizeEndpoint(r.endpoint),
     headers: cleanHeaders,
-    imageField: typeof r.imageField === 'string' ? r.imageField : 'image',
+    imageField,
     imageFormat: r.imageFormat === 'multipart' ? 'multipart' : 'base64',
-    payloadTemplate: typeof r.payloadTemplate === 'string' ? r.payloadTemplate : DEFAULT_PAYLOAD_TEMPLATE
+    payloadTemplate
   }
+}
+
+/** imageField 会作为 multipart form-data 字段名 + 模板里的 `{{imageField}}` 占位符；
+ *  只允许 token-safe ASCII 防止注入怪异字符（如 `__proto__` / 含空格 / RTL chars）。 */
+function sanitizeImageField(raw: string): string {
+  const s = raw.trim().slice(0, 64)
+  return /^[A-Za-z0-9_-]+$/.test(s) ? s : 'image'
 }
 
 /**
