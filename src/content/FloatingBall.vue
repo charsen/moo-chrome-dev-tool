@@ -185,10 +185,11 @@ onMounted(() => {
   } else {
     // hasSavedPos 路径：localStorage 存的位置可能是上次窗口更大时存的，
     // 当前视口缩小后这个 x/y 可能直接在屏幕外（用户看不到悬浮球但状态正常）。
-    // 用跟 onResize 一样的 clamp 兜底。
+    // 用真实 BALL_W/BALL_H clamp 兜底（之前误写 130/48 是 rec-bar 尺寸，
+    // 实际悬浮球宽 170px，会被切右边 40px）。
     pos.value = {
-      x: Math.max(0, Math.min(window.innerWidth - 130, pos.value.x)),
-      y: Math.max(0, Math.min(window.innerHeight - 48, pos.value.y))
+      x: Math.max(0, Math.min(window.innerWidth - BALL_W, pos.value.x)),
+      y: Math.max(0, Math.min(window.innerHeight - BALL_H, pos.value.y))
     }
   }
   autoPickIfSingle()
@@ -219,8 +220,8 @@ function onMove(e: PointerEvent) {
   }
   if (moved) {
     pos.value = {
-      x: Math.max(0, Math.min(window.innerWidth - 130, originPos.x + dx)),
-      y: Math.max(0, Math.min(window.innerHeight - 48, originPos.y + dy))
+      x: Math.max(0, Math.min(window.innerWidth - BALL_W, originPos.x + dx)),
+      y: Math.max(0, Math.min(window.innerHeight - BALL_H, originPos.y + dy))
     }
   }
 }
@@ -285,9 +286,10 @@ function onPickProject(id: string) {
 }
 
 function onResize() {
+  // 同上：用真实 BALL_W/BALL_H 而不是 130/48
   pos.value = {
-    x: Math.min(pos.value.x, window.innerWidth - 130),
-    y: Math.min(pos.value.y, window.innerHeight - 48)
+    x: Math.max(0, Math.min(window.innerWidth - BALL_W, pos.value.x)),
+    y: Math.max(0, Math.min(window.innerHeight - BALL_H, pos.value.y))
   }
 }
 </script>
