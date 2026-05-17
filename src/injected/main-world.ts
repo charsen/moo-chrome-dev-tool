@@ -286,28 +286,14 @@ window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
   postErr(errFrom('rejection', msg, stack))
 })
 
-const origConsoleErr = console.error
-console.error = function (...args: unknown[]) {
-  try {
-    const msg = args.map((a) => {
-      if (a instanceof Error) return a.message
-      if (typeof a === 'string') return a
-      try { return JSON.stringify(a) } catch { return String(a) }
-    }).join(' ')
-    const stack = args.find((a) => a instanceof Error) ? (args.find((a) => a instanceof Error) as Error).stack : undefined
-    postErr(errFrom('console', msg, stack))
-  } catch {}
-  // ⚠ 异步切 task 再 forward 给原 console.error：
-  // main-world.ts 虽然在 main-world 跑，但 source 是 extension，Chrome 把从
-  // 这条栈 fire 的所有错误都归到 chrome://extensions 错误页。同步 invoke
-  // origConsoleErr 时 stack 含 hook 帧 → 宿主页任何 console.error('xxx') 都
-  // 被扩展背锅。setTimeout(0) 切到下一 task，stack 重置为 web 平台，归类
-  // 才正确。代价：console.error 由 sync → async，但 99% 调用是 fire-and-
-  // forget，体感无差；不切 task 则扩展错误页被宿主页错误持续污染。
-  setTimeout(() => {
-    try { origConsoleErr.apply(console, args as never) } catch {}
-  }, 0)
-}
+// 注：曾经 monkey-patch console.error 上报到 SubmitDialog，但 chrome 扩展错误
+// 归因是看"谁 patched 了 console.error"，不是 native 调用栈 —— 即便用 setTimeout(0)
+// 切 task 也救不了。结果是宿主页每个业务 console.error 都被算到 Moo 头上，
+// chrome://extensions 错误页被业务报错刷屏。改回只听 window.error + unhandledrejection，
+// 承担的代价：用户主动 console.error('xxx') 不再进 SubmitDialog 错误面板，但
+// 未捕获异常 / promise reject 仍全抓。SubmitDialog 里 level === 'console' 的
+// 分支保留为 dead code，不删，方便未来若改用另一种机制（例如 ISOLATED 内监听）
+// 时不破上下游 type。
 
 // History API monkey-patch：SPA 路由切换（pushState / replaceState）默认不触发任何
 // 事件，content script 原本靠 setInterval 1s 轮询 location.href 比对。100 个 tab
