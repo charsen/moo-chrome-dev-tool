@@ -140,10 +140,14 @@ function cssEsc(s: string): string {
 
 function describe(el: Element): PickedElement {
   const rect = el.getBoundingClientRect()
+  const isPwd = isPasswordInput(el)
   const attrs: Record<string, string> = {}
   for (const a of Array.from(el.attributes)) {
     // 跳过冗长的 style / inline event
     if (a.name === 'style' || a.name.startsWith('on')) continue
+    // 关键：用户挑中的是 password input 时，把 value 属性抹掉再上报
+    // —— 部分框架（Vue v-model）会把当前密码反射到 value 属性，泄漏给后端
+    if (isPwd && a.name === 'value') continue
     attrs[a.name] = a.value.length > 200 ? a.value.slice(0, 200) + '…' : a.value
   }
   const path: string[] = []
@@ -168,9 +172,28 @@ function describe(el: Element): PickedElement {
     text: (el.textContent ?? '').trim().slice(0, 200),
     rect: { x: rect.left, y: rect.top, w: rect.width, h: rect.height },
     attributes: attrs,
-    outerHtml: (el as HTMLElement).outerHTML.slice(0, 800),
+    outerHtml: safeOuterHtml(el).slice(0, 800),
     path
   }
+}
+
+function isPasswordInput(el: Element): boolean {
+  return el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'password'
+}
+
+/** 取 outerHTML 前，先把元素及子树中的所有 password input value 抹掉。
+ *  用户选「整个登录表单」时，子节点的 password 输入框可能含 v-model 反射的明文密码。 */
+function safeOuterHtml(el: Element): string {
+  const clone = el.cloneNode(true) as Element
+  // 把 clone 自身 + 所有后代 password input 的 value 清空
+  const pwdNodes: HTMLInputElement[] = []
+  if (isPasswordInput(clone)) pwdNodes.push(clone as HTMLInputElement)
+  clone.querySelectorAll('input[type="password"]').forEach((n) => pwdNodes.push(n as HTMLInputElement))
+  for (const n of pwdNodes) {
+    n.value = ''
+    if (n.hasAttribute('value')) n.setAttribute('value', '')
+  }
+  return (clone as HTMLElement).outerHTML
 }
 
 function truncate(s: string, n: number): string {

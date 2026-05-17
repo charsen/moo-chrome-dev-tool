@@ -87,6 +87,12 @@ if (import.meta.env.DEV) {
 }
 
 chrome.runtime.onMessage.addListener((message: MooMessage, sender, sendResponse) => {
+  // 校验消息来源：MV3 默认只接受同扩展，但 sender.id 为 undefined 时（极少数边缘情况）
+  // 依然要拒。外部扩展 / 网站要发我们的消息必须显式声明 externally_connectable，
+  // 而我们 manifest 没声明 —— 所以任何 sender.id !== runtime.id 一律视为非法。
+  if (sender.id && sender.id !== chrome.runtime.id) {
+    return false
+  }
   ;(async () => {
     try {
       switch (message.type) {
@@ -688,9 +694,24 @@ function buildRequestBody(
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
-  const [meta, b64] = dataUrl.split(',')
+  // 空字符串 / 非 data URL 形态：返回空 Blob 而不是 atob(undefined) 抛 InvalidCharacterError
+  // 触发场景：multipart 提交但用户没截图（image 模板渲染为空串）
+  if (!dataUrl || !dataUrl.startsWith('data:')) {
+    return new Blob([], { type: 'application/octet-stream' })
+  }
+  const commaIdx = dataUrl.indexOf(',')
+  if (commaIdx < 0) return new Blob([], { type: 'application/octet-stream' })
+  const meta = dataUrl.slice(0, commaIdx)
+  const b64 = dataUrl.slice(commaIdx + 1)
   const mime = meta.match(/data:(.*?);base64/)?.[1] ?? 'image/png'
-  const bin = atob(b64)
+  if (!b64) return new Blob([], { type: mime })
+  let bin: string
+  try {
+    bin = atob(b64)
+  } catch {
+    // base64 损坏（出现非法字符）— 不让整个 submitBug 链路因此崩，返回空 blob
+    return new Blob([], { type: mime })
+  }
   const len = bin.length
   const buf = new Uint8Array(len)
   for (let i = 0; i < len; i++) buf[i] = bin.charCodeAt(i)
