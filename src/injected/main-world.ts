@@ -146,10 +146,17 @@ const OrigSend = XMLHttpRequest.prototype.send
 const OrigSetHeader = XMLHttpRequest.prototype.setRequestHeader
 
 XMLHttpRequest.prototype.open = function (this: MooXHR, method: string, url: string | URL) {
+  // url 类型签名说是 string | URL，但浏览器实现允许任意类型，会内部 toString。
+  // 我们 hook 时若直接 url.toString() 而 url 是 number / null 会扔 TypeError，
+  // 污染宿主页 XHR 行为。安全转换：用 String() 包一道，无论入参类型都不抛。
+  let safeUrl = ''
+  try {
+    safeUrl = url == null ? '' : String(url as unknown)
+  } catch { /* Symbol 等不可 String 化的极端情况 */ }
   this.__moo = {
     id: uid(),
     method: (method || 'GET').toUpperCase(),
-    url: typeof url === 'string' ? url : url.toString(),
+    url: safeUrl,
     reqHeaders: {},
     reqBody: null,
     startTime: 0,
