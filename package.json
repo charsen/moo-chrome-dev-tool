@@ -9,6 +9,8 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "mock": "node scripts/mock-server.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "release": "node scripts/release.mjs"
@@ -24,6 +26,7 @@
     "sharp": "^0.34.5",
     "typescript": "^5.4.2",
     "vite": "^5.2.0",
+    "vitest": "^1.6.1",
     "vue-tsc": "^2.0.6"
   }
 }

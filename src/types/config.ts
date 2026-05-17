@@ -132,9 +132,11 @@ export function normalizeProject(raw: unknown): Project {
       // localStorage / sessionStorage key 是页面侧的标识符，正常都是 [A-Za-z0-9_.-]
       // 攻击者导入配置可塞 `__proto__` / 含空格 / RTL 字符的 key 试图绕过 JS 引擎 / 触发原型污染。
       // 这里 + 限制 key 长度 ≤ 128 字符 + 限 50 个上限，防巨型配置卡 readPageStorage。
+      // 额外显式黑名单 __proto__ / constructor / prototype —— 这三个名字满足
+      // [A-Za-z0-9_] 但用 obj[key] 访问时会爬原型链，是经典原型污染入口。
       storageKeys: Array.isArray(capture.storageKeys)
         ? capture.storageKeys
-            .filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 128 && /^[A-Za-z0-9_.\-:]+$/.test(x))
+            .filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 128 && /^[A-Za-z0-9_.\-:]+$/.test(x) && !isReservedKey(x))
             .slice(0, 50)
         : [],
       requestBufferSize: typeof capture.requestBufferSize === 'number' && capture.requestBufferSize >= 5 ? Math.min(500, Math.round(capture.requestBufferSize)) : DEFAULT_CAPTURE.requestBufferSize
@@ -204,7 +206,16 @@ function normalizeServer(raw: unknown): BugServer {
  *  只允许 token-safe ASCII 防止注入怪异字符（如 `__proto__` / 含空格 / RTL chars）。 */
 function sanitizeImageField(raw: string): string {
   const s = raw.trim().slice(0, 64)
-  return /^[A-Za-z0-9_-]+$/.test(s) ? s : 'image'
+  if (!/^[A-Za-z0-9_-]+$/.test(s)) return 'image'
+  // regex 允许下划线，单独黑掉 prototype pollution 关键字
+  if (isReservedKey(s)) return 'image'
+  return s
+}
+
+/** 防原型污染：以下三个名字用 obj[key] 访问会落到 prototype 上而不是 own property，
+ *  在 storage key / form field name / 模板变量名 等需要做"普通字符串"用的位置必须排除。 */
+function isReservedKey(s: string): boolean {
+  return s === '__proto__' || s === 'constructor' || s === 'prototype'
 }
 
 /**
