@@ -217,18 +217,35 @@ onMounted(async () => {
   window.addEventListener('resize', onWindowResize)
   // 接收 background 通过 chrome.commands 触发的录屏
   chrome.runtime.onMessage.addListener(onRuntimeMessage)
-  // ⚠ 这里曾经加过 recoverRecordingIfActive() — 用 QUERY_RECORDING_STATE 查
-  // background 是否在录、命中就恢复 rec-bar。看起来对，实际撞 race：用户在
-  // 录屏中刷新 tab，page reload 触发 tabCapture stream end，offscreen 发
-  // OFFSCREEN_AUTO_STOPPED 给 SW；但新 content script 的 QUERY 跟这条
-  // OFFSCREEN_AUTO_STOPPED 是异步 race。QUERY 抢到时 currentRecording 还
-  // 没清 → 返回 recording=true → ContentApp 切 'recording' → 悬浮球被
-  // hidden → 用户看到"刷新后悬浮球不见"。
-  //
-  // 撤掉。同 tab navigation 中恢复 rec-bar 是真实需求但要走另一条路（譬如
-  // background 等 OFFSCREEN_AUTO_STOPPED 收到再回 QUERY，或者用 port 长连接
-  // 让 reload 也能区分）。这次先回退，先保住"刷新一定看得到悬浮球"这条底线。
+  // 远程录屏接管：任意 tab onMounted 都查一次全局录屏状态，命中就拉起 rec-bar。
+  // 设计取舍：原录屏 tab reload 时也会命中——若 stream 真已 end，几百 ms 内
+  // 后续 RECORD_AUTO_STOPPED 广播到达，rec-bar 退回 idle、悬浮球重现。短暂"先
+  // 显 rec-bar 后退"比"切 tab 看不到任何录屏指示"是用户更想要的。
+  void adoptRemoteRecording()
 })
+
+async function adoptRemoteRecording(): Promise<void> {
+  if (state.value !== 'idle') return
+  const res = (await safeSendMessage<{ recording: boolean; startedAt?: number }>(
+    { type: MSG.QUERY_RECORDING_STATE, source: 'content' },
+    { fallback: { recording: false } }
+  )) as { recording: boolean; startedAt?: number }
+  if (!res?.recording || !res.startedAt) return
+  if (state.value !== 'idle') return  // 极小概率：等 SW 期间用户已开始操作
+  // 多匹配且未选项目时 default 首个，跟快捷键路径对齐
+  if (!project.value && matches.value[0]) onSelectProject(matches.value[0].id)
+  state.value = 'recording'
+  const result = await recorder.startExternally(res.startedAt)
+  if (!result) {
+    // STOP/CANCEL 是别的 tab 操作的 → AUTO_STOPPED 广播让我们 externallyStopped
+    // → result=null。state 应该已经被 onRuntimeMessage 切到 idle 了；再防一下。
+    if (state.value === 'recording') state.value = 'idle'
+    return
+  }
+  // 同样小概率：本 tab 自己拿到 dataUrl（即本 tab 上点了停止）。走 SubmitDialog。
+  recordedVideo.value = result
+  state.value = 'submitting'
+}
 
 onBeforeUnmount(() => {
   if (toastTimer) clearTimeout(toastTimer)

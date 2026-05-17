@@ -170,40 +170,35 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
         case MSG.RECORD_STOP: {
           const res = await stopTabRecording()
           currentRecording = null
+          // 操作发起者拿到 dataUrl 走 SubmitDialog；其它 tab 上的远程 rec-bar
+          // 必须被通知退掉，否则会卡在 recording 倒计时永远不动。
+          await broadcastAutoStopped('user-stop', sender.tab?.id)
           sendResponse(res)
           break
         }
         case MSG.RECORD_CANCEL: {
           await cancelTabRecording()
           currentRecording = null
+          await broadcastAutoStopped('user-cancel', sender.tab?.id)
           sendResponse({ ok: true })
           break
         }
         case MSG.QUERY_RECORDING_STATE: {
-          // content script 重新挂载（同 tab navigation）时主动查这个 tab
-          // 是不是正在录屏；命中就发回 startedAt 让 ContentApp 恢复 rec-bar 计时。
-          const tabId = sender.tab?.id
-          const isThisTabRecording = !!currentRecording && currentRecording.tabId === tabId
-          sendResponse(isThisTabRecording
-            ? { recording: true, startedAt: currentRecording!.startedAt }
+          // content script 挂载（任意 tab）查全局录屏状态；命中就回 startedAt
+          // 让 ContentApp 在本 tab 拉起 rec-bar 走外挂倒计时。曾绑死 sender tab
+          // 等于"只有原录屏 tab 自己 reload 才能恢复"，切到其它 tab 看不到
+          // 任何录屏指示——按 #97 用户反馈改为全局可见。
+          sendResponse(currentRecording
+            ? { recording: true, startedAt: currentRecording.startedAt }
             : { recording: false })
           break
         }
         case MSG.OFFSCREEN_AUTO_STOPPED: {
-          // offscreen 报告 track 'ended' 自动停止（最常见原因：用户点了 Chrome
-          // 顶部"停止共享"条）。通知原录屏 tab 的 content script 切回 idle，
-          // 否则 rec-bar 永远停留 + 用户被迫刷页。
+          // offscreen 报告 track 'ended'（最常见：用户点了 Chrome 顶部"停止共享"
+          // 条）。广播给所有 tab —— 任意 tab 都可能挂着远程 rec-bar，要一起退。
           if (currentRecording) {
-            const tabId = currentRecording.tabId
             currentRecording = null
-            try {
-              await chrome.tabs.sendMessage(tabId, {
-                type: MSG.RECORD_AUTO_STOPPED,
-                reason: 'chrome-ui'
-              })
-            } catch {
-              // tab 已关 / content script 没注入，无伤
-            }
+            await broadcastAutoStopped('chrome-ui')
           }
           sendResponse({ ok: true })
           break
@@ -222,6 +217,31 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
   })()
   return true
 })
+
+/**
+ * 把"录屏已结束"广播给所有 tab 的 content script。
+ * - excludeTabId：通常是触发 STOP/CANCEL 的 sender tab，那个 tab 走 sendResponse
+ *   拿 dataUrl + SubmitDialog，不该再收到 AUTO_STOPPED（否则 useRecorder
+ *   externallyStopped 会抢先 resolve 成 null，SubmitDialog 永远拿不到视频）。
+ * - chrome.tabs.sendMessage 对没注入 content script 的 tab（chrome:// / 应用
+ *   商店 / pdf viewer）会 reject，catch 兜住即可。
+ */
+async function broadcastAutoStopped(reason: string, excludeTabId?: number): Promise<void> {
+  let tabs: chrome.tabs.Tab[] = []
+  try {
+    tabs = await chrome.tabs.query({})
+  } catch {
+    return
+  }
+  await Promise.all(tabs.map(async (t) => {
+    if (!t.id || t.id === excludeTabId) return
+    try {
+      await chrome.tabs.sendMessage(t.id, { type: MSG.RECORD_AUTO_STOPPED, reason })
+    } catch {
+      // tab 不接消息（无 content script / 已关）—— 静默
+    }
+  }))
+}
 
 async function captureScreenshot(windowId?: number): Promise<CaptureScreenshotRes> {
   try {
