@@ -12,7 +12,7 @@ import { MSG } from '@/types/messages'
 import { loadConfig, matchProjects } from '@/storage/config'
 import { addHistoryEntry, listHistory, updateHistoryEntry } from '@/storage/history'
 import { renderTemplate } from '@/utils/template'
-import type { BugServer, Project } from '@/types/config'
+import type { BugServer, MooConfig, Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
 
 const RETRY_QUEUE_KEY = 'mooRetryQueue'
@@ -165,10 +165,22 @@ async function captureScreenshot(windowId?: number): Promise<CaptureScreenshotRe
 async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRes> {
   const config = await loadConfig()
   const project = config.projects.find((p) => p.id === req.projectId)
-  if (!project) return { ok: false, error: '找不到对应项目（可能项目刚被删除）。请回到 DevTools → Moo → 环境 重新选择' }
+  if (!project) {
+    const err = '找不到对应项目（可能项目刚被删除）。请回到 DevTools → Moo → 环境 重新选择'
+    await writeFailureHistory(req, undefined, undefined, err)
+    return { ok: false, error: err }
+  }
   const server = project.servers.find((s) => s.id === req.serverId)
-  if (!server) return { ok: false, error: '找不到选中的上报服务器（可能刚被删除）。请回到 DevTools → Moo → 环境 重新选择' }
-  if (!server.endpoint) return { ok: false, error: `上报服务器「${server.name}」还没填请求 URL。请去 DevTools → Moo → 环境 → 上报服务器，在「请求 URL」那一行填上后端地址后再试` }
+  if (!server) {
+    const err = '找不到选中的上报服务器（可能刚被删除）。请回到 DevTools → Moo → 环境 重新选择'
+    await writeFailureHistory(req, project, undefined, err)
+    return { ok: false, error: err }
+  }
+  if (!server.endpoint) {
+    const err = `上报服务器「${server.name}」还没填请求 URL。请去 DevTools → Moo → 环境 → 上报服务器，在「请求 URL」那一行填上后端地址后再试`
+    await writeFailureHistory(req, project, server, err)
+    return { ok: false, error: err }
+  }
 
   // 按项目白名单抓取页面 storage（localStorage 优先，找不到尝试 sessionStorage）
   const storageKeys = project.capture?.storageKeys ?? []
@@ -215,15 +227,14 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
     }
     result = { ok: resp.ok, status: resp.status, body: text, remoteId }
     if (!resp.ok && resp.status >= 500) {
-      // 5xx → 进重试队列
-      await enqueueRetry(req, server.endpoint, server.method, headers, body)
-      result.queued = true
+      // 5xx → 尝试进重试队列；超 1MB（带视频）或 multipart 都不入队
+      // 必须按 enqueue 真实结果设 queued，否则 toast 撒谎"已加入重试"
+      result.queued = await enqueueRetry(req, server.endpoint, server.method, headers, body)
     }
   } catch (err) {
-    // 网络错误 → 进重试队列
+    // 网络错误 → 同上
     result = { ok: false, error: (err as Error).message }
-    await enqueueRetry(req, server.endpoint, server.method, headers, body)
-    result.queued = true
+    result.queued = await enqueueRetry(req, server.endpoint, server.method, headers, body)
   }
 
   const entry: BugHistoryEntry = {
@@ -260,6 +271,47 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
   }
 
   return result
+}
+
+/**
+ * project/server 缺失或 endpoint 没填时仍然把"本次尝试"落到 history，方便用户
+ * 在 History tab 看到失败记录、决定要不要去环境 tab 修配置后重发。
+ * 不然会出现"我刚提交了一条 bug 怎么 History 里完全没痕迹"的体验黑洞。
+ */
+async function writeFailureHistory(
+  req: SubmitBugReq,
+  project: Project | undefined,
+  server: BugServer | undefined,
+  errorMsg: string
+): Promise<void> {
+  const entry: BugHistoryEntry = {
+    id: crypto.randomUUID(),
+    timestamp: Date.now(),
+    projectId: req.projectId,
+    projectName: project?.name ?? '(项目已被删除)',
+    serverId: req.serverId,
+    serverName: server?.name ?? '(服务器已被删除)',
+    title: req.title,
+    description: req.description,
+    image: req.image,
+    hasVideo: !!req.video,
+    videoDuration: req.video?.duration ?? 0,
+    url: req.url,
+    userAgent: req.userAgent,
+    viewport: req.viewport,
+    requests: req.requests,
+    errors: req.errors,
+    result: { ok: false, error: errorMsg },
+    remoteBase: server?.endpoint ? deriveRemoteBase(server.endpoint) : undefined,
+    remoteHeaders: server && project
+      ? pickPropagatedHeaders(applyAuthHeaders(project, { ...(server.headers ?? {}) }))
+      : undefined
+  }
+  try {
+    await addHistoryEntry(entry)
+  } catch (e) {
+    console.warn('[Moo] writeFailureHistory failed', (e as Error).message)
+  }
 }
 
 // ============================================================
@@ -440,14 +492,21 @@ interface QueuedRequest {
   bodyString: string
 }
 
+/** 单条 body 上限 1MB —— chrome.storage.local 全键合计 10MB，
+ *  视频 base64 dataURL 单条就能 17MB+，整个队列直接爆配额。
+ *  超限的 payload 自然不进队列，避免 set() 抛 QUOTA_BYTES 让整次提交失败。 */
+const RETRY_MAX_BODY_BYTES = 1_000_000
+
+/** @returns 是否真的入队（用于 caller 决定 toast 文案要不要提"已加入重试") */
 async function enqueueRetry(
   _req: SubmitBugReq,
   endpoint: string,
   method: string,
   headers: Record<string, string>,
   body: BodyInit
-): Promise<void> {
-  if (typeof body !== 'string') return // multipart 不重试
+): Promise<boolean> {
+  if (typeof body !== 'string') return false // multipart 不重试
+  if (body.length > RETRY_MAX_BODY_BYTES) return false // 太大不入队
   const queued: QueuedRequest = {
     enqueuedAt: Date.now(),
     attempts: 0,
@@ -456,11 +515,18 @@ async function enqueueRetry(
     headers,
     bodyString: body
   }
-  const r = await chrome.storage.local.get(RETRY_QUEUE_KEY)
-  const list = (r[RETRY_QUEUE_KEY] as QueuedRequest[]) ?? []
-  list.push(queued)
-  while (list.length > 50) list.shift()
-  await chrome.storage.local.set({ [RETRY_QUEUE_KEY]: list })
+  try {
+    const r = await chrome.storage.local.get(RETRY_QUEUE_KEY)
+    const list = (r[RETRY_QUEUE_KEY] as QueuedRequest[]) ?? []
+    list.push(queued)
+    while (list.length > 50) list.shift()
+    // 整体仍可能因为多条累计超配额而抛错
+    await chrome.storage.local.set({ [RETRY_QUEUE_KEY]: list })
+    return true
+  } catch (e) {
+    console.warn('[Moo] enqueueRetry storage set failed', (e as Error).message)
+    return false
+  }
 }
 
 async function flushRetryQueue(): Promise<number> {
@@ -502,12 +568,16 @@ async function flushRetryQueue(): Promise<number> {
 
 async function refreshHistoryStatus(): Promise<number> {
   const list = await listHistory()
+  // 老 entry（v0.1.5 之前）没存 remoteHeaders；裸 GET 会被服务端 401 拒，
+  // 用户的「同步状态」按钮永远显示 0 已更新。每次同步前用当前 config 给
+  // 这些 entry 补一份 token —— 现网账号体系仍合法时能跑通。
+  const config = await loadConfig()
   let updated = 0
   for (const entry of list) {
     if (!entry.remoteId || !entry.remoteBase) continue
     try {
       const url = `${entry.remoteBase}/${entry.remoteId}/status-public`
-      const headers = pickTokenHeaders(entry)
+      const headers = pickTokenHeaders(entry, config)
       const resp = await fetch(url, { method: 'GET', headers })
       if (!resp.ok) continue
       const data = await resp.json()
@@ -525,8 +595,18 @@ async function refreshHistoryStatus(): Promise<number> {
   return updated
 }
 
-function pickTokenHeaders(entry: BugHistoryEntry): Record<string, string> {
-  return entry.remoteHeaders ?? {}
+function pickTokenHeaders(entry: BugHistoryEntry, config?: MooConfig): Record<string, string> {
+  // 优先用 entry 自带的（每次提交时 snapshot 的 token，最贴近上报当时的状态）
+  if (entry.remoteHeaders && Object.keys(entry.remoteHeaders).length > 0) {
+    return entry.remoteHeaders
+  }
+  // fallback：从当前 config 找回项目 + 服务器，重新构造 auth header
+  if (!config) return {}
+  const project = config.projects.find((p) => p.id === entry.projectId)
+  if (!project) return {}
+  const server = project.servers.find((s) => s.id === entry.serverId)
+  if (!server) return {}
+  return pickPropagatedHeaders(applyAuthHeaders(project, { ...(server.headers ?? {}) }))
 }
 
 /** 仅保留状态回查需要的 token 类 header，避免把 Content-Type 等也带过去 */
