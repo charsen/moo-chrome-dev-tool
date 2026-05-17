@@ -110,3 +110,48 @@ export const MSG = {
   RECORD_CANCEL: 'RECORD_CANCEL',
   RECORD_EXTERNAL_STARTED: 'RECORD_EXTERNAL_STARTED'
 } as const
+
+// =================================================================
+// 强类型 dispatch 用：每个 type 自带 payload + response shape
+// =================================================================
+//
+// 设计动机：原来 background onMessage 处理用 `message.payload as XxxReq`
+// 强转，shape 不匹配 TS 编译期发现不了。这个 IncomingMessage union 让
+// switch 的每个 case 自动 narrow，多余 / 缺失字段都会被编译器抓出来。
+//
+// caller 端（content / popup / devtools）继续走 safeSendMessage<T>，
+// 因为旧 API 表达力足够；type-safe sender wrapper 留下个 PR。
+
+export interface RefreshHistoryStatusRes { ok: true; updated: number }
+export interface RetryQueueFlushRes { ok: true; processed: number }
+export interface RecordStartRes { ok: boolean; error?: string }
+export interface RecordStopRes { ok: boolean; dataUrl?: string; bytes?: number; mime?: string; error?: string }
+export interface RecordCancelRes { ok: boolean }
+
+/** background.onMessage 收到的消息。switch (msg.type) 后每条自动 narrow。
+ *  注意：source / tabId 是 envelope 字段，未来 caller 侧若加约束可移到这里。 */
+export type IncomingMessage =
+  | { type: typeof MSG.CAPTURE_SCREENSHOT }
+  | { type: typeof MSG.MATCH_PROJECT; payload?: MatchProjectReq }
+  | { type: typeof MSG.SUBMIT_BUG; payload: SubmitBugReq }
+  | { type: typeof MSG.PREVIEW_PAYLOAD; payload?: PreviewPayloadReq }
+  | { type: typeof MSG.REFRESH_HISTORY_STATUS }
+  | { type: typeof MSG.RETRY_QUEUE_FLUSH }
+  | { type: typeof MSG.RECORD_START }
+  | { type: typeof MSG.RECORD_STOP }
+  | { type: typeof MSG.RECORD_CANCEL }
+
+/** type → response 类型映射。background handler 返回对应类型，caller 侧
+ *  可以用 `MessageResponse<typeof MSG.X>` 拿到精确返回 shape。 */
+export interface MessageResponseMap {
+  [MSG.CAPTURE_SCREENSHOT]: CaptureScreenshotRes
+  [MSG.MATCH_PROJECT]: MatchProjectRes
+  [MSG.SUBMIT_BUG]: SubmitBugRes
+  [MSG.PREVIEW_PAYLOAD]: PreviewPayloadRes
+  [MSG.REFRESH_HISTORY_STATUS]: RefreshHistoryStatusRes
+  [MSG.RETRY_QUEUE_FLUSH]: RetryQueueFlushRes
+  [MSG.RECORD_START]: RecordStartRes
+  [MSG.RECORD_STOP]: RecordStopRes
+  [MSG.RECORD_CANCEL]: RecordCancelRes
+}
+export type MessageResponse<K extends keyof MessageResponseMap> = MessageResponseMap[K]

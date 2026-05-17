@@ -1,9 +1,7 @@
 import type {
   CaptureScreenshotRes,
-  MatchProjectReq,
+  IncomingMessage,
   MatchProjectRes,
-  MooMessage,
-  PreviewPayloadReq,
   PreviewPayloadRes,
   SubmitBugReq,
   SubmitBugRes
@@ -87,13 +85,18 @@ if (import.meta.env.DEV) {
   })
 }
 
-chrome.runtime.onMessage.addListener((message: MooMessage, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
   // 校验消息来源：MV3 默认只接受同扩展，但 sender.id 为 undefined 时（极少数边缘情况）
   // 依然要拒。外部扩展 / 网站要发我们的消息必须显式声明 externally_connectable，
   // 而我们 manifest 没声明 —— 所以任何 sender.id !== runtime.id 一律视为非法。
   if (sender.id && sender.id !== chrome.runtime.id) {
     return false
   }
+  // raw 来自跨进程 IPC，TS 编译期保证不了；先做最基本 shape 校验再 narrow 为 IncomingMessage。
+  if (!raw || typeof raw !== 'object' || typeof (raw as { type?: unknown }).type !== 'string') {
+    return false
+  }
+  const message = raw as IncomingMessage
   ;(async () => {
     try {
       switch (message.type) {
@@ -104,7 +107,7 @@ chrome.runtime.onMessage.addListener((message: MooMessage, sender, sendResponse)
         }
         case MSG.MATCH_PROJECT: {
           try {
-            const { url } = (message.payload as MatchProjectReq) ?? { url: '' }
+            const url = message.payload?.url ?? ''
             const config = await loadConfig()
             const matches = matchProjects(config, url)
             sendResponse({ project: matches[0] ?? null, matches } satisfies MatchProjectRes)
@@ -117,7 +120,7 @@ chrome.runtime.onMessage.addListener((message: MooMessage, sender, sendResponse)
           break
         }
         case MSG.PREVIEW_PAYLOAD: {
-          const payload = message.payload as PreviewPayloadReq | undefined
+          const payload = message.payload
           if (!payload || !payload.server) {
             sendResponse({ ok: false, error: 'PREVIEW_PAYLOAD payload 缺 server' } satisfies PreviewPayloadRes)
             break
@@ -132,6 +135,12 @@ chrome.runtime.onMessage.addListener((message: MooMessage, sender, sendResponse)
         }
         case MSG.SUBMIT_BUG: {
           const tabId = sender.tab?.id
+          // payload 是 IncomingMessage 里的 required 字段，TS 已 narrow，无需 as 强转。
+          // 但仍要防 caller 端漏传：runtime 一道 shape 校验。
+          if (!message.payload || typeof message.payload !== 'object') {
+            sendResponse({ ok: false, error: 'SUBMIT_BUG payload 缺失' } satisfies SubmitBugRes)
+            break
+          }
           const res = await submitBug(message.payload as SubmitBugReq, tabId)
           sendResponse(res)
           break
@@ -162,8 +171,13 @@ chrome.runtime.onMessage.addListener((message: MooMessage, sender, sendResponse)
           sendResponse({ ok: true })
           break
         }
-        default:
-          sendResponse({ ok: false, error: `unknown message type: ${message.type}` })
+        default: {
+          // 编译期 narrow：如果 IncomingMessage 里漏了某个 case，下面的 `never`
+          // 赋值会 TS 错误。这是 discriminated union 的关键保护点。
+          const _exhaustive: never = message
+          sendResponse({ ok: false, error: `unknown message type` })
+          void _exhaustive
+        }
       }
     } catch (err) {
       sendResponse({ ok: false, error: (err as Error).message })
