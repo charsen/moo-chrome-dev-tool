@@ -40,10 +40,23 @@ window.addEventListener('unhandledrejection', (e) => {
   showError('unhandledrejection', r?.stack ?? String(r))
 })
 
-const app = createApp(Panel)
-app.config.errorHandler = (err, _instance, info) => {
-  const e = err as Error
-  showError(`vue:${info}`, `${e?.message ?? err}\n${e?.stack ?? ''}`)
-  console.error('[Moo:panel]', err, info)
+// panel.html 正常通过 chrome.devtools.panels.create() 注入到 DevTools 里，
+// chrome.devtools.* 才存在。但 manifest 把它的 URL 暴露为 chrome-extension://EXT/.../panel.html，
+// 任意页面能 iframe 它，或者用户手动访问该 URL —— 这两种场景下 chrome.devtools 是
+// undefined，Panel.vue setup 顶层访问 inspectedWindow.tabId 会直接 throw 让面板白屏。
+// 挡一道：非 DevTools 上下文显示静态说明页，不挂 Vue。
+if (typeof chrome === 'undefined' || typeof chrome.devtools === 'undefined') {
+  const el = document.getElementById('app')
+  if (el) {
+    el.style.cssText = 'font:14px ui-sans-serif,system-ui;padding:32px;max-width:560px;margin:0 auto;color:#374151;line-height:1.6;'
+    el.textContent = '此页面需要通过 DevTools 打开。请打开任意网页 → 调出开发者工具（F12 / ⌥⌘I）→ 切到「Moo」面板使用。'
+  }
+} else {
+  const app = createApp(Panel)
+  app.config.errorHandler = (err, _instance, info) => {
+    const e = err as Error
+    showError(`vue:${info}`, `${e?.message ?? err}\n${e?.stack ?? ''}`)
+    console.error('[Moo:panel]', err, info)
+  }
+  app.mount('#app')
 }
-app.mount('#app')
