@@ -25,9 +25,13 @@ try {
   process.exit(1)
 }
 
-// 源图按优先级查找：先看 f2.png（新版 logo · 鹰头 + reticle 设计稿）；
-// fallback 到 eagle-source.jpg（早期写实鹰头照片，保留作为历史）
+// 源图按优先级查找：
+//   f44.png         — v0.1.10 起的当前 logo（黑色鹰头侧脸 + 黄色 reticle 眼睛）
+//   f2.png          — v0.1.x 早期 logo（鹰头正面 + reticle）
+//   eagle-source.jpg — v0.0.x 最早期写实鹰头照片
+// 全部保留作为历史回滚点。
 const candidates = [
+  resolve(root, 'src/assets/f44.png'),
   resolve(root, 'src/assets/f2.png'),
   resolve(root, 'src/assets/eagle-source.jpg')
 ]
