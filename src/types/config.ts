@@ -129,7 +129,14 @@ export function normalizeProject(raw: unknown): Project {
     capture: {
       requests: typeof capture.requests === 'boolean' ? capture.requests : DEFAULT_CAPTURE.requests,
       consoleErrors: typeof capture.consoleErrors === 'boolean' ? capture.consoleErrors : DEFAULT_CAPTURE.consoleErrors,
-      storageKeys: Array.isArray(capture.storageKeys) ? capture.storageKeys.filter((x): x is string => typeof x === 'string') : [],
+      // localStorage / sessionStorage key 是页面侧的标识符，正常都是 [A-Za-z0-9_.-]
+      // 攻击者导入配置可塞 `__proto__` / 含空格 / RTL 字符的 key 试图绕过 JS 引擎 / 触发原型污染。
+      // 这里 + 限制 key 长度 ≤ 128 字符 + 限 50 个上限，防巨型配置卡 readPageStorage。
+      storageKeys: Array.isArray(capture.storageKeys)
+        ? capture.storageKeys
+            .filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 128 && /^[A-Za-z0-9_.\-:]+$/.test(x))
+            .slice(0, 50)
+        : [],
       requestBufferSize: typeof capture.requestBufferSize === 'number' && capture.requestBufferSize >= 5 ? Math.min(500, Math.round(capture.requestBufferSize)) : DEFAULT_CAPTURE.requestBufferSize
     },
     redact: {

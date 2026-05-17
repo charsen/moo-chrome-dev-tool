@@ -512,7 +512,12 @@ function countProjectsWithToken(projects: unknown[]): number {
   return n
 }
 
-/** 从 projects 数组里抽出所有 server.endpoint 的可读 host（带协议），去重保序。 */
+/** 从 projects 数组里抽出所有 server.endpoint 的可读 host（带协议），去重保序。
+ *
+ * **Unicode 同形防御**：攻击者可能用 `https://trusted.com‎@evil.com/x` 这种
+ * RTL / 不可见字符让用户在确认 dialog 上看到 `trusted.com` 但实际 host 是 evil.com。
+ * 我们把 host 走 URL.host（即 punycode 形式：xn--...） + 给非 ASCII host 加 ⚠ 警示，
+ * 用户一眼能分辨是 ASCII 域名还是 IDN。 */
 function collectEndpoints(projects: unknown[]): string[] {
   const seen = new Set<string>()
   const out: string[] = []
@@ -525,9 +530,16 @@ function collectEndpoints(projects: unknown[]): string[] {
       let display = ep
       try {
         const u = new URL(ep)
-        display = `${u.protocol}//${u.host}${u.pathname === '/' ? '' : u.pathname}`
+        const hostAscii = u.host // URL.host 自动转 punycode（xn-- 前缀），非 ASCII 字符不会进
+        const path = u.pathname === '/' ? '' : u.pathname
+        display = `${u.protocol}//${hostAscii}${path}`
+        // 如果原始字符串和 ASCII 化后的不一致 / 含非 ASCII 字符 / 含 @ 符号（凭证形式），加 ⚠
+        if (/[^\x20-\x7E]/.test(ep) || ep.includes('@') || ep !== display) {
+          display = `⚠ ${display}  (原文: ${truncate(ep, 60)})`
+        }
       } catch {
-        // 非法 URL：原样展示，让用户自己判断
+        // 非法 URL：原样展示，但前加 ⚠ 提示用户配置有问题
+        display = `⚠ ${ep}`
       }
       if (!seen.has(display)) {
         seen.add(display)
@@ -536,6 +548,10 @@ function collectEndpoints(projects: unknown[]): string[] {
     }
   }
   return out
+}
+
+function truncate(s: string, n: number): string {
+  return s.length <= n ? s : s.slice(0, n) + '…'
 }
 </script>
 
