@@ -103,15 +103,22 @@ const capturedRequests = computed(() => reqApi.requests.value)
 const capturedErrors = computed(() => errApi.errors.value)
 
 async function refreshProject() {
-  // SW 暂时不可达时静默 fallback —— 悬浮球消失比抛错让 Vue 卡死要好；下次 SPA 路由变更会再试。
-  const res = (await safeSendMessage<MatchProjectRes>(
-    {
+  // SW 暂时不可达时不动 state —— 之前用 fallback={matches:[]} 会让悬浮球
+  // v-if="matches.length" 失败闪一下消失（用户报：录屏中切 tab 悬浮球不见，
+  // 切回又出现）。SPA 路由切换 + tab 失焦时 SW 偶尔 spin-down，fallback
+  // 路径打中就清空 matches。改成不传 fallback 走 try/catch，SW 不可达时
+  // 保留旧 matches，下次 url 变更或显式 refresh 自然覆盖。
+  let res: MatchProjectRes | undefined
+  try {
+    res = await safeSendMessage<MatchProjectRes>({
       type: MSG.MATCH_PROJECT,
       source: 'content',
       payload: { url: location.href }
-    },
-    { fallback: { matches: [], project: null } satisfies MatchProjectRes }
-  )) as MatchProjectRes
+    }) as MatchProjectRes
+  } catch {
+    return  // SW 没响应：保留先前 matches，下次再试
+  }
+  if (!res) return
   matches.value = res.matches ?? (res.project ? [res.project] : [])
   // 唯一匹配 → 直接 active；多匹配 → 留空，等用户在悬浮球里选
   // 抓取配置始终走 matches[0]（同一 URL 命中的项目，抓取/脱敏通常一致；
