@@ -1,12 +1,72 @@
 import type { BugHistoryEntry } from '@/types/history'
+import { thumbnailize } from '@/utils/image'
 
 const KEY = 'mooHistory'
 const MAX_ENTRIES = 30
 
+/**
+ * 把任何形态的 raw 数据归一化成合法 BugHistoryEntry，缺字段都给兜底默认值。
+ *
+ * 起因：v0.1.6 撞过一次 `e.requests.length` crash —— 老版本 / 异常路径
+ * 写入的 entry 可能缺关键字段，History.vue 模板里直接访问就炸。光兜底
+ * requests/errors 不够（紧接着会撞 e.result.ok、e.title.toLowerCase）；
+ * 统一在 read 边界做完整 normalize，让所有 read 出来的 entry 都是合法
+ * BugHistoryEntry，下游 .vue 模板完全不必担心 shape。
+ */
+function normalizeHistoryEntry(raw: unknown): BugHistoryEntry {
+  const e = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {}
+  const str = (v: unknown, fb = ''): string => typeof v === 'string' ? v : fb
+  const num = (v: unknown, fb = 0): number => typeof v === 'number' && isFinite(v) ? v : fb
+  const bool = (v: unknown, fb = false): boolean => typeof v === 'boolean' ? v : fb
+  const arr = <T>(v: unknown): T[] => Array.isArray(v) ? v as T[] : []
+  const result = (e.result && typeof e.result === 'object') ? e.result as Record<string, unknown> : {}
+  const headers = (e.remoteHeaders && typeof e.remoteHeaders === 'object')
+    ? Object.fromEntries(
+        Object.entries(e.remoteHeaders as Record<string, unknown>).filter(([, v]) => typeof v === 'string')
+      ) as Record<string, string>
+    : undefined
+
+  return {
+    id: str(e.id) || crypto.randomUUID(),
+    timestamp: num(e.timestamp, Date.now()),
+    projectId: str(e.projectId),
+    projectName: str(e.projectName, '(未知项目)'),
+    serverId: str(e.serverId),
+    serverName: str(e.serverName, '(未知服务器)'),
+    title: str(e.title, '(无标题)'),
+    description: str(e.description),
+    image: str(e.image),
+    hasVideo: bool(e.hasVideo),
+    videoDuration: num(e.videoDuration),
+    url: str(e.url),
+    userAgent: str(e.userAgent),
+    viewport: str(e.viewport),
+    requests: arr(e.requests),
+    errors: arr(e.errors),
+    result: {
+      ok: bool(result.ok),
+      status: typeof result.status === 'number' ? result.status : undefined,
+      body: typeof result.body === 'string' ? result.body : undefined,
+      error: typeof result.error === 'string' ? result.error : undefined,
+      queued: typeof result.queued === 'boolean' ? result.queued : undefined
+    },
+    remoteId: typeof e.remoteId === 'string' ? e.remoteId : undefined,
+    remoteStatus: typeof e.remoteStatus === 'string'
+      ? e.remoteStatus as BugHistoryEntry['remoteStatus']
+      : undefined,
+    remoteStatusUpdatedAt: typeof e.remoteStatusUpdatedAt === 'string'
+      ? e.remoteStatusUpdatedAt
+      : undefined,
+    remoteBase: typeof e.remoteBase === 'string' ? e.remoteBase : undefined,
+    remoteHeaders: headers
+  }
+}
+
 async function read(): Promise<BugHistoryEntry[]> {
   const r = await chrome.storage.local.get(KEY)
   const list = r[KEY]
-  return Array.isArray(list) ? list : []
+  if (!Array.isArray(list)) return []
+  return list.map(normalizeHistoryEntry)
 }
 
 /** write() 结果：trimmed = 因 quota 不够被丢掉的最旧条数（0 表示一切顺利） */
@@ -32,8 +92,14 @@ async function write(list: BugHistoryEntry[]): Promise<WriteResult> {
 }
 
 export async function addHistoryEntry(entry: BugHistoryEntry): Promise<WriteResult> {
+  // 入库前把截图压成缩略图。原始全分辨率早就 POST 给后端了，本地只为
+  // 用户回顾用，没必要存 800KB 的 PNG base64 —— 否则 30 条历史轻松爆
+  // chrome.storage.local 10MB 配额（实测能存的只有 5-8 条）。
+  const shrunk: BugHistoryEntry = entry.image
+    ? { ...entry, image: await thumbnailize(entry.image) }
+    : entry
   const list = await read()
-  list.unshift(entry)
+  list.unshift(shrunk)
   if (list.length > MAX_ENTRIES) list.length = MAX_ENTRIES
   return write(list)
 }

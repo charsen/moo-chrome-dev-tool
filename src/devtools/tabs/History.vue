@@ -56,7 +56,7 @@
             <h5>服务端响应</h5>
             <pre class="mono">{{ e.result.body ?? e.result.error }}</pre>
           </section>
-          <section v-if="e.requests.length">
+          <section v-if="e.requests?.length">
             <h5>请求 ({{ e.requests.length }})</h5>
             <ul class="sub-list">
               <li v-for="r in e.requests" :key="r.id">
@@ -66,7 +66,7 @@
               </li>
             </ul>
           </section>
-          <section v-if="e.errors.length">
+          <section v-if="e.errors?.length">
             <h5>错误 ({{ e.errors.length }})</h5>
             <ul class="sub-list">
               <li v-for="err in e.errors" :key="err.id">
