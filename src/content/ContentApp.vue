@@ -82,12 +82,15 @@ const recBarStyle = computed(() => {
   try {
     const saved = localStorage.getItem('moo-ball-pos')
     if (!saved) return fallback
-    const parsed = JSON.parse(saved) as { x: unknown; y: unknown }
-    if (typeof parsed.x !== 'number' || typeof parsed.y !== 'number') return fallback
+    const parsed = JSON.parse(saved) as unknown
+    if (!parsed || typeof parsed !== 'object') return fallback
+    const p = parsed as { x: unknown; y: unknown }
+    if (typeof p.x !== 'number' || typeof p.y !== 'number') return fallback
+    if (!isFinite(p.x) || !isFinite(p.y)) return fallback
     const BAR_W = 245
     const BAR_H = 42
-    const left = Math.max(8, Math.min(window.innerWidth - BAR_W - 8, parsed.x))
-    const top = Math.max(8, Math.min(window.innerHeight - BAR_H - 8, parsed.y))
+    const left = Math.max(8, Math.min(window.innerWidth - BAR_W - 8, p.x))
+    const top = Math.max(8, Math.min(window.innerHeight - BAR_H - 8, p.y))
     return { left: `${left}px`, top: `${top}px`, transform: 'none' }
   } catch {
     return fallback

@@ -69,9 +69,15 @@ async function read(): Promise<BugHistoryEntry[]> {
   return list.map(normalizeHistoryEntry)
 }
 
-/** write() 结果：trimmed = 因 quota 不够被丢掉的最旧条数（0 表示一切顺利） */
+/**
+ * write() 结果：
+ * - trimmed:    因 quota 不够被丢掉的最旧条数（0 表示一切顺利）
+ * - allDropped: 连空数组都写不进去（storage 整体异常），调用方应该告诉用户
+ *               「本次没保存到本地，但服务端已收到」而不是假装成功
+ */
 interface WriteResult {
   trimmed: number
+  allDropped: boolean
 }
 
 async function write(list: BugHistoryEntry[]): Promise<WriteResult> {
@@ -82,13 +88,19 @@ async function write(list: BugHistoryEntry[]): Promise<WriteResult> {
   while (attempt.length > 0) {
     try {
       await chrome.storage.local.set({ [KEY]: attempt })
-      return { trimmed: initialLen - attempt.length }
+      return { trimmed: initialLen - attempt.length, allDropped: false }
     } catch {
       attempt.pop()
     }
   }
-  // 空数组也写不进去，说明 storage 整体异常 —— 静默放弃，下次 addHistoryEntry 会再试
-  return { trimmed: initialLen }
+  // 空数组也写不进去，说明 storage 整体异常。调用方知道之后才能给用户真实
+  // 反馈（不要再 toast「提交成功」+「丢了 N 条」，那时连新条也丢了）。
+  try {
+    await chrome.storage.local.set({ [KEY]: [] })
+  } catch {
+    // storage 完全锁死，无能为力。仍然 return allDropped=true 让调用方决定。
+  }
+  return { trimmed: initialLen, allDropped: true }
 }
 
 export async function addHistoryEntry(entry: BugHistoryEntry): Promise<WriteResult> {

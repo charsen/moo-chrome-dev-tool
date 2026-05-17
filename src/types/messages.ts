@@ -61,6 +61,9 @@ export interface SubmitBugRes {
   queued?: boolean
   /** 本地历史因 storage quota 不够被自动丢弃的最旧条数（>0 时 UI 应提示用户） */
   trimmedHistory?: number
+  /** storage 整体异常导致连本次新条都没保存到本地（仅服务端收到了）。
+   *  UI 必须区别于"丢了几条旧的"——后者新条还在，前者连新条也不在。 */
+  historyAllDropped?: boolean
 }
 
 export interface PreviewPayloadReq {

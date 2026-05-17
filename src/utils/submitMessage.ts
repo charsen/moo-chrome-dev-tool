@@ -14,7 +14,11 @@ import type { SubmitBugRes } from '@/types/messages'
 export function formatSubmitResult(res: SubmitBugRes): { ok: boolean; message: string } {
   if (res.ok) {
     let msg = `提交成功 (HTTP ${res.status ?? 200})`
-    if (res.trimmedHistory && res.trimmedHistory > 0) {
+    if (res.historyAllDropped) {
+      // 比 trimmedHistory 更严重：连本次新条都没存到本地 storage。
+      // 用户去 History tab 找不到这条记录会误以为是 bug，必须明说。
+      msg += '\n⚠ 本地 storage 已满，这条提交没保存到本地（服务端已收到）。请去 设置 → 存储 → 清空历史，腾空间后下次会正常保存'
+    } else if (res.trimmedHistory && res.trimmedHistory > 0) {
       // storage 配额已满，旧历史被自动丢弃。让用户知道有数据丢失，可去 设置 → 存储 清空
       msg += `\n（本地保存历史时空间不够，自动丢弃了 ${res.trimmedHistory} 条最旧的本地记录；服务端已正常收到）`
     }
@@ -54,9 +58,14 @@ function extractServerError(body?: string): string {
   if (!body) return ''
   // 试 JSON
   try {
-    const parsed = JSON.parse(body) as { error?: unknown; message?: unknown }
-    const err = pickStr(parsed.error) || pickStr(parsed.message)
-    if (err) return err
+    const parsed = JSON.parse(body) as unknown
+    // 防 `null` / 基本类型：JSON.parse('null') 返 null，typeof null === 'object'
+    // 但 (null).error 会抛 TypeError 被外层 catch 吞，错误原因变成「null」误导
+    if (parsed && typeof parsed === 'object') {
+      const p = parsed as { error?: unknown; message?: unknown }
+      const err = pickStr(p.error) || pickStr(p.message)
+      if (err) return err
+    }
   } catch {
     // 不是 JSON，原文截断
   }

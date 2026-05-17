@@ -282,9 +282,12 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
   }
   try {
     const writeRes = await addHistoryEntry(entry)
-    if (writeRes.trimmed > 0) {
-      // storage quota 满，旧历史被丢了 trimmed 条。把信息透传给前端 toast 提示用户，
-      // 不能再让它静默丢
+    if (writeRes.allDropped) {
+      // storage 整体异常 —— 连本次新条都没存到本地。UI 必须告诉用户「服务端已收到
+      // 但本地没记录」，否则下次去 History tab 找不到这条提交还以为是 bug。
+      result.historyAllDropped = true
+    } else if (writeRes.trimmed > 0) {
+      // 旧历史被丢了 trimmed 条，新条已落地。UI 提示用户去清空一些项目腾空间。
       result.trimmedHistory = writeRes.trimmed
     }
   } catch (e) {
