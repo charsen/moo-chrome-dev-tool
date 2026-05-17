@@ -14,7 +14,11 @@
     "test:coverage": "vitest run --coverage",
     "mock": "node scripts/mock-server.mjs",
     "icons": "node scripts/generate-icons.mjs",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "prepare": "simple-git-hooks"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm type-check && pnpm test"
   },
   "dependencies": {
     "vue": "^3.4.21"
@@ -26,6 +30,7 @@
     "@vitejs/plugin-vue": "^5.0.4",
     "@vitest/coverage-v8": "^1.6.1",
     "sharp": "^0.34.5",
+    "simple-git-hooks": "^2.13.1",
     "typescript": "^5.4.2",
     "vite": "^5.2.0",
     "vitest": "^1.6.1",
