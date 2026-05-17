@@ -1,162 +1,109 @@
-# moo-chrome-dev-tool
+# Moo Dev Tool
 
-前后端业务调试 Chrome 扩展（Manifest V3）。
+一个给开发、测试、设计师在浏览器里报 bug 用的 Chrome 扩展。
 
-调试时发现 bug → 一键截图 + 录屏 → 自动附带页面 URL/UA/视口、现场抓的网络请求 / Console 错误 / 选中的 DOM 元素 / localStorage 快照 → 提交到可配置的服务端（按项目 / 多环境）→ 在 DevTools 里继续跟进状态。
+## 它能帮你做什么
 
-> **下载安装** → [Releases](https://gitee.com/charsen/moo-chrome-dev-tool/releases)（下 zip 解压，`chrome://extensions/` 开发者模式 → 加载已解压的扩展程序 → 选解压目录）
->
-> 想接自家后端？看 [`docs/SERVER_INTEGRATION.md`](docs/SERVER_INTEGRATION.md)。
+测试发现一个按钮点了没反应。以前你要：截图、打开 DevTools 抄请求、复制错误堆栈、回忆刚才点了哪、写一个能让开发看懂的描述，最后贴到群里或工单系统。
 
----
+装上这个扩展之后：
 
-## 技术栈
+1. 在出问题的页面按一下右下角悬浮球（或者快捷键截图、`⌥⇧R` 录屏）
+2. 在截图上画框圈出位置、加几个字
+3. 写一行标题，按提交
 
-- Vite 5 + Vue 3 + TypeScript
-- `@crxjs/vite-plugin`（MV3 打包 + HMR）
-- pnpm
+扩展会自动把这些一起打包发到你团队的 bug 看板：
 
----
+- 当时的页面截图（带你画的标注）和最近 30 秒录屏
+- 这个页面最近发的网络请求（含请求体和响应，token 自动脱敏）
+- 最近的 JS 报错
+- 你提到的页面元素（按一下「选元素」点中即可，自动带 selector）
+- 项目白名单里的 localStorage（比如登录 token、当前用户 id）
 
-## 目录结构
+开发拿到这条 bug 不用再问「你怎么操作的」「请求长什么样」。
 
-```
-.
-├── manifest.json
-├── vite.config.ts
-├── scripts/                    # 本地联调用 mock 服务端 + 图标生成
-├── docs/
-│   └── SERVER_INTEGRATION.md   # 后端接入协议规范 + 示例
-└── src/
-    ├── popup/                  # 点扩展图标的小弹窗（仅状态展示）
-    ├── devtools/               # F12 "Moo" 面板（4 个 Tab）
-    │   ├── Panel.vue
-    │   └── tabs/
-    │       ├── Overview.vue        # 实时请求 + Console 错误
-    │       ├── Environment.vue     # 项目 / 服务器 / token CRUD
-    │       ├── History.vue         # 提交历史 + 远端状态同步 + 重试
-    │       └── Settings.vue        # 全局开关 / 抓取 / 脱敏 / 存储
-    ├── content/                # 注入页面的悬浮球 + 标注 + SubmitDialog（Shadow DOM）
-    │   ├── ContentApp.vue
-    │   ├── FloatingBall.vue
-    │   ├── Annotator.vue           # 截图标注（矩形/圆/箭头/文字/马赛克）
-    │   ├── ElementPicker.vue       # 选元素
-    │   ├── SubmitDialog.vue
-    │   ├── useRecorder.ts          # 录屏控制
-    │   ├── useRequests.ts          # 收 main-world 推来的请求
-    │   ├── useErrors.ts            # 收 main-world 推来的错误
-    │   ├── passwordMask.ts         # 截图前遮密码框
-    │   └── styles.ts               # shadow DOM CSS（独立 token）
-    ├── injected/               # 注入到 MAIN world 的 fetch/XHR/console hooks
-    ├── offscreen/              # MediaRecorder 跑在 offscreen document（录屏需要）
-    ├── background/             # Service Worker：上报 / 重试队列 / 录屏编排 / 状态回查
-    ├── storage/                # config + history（自动迁移、自动写回）
-    ├── utils/                  # template 渲染、redact 脱敏、submitMessage 格式化
-    ├── styles/tokens.css       # 设计令牌（popup + devtools 共享）
-    └── types/                  # 共享类型
-```
+## 适合谁
 
----
+- **测试**：报 bug 不再贴一张截图配半页文字描述
+- **前端 / 后端**：自测时一键复盘现场，回查请求和报错
+- **设计师**：看到样式问题直接圈出来发给前端
+- **PM**：用户演示出问题时录屏 30 秒发给开发
 
-## 快速开始
+不适合：纯线上用户反馈渠道（这是给团队内部用的，要登记 token）。
+
+## 装上跑起来
+
+**下载安装包**：去 [Releases](https://gitee.com/charsen/moo-chrome-dev-tool/releases) 下最新的 zip 解压。
+
+**加载到 Chrome**：
+
+1. 打开 `chrome://extensions/`
+2. 右上角打开「开发者模式」
+3. 点「加载已解压的扩展程序」，选刚才解压的目录
+
+**配一个项目**：
+
+1. 在任意页面按 F12 打开 DevTools，找到「Moo」面板
+2. 切到「环境」Tab，新建项目
+3. 填项目名、要监控的网址（支持通配，比如 `https://*.example.com/*`）
+4. 加一个服务器，把团队后端给你的接收地址填到「请求 URL」，token 填到「项目 Token」
+5. 刷新页面，右下角出现 `M` 悬浮球就配好了
+
+**报一个 bug**：
+
+- 点悬浮球 → 截图 → 画框标注 → 填标题 → 提交
+- 或者按 `⌘/Ctrl+Shift+B` 直接截图
+- 或者按 `⌥⇧R` 开始录屏，最长 30 秒自动停
+
+## 后端怎么接
+
+需要你团队的后端写两个 HTTP 接口：一个收提交，一个让扩展回查 bug 当前状态。
+
+详细协议看 [`docs/SERVER_INTEGRATION.md`](docs/SERVER_INTEGRATION.md)，里面有 Node 示例可以直接抄。
+
+用 Laravel 的话最省事——装 `composer require charsen/moo-scaffold`，自带接收接口和后台 UI。
+
+## 内部多系统怎么办
+
+公司内有 3 个系统要监控？在「环境」Tab 建 3 个项目，每个绑定自己的域名和上报地址。悬浮球会根据你当前所在网址自动切换到对应项目。
+
+每个项目下还可以配多个服务器（比如开发环境、预发、线上各一份），提交时下拉选。
+
+## 想从源码跑
 
 ```bash
 pnpm install
-pnpm dev          # 启动 Vite，产物输出到 dist/
+pnpm dev      # 启动 Vite，产物输出到 dist/
 ```
 
-加载扩展：`chrome://extensions` → 开发者模式 → 「加载已解压的扩展程序」→ 选 `dist/`。
+然后在 `chrome://extensions` 加载 `dist/` 目录。改代码会自动重载。
 
-源码改动 @crxjs 会自动重载；改 manifest 或 commands 后需要在扩展页点重新加载。
-
-### 本地联调
+要本地联调后端：
 
 ```bash
-pnpm mock         # 起一个收 intake 的 mock 服务，默认 http://localhost:8787/bugs
+pnpm mock     # 起一个假后端在 http://localhost:8787/bugs
 ```
 
-在 DevTools「环境」Tab 新建项目 → URL 匹配 `https://*/*` → 新建服务器 endpoint 填 `http://localhost:8787/bugs` → 默认模板即可。
+在「环境」Tab 新建项目，URL 填 `https://*/*`，服务器地址填 `http://localhost:8787/bugs/intake`，提交一条试试。mock 控制台会打印收到的内容，附件落在 `mock-uploads/`。
 
-刷新页面 → 右下角出现 `M` 悬浮球（可拖动） → 点开菜单选「截图」/「录屏 ⌥⇧R」 → 标注 → 填标题 → 提交。mock 控制台会打印收到的内容，附件落到 `mock-uploads/`。
+## 目录速览
 
-### 构建
-
-```bash
-pnpm build        # dist/ 可直接打包发布
+```
+src/
+├── content/         # 注入到所有页面的 UI：悬浮球、标注、提交弹窗、录制条
+├── devtools/        # F12 里的「Moo」面板，4 个 Tab
+├── background/      # 后台脚本：消息中枢、上报、重试队列
+├── injected/        # 注入到页面里抓 fetch/XHR 的 hook
+├── offscreen/       # 录屏的实际录制器（MV3 要求独立文档）
+├── storage/         # chrome.storage 封装
+└── types/           # 共享类型
 ```
 
----
+技术栈：Vite 5 + Vue 3 + TypeScript + `@crxjs/vite-plugin`，pnpm 包管理。
 
-## 功能现状
+## 几个注意点
 
-### 现场捕获
-
-- **可视区截图** — `chrome.tabs.captureVisibleTab`
-- **截图标注** — 矩形 / 圆 / 箭头 / 文字 / 马赛克 / 撤销 / 清空
-- **录屏** — 快捷键 `⌥⇧R` 触发；走 `chrome.commands` → `chrome.tabCapture.getMediaStreamId` → offscreen `MediaRecorder`；webm/vp9，3.5 Mbps，最长 30s 自动停
-- **元素选择** — 在 SubmitDialog 里点「选元素」，hover 高亮，点击记录 selector / outerHtml / attributes，可多选
-- **网络请求** — MAIN world hook `fetch` + `XMLHttpRequest`，记录 method / URL / headers / body / status / 耗时，环形缓冲（默认 50 条可调）
-- **Console 错误** — hook `window.onerror` / `unhandledrejection` / `console.error`
-- **localStorage 快照** — 按项目白名单 key 抓取（优先 localStorage，找不到尝试 sessionStorage）
-
-### 触发与界面
-
-- 悬浮球：拖拽 / 位置记忆 / 按项目匹配显示
-- 快捷键截图：`⌘/Ctrl + Shift + B`
-- 快捷键录屏：`⌥⇧R`（可在 `chrome://extensions/shortcuts` 改键）
-- 扩展 popup：展示当前 tab 是否匹配项目 + 配置项目列表
-
-### DevTools 面板
-
-| Tab | 能力 |
-|---|---|
-| **概览** | 实时请求 / Console 错误两种视图；时间窗口（5/15/30/60s/全部）；URL / message 过滤；自动刷新；展开看 headers / body / stack |
-| **环境** | 项目 / 服务器 CRUD；URL 匹配（通配 `*`）；token；脱敏配置（header / body 黑名单）；password 输入框遮罩开关；localStorage 白名单；配置导入导出 JSON |
-| **历史** | 最近 30 条提交记录；缩略图 + 录屏角标；模糊搜索；展开看响应 / 请求 / 错误；**重新提交**到任意服务器；**同步远端状态** |
-| **设置** | 全局开关；项目级抓取 / 脱敏 / storage 白名单；存储管理（清空历史 / 重试队列） |
-
-### 配置 + 上报
-
-- **多项目 / 多环境** — 每项目可配多个服务器（dev / staging / prod 等）
-- **URL 通配匹配** — `*` 匹配任意字符
-- **payload 模板** — `{{var}}` / `{{varJson}}` 双语法；JSON / multipart 两种 Content-Type 编码
-- **自动迁移** — 默认模板演进时（如新增 video 字段），旧项目自动补齐
-- **token 鉴权** — 项目级 token 自动注入 `Authorization: Bearer` + `X-Scaffold-Token` header
-- **脱敏** — 提交前按项目配置抹除敏感 header / body 字段
-- **绕过 CORS** — 上报请求从 service worker 发起
-
-### 可靠性
-
-- **重试队列** — 5xx / 网络错误自动入队，`chrome.alarms` 每 5 分钟扫一次（仅 JSON body，multipart 不重试）
-- **远端状态同步** — DevTools 历史 Tab 点同步，扩展 GET `{base}/{id}/status-public` 更新本地 `open/in_progress/done/deleted` 状态
-- **历史超出存储** — 自动按 FIFO 丢老的，不报错
-
----
-
-## 推荐后端：moo-scaffold
-
-如果你用 Laravel，最快的接入方式是装 `moo-scaffold` 包——自带 intake + 后台 UI + 开发账号管理 + 截图视频展示：
-
-```bash
-composer require charsen/moo-scaffold
-```
-
-其它语言 / 框架想自己实现 intake：→ [`docs/SERVER_INTEGRATION.md`](docs/SERVER_INTEGRATION.md)（含协议规范 + Node/Python 示例 + 字段语义表）
-
----
-
-## 已知设计取舍
-
-- **录屏入口必须是快捷键**：Chrome MV3 要求 `tabCapture.getMediaStreamId` 在 user gesture 上下文里被调，content script 的 click 经消息转手后手势就丢了。悬浮球的「录屏」按钮只显示提示。
-- **截图前自动遮密码框**：默认开启，可在项目级关闭
-- **MAIN world 抓取**：只能抓注入之后发起的请求；扩展安装/刷新后需刷新目标页才会开始捕获
-- **重试队列不接 multipart**：multipart body 含二进制 Blob 不易序列化进 storage
-- **popup 不能 alert**：MV3 popup 屏蔽原生对话框，已改 inline 展开
-- **跨上下文时间**：devtools panel 和网页 main-world 的 `performance.now()` 不是同一个 origin，所有时间窗口判断用 `startedAt` ISO 字符串
-
----
-
-## 改进 / 调整记录
-
-参考 `git log`——commit 信息维护得比较细。
-
+- **录屏必须用快捷键**：Chrome 要求录屏在键盘手势上下文里启动，悬浮球的按钮点了没用（只显示提示）。
+- **截图前自动遮密码框**：默认开着，担心误遮可以在项目里关掉。
+- **网络请求只抓注入之后的**：刚装好扩展或刚刷新过，要再刷一次页面才开始抓。
+- **重试队列不接录屏**：录屏太大塞不进本地存储，提交失败的录屏不会自动重试，要手动到「历史」Tab 点重新提交。
