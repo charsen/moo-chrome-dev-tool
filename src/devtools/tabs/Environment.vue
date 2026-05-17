@@ -639,7 +639,7 @@ function collectEndpoints(projects: unknown[]): string[] {
   border-radius: 50%;
   background: var(--moo-c-success);
   flex: none;
-  box-shadow: 0 0 0 2px rgba(22, 163, 74, .15);
+  box-shadow: 0 0 0 2px var(--moo-c-success-halo);
 }
 .dot.off {
   background: var(--moo-c-text-faint);

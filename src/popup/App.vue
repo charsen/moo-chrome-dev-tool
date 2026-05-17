@@ -221,13 +221,13 @@ onMounted(async () => {
 .status-dot--on {
   border-radius: 50%;
   background: var(--moo-c-success);
-  box-shadow: 0 0 0 2px rgba(22, 163, 74, .14);
+  box-shadow: 0 0 0 2px var(--moo-c-success-halo);
 }
 .status-dot--on::before { content: '✓'; }
 .status-dot--warn {
   border-radius: 3px;
   background: var(--moo-c-warn);
-  box-shadow: 0 0 0 2px rgba(217, 119, 6, .14);
+  box-shadow: 0 0 0 2px var(--moo-c-warn-halo);
 }
 .status-dot--warn::before { content: '!'; }
 .status-dot--off {
