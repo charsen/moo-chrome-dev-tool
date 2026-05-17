@@ -67,7 +67,7 @@
         >
           <div class="row-head" @click="toggle(item.data.id)">
             <span class="kind-tag kind-tag--req" title="网络请求">REQ</span>
-            <span :class="['method', item.data.method.toLowerCase()]">{{ item.data.method }}</span>
+            <span :class="['method', String(item.data.method ?? '').toLowerCase()]">{{ item.data.method }}</span>
             <span :class="['status', statusClass(item.data.status)]">{{ item.data.status || 'ERR' }}</span>
             <span class="url" :title="item.data.url">{{ shortUrl(item.data.url) }}</span>
             <span class="dur">{{ Math.round(item.data.duration) }}ms</span>
@@ -86,7 +86,7 @@
                 aria-label="在 body 内搜索"
               />
             </div>
-            <section v-if="Object.keys(item.data.requestHeaders).length">
+            <section v-if="Object.keys(item.data.requestHeaders ?? {}).length">
               <h5>Request Headers</h5>
               <pre class="mono">{{ formatHeaders(item.data.requestHeaders) }}</pre>
             </section>
@@ -94,7 +94,7 @@
               <h5>Request Body</h5>
               <pre class="mono" v-html="highlightBody(item.data.requestBody, bodySearch)" />
             </section>
-            <section v-if="Object.keys(item.data.responseHeaders).length">
+            <section v-if="Object.keys(item.data.responseHeaders ?? {}).length">
               <h5>Response Headers</h5>
               <pre class="mono">{{ formatHeaders(item.data.responseHeaders) }}</pre>
             </section>
@@ -239,7 +239,7 @@ const timeline = computed<TimelineItem[]>(() => {
     for (const r of requests.value) {
       const ts = new Date(r.startedAt).getTime()
       if (ts + r.duration < cutoff) continue
-      if (f && !r.url.toLowerCase().includes(f)) continue
+      if (f && !String(r.url ?? '').toLowerCase().includes(f)) continue
       items.push({ kind: 'request', data: r, ts })
     }
   }

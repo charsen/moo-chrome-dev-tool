@@ -104,7 +104,7 @@
               <div class="req-list" v-if="filtered.length">
                 <label v-for="r in filtered" :key="r.id" class="req-item">
                   <input type="checkbox" :checked="selectedIds.has(r.id)" @change="toggle(r.id)" />
-                  <span :class="['method', r.method.toLowerCase()]">{{ r.method }}</span>
+                  <span :class="['method', String(r.method ?? '').toLowerCase()]">{{ r.method }}</span>
                   <span :class="['status', statusClass(r.status)]">{{ r.status || 'ERR' }}</span>
                   <span class="url" :title="r.url">{{ shortUrl(r.url) }}</span>
                   <span class="dur">{{ Math.round(r.duration) }}ms</span>
@@ -258,7 +258,7 @@ const filtered = computed(() => {
     : all.filter((r) => r.startTime + r.duration >= openedAt - windowMs.value)
   if (urlFilter.value.trim()) {
     const f = urlFilter.value.trim().toLowerCase()
-    arr = arr.filter((r) => r.url.toLowerCase().includes(f))
+    arr = arr.filter((r) => String(r.url ?? '').toLowerCase().includes(f))
   }
   return arr.slice().reverse() // 最新在上
 })

@@ -173,8 +173,10 @@ const filtered = computed(() => {
     e.url.toLowerCase().includes(f) ||
     e.description.toLowerCase().includes(f) ||
     // 详情字段：附带请求 URL / 错误 message（之前只能匹配标题，深层 grep 找不到）
-    e.requests.some((r) => r.url.toLowerCase().includes(f)) ||
-    e.errors.some((err) => err.message.toLowerCase().includes(f)) ||
+    // 注：r.url / err.message 来源于历史 entry 内嵌的 CapturedRequest / ConsoleError，
+    // 不走 normalizeHistoryEntry，可能是 undefined / 非 string，需兜底
+    e.requests.some((r) => String(r.url ?? '').toLowerCase().includes(f)) ||
+    e.errors.some((err) => String(err.message ?? '').toLowerCase().includes(f)) ||
     // 服务端响应正文（如果存了）
     (e.result.body?.toLowerCase().includes(f) ?? false)
   )
