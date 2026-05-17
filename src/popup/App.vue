@@ -79,6 +79,22 @@
     </main>
 
     <footer class="foot">
+      <!-- 录屏开关：tabCapture 是 optional_permission，用户主动启用一次即可 -->
+      <div class="rec-toggle">
+        <span class="rec-label">录屏功能（⌥⇧R）</span>
+        <button
+          type="button"
+          role="switch"
+          :class="['popup-switch', { 'is-on': recEnabled }]"
+          :aria-checked="recEnabled ? 'true' : 'false'"
+          :disabled="recBusy"
+          @click="toggleRecording"
+        >
+          <span class="popup-switch-thumb" />
+        </button>
+      </div>
+      <div v-if="recError" class="rec-err">{{ recError }}</div>
+
       <button class="link" @click="helpOpen = !helpOpen">
         如何打开 DevTools 面板 {{ helpOpen ? '▴' : '▾' }}
       </button>
@@ -111,6 +127,31 @@ const projects = ref<Project[]>([])
 const currentUrl = ref('')
 const loading = ref(true)
 const helpOpen = ref(false)
+const recEnabled = ref(false)
+const recBusy = ref(false)
+const recError = ref('')
+
+async function toggleRecording() {
+  recBusy.value = true
+  recError.value = ''
+  try {
+    if (recEnabled.value) {
+      // 撤销授权
+      const ok = await chrome.permissions.remove({ permissions: ['tabCapture'] })
+      if (ok) recEnabled.value = false
+    } else {
+      // 申请授权 —— 必须在用户点击 popup 按钮的同步栈里 invoke
+      // 才有 user activation；这里 button @click → toggleRecording 是直链。
+      const ok = await chrome.permissions.request({ permissions: ['tabCapture'] })
+      recEnabled.value = ok
+      if (!ok) recError.value = '已取消授权'
+    }
+  } catch (e) {
+    recError.value = (e as Error).message
+  } finally {
+    recBusy.value = false
+  }
+}
 
 onMounted(async () => {
   try {
@@ -128,6 +169,8 @@ onMounted(async () => {
       const r = await chrome.storage.local.get(ONBOARD_KEY)
       if (!r[ONBOARD_KEY]) firstRun.value = true
     }
+    // 读 tabCapture optional permission 当前状态
+    recEnabled.value = await chrome.permissions.contains({ permissions: ['tabCapture'] })
   } finally {
     loading.value = false
   }
@@ -339,6 +382,50 @@ onMounted(async () => {
   line-height: 1.55;
 }
 .hint b { color: var(--moo-c-text); font-weight: 600; }
+
+.rec-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 0 6px;
+  padding: 8px 10px;
+  background: var(--moo-c-bg-soft);
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-md);
+  font-size: var(--moo-fs-sm);
+}
+.rec-label { color: var(--moo-c-text); font-weight: 500; }
+.rec-err {
+  font-size: var(--moo-fs-xs);
+  color: var(--moo-c-warn);
+  margin-bottom: 6px;
+  text-align: center;
+}
+/* popup-switch：和 Settings tab 那个 moo-switch 视觉一致，但作用域隔离 */
+.popup-switch {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border: none;
+  border-radius: 9px;
+  background: var(--moo-c-border);
+  cursor: pointer;
+  transition: background-color var(--moo-motion-fast);
+  padding: 0;
+}
+.popup-switch:disabled { opacity: .5; cursor: not-allowed; }
+.popup-switch.is-on { background: var(--moo-c-success); }
+.popup-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform var(--moo-motion-fast);
+}
+.popup-switch.is-on .popup-switch-thumb { transform: translateX(14px); }
 
 .foot { margin-top: 12px; text-align: center; }
 .link {

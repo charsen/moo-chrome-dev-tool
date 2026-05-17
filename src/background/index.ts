@@ -393,6 +393,14 @@ async function closeOffscreenDocument(): Promise<void> {
 async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?: string }> {
   if (!tabId) return { ok: false, error: '没找到要录的标签页。请确保焦点在网页上（不要在 DevTools 内）再按 ⌥⇧R' }
 
+  // tabCapture 是 optional_permission，用户需要先在 popup 主动启用。这里同步检查，
+  // 没授权直接返回引导文案 —— 不能在录屏入口 chrome.permissions.request：
+  // request 是异步弹窗，await 后 user activation 已失效，getMediaStreamId 必崩。
+  const hasPerm = await chrome.permissions.contains({ permissions: ['tabCapture'] })
+  if (!hasPerm) {
+    return { ok: false, error: '录屏功能尚未启用。请点击浏览器右上角的 Moo 图标 → 启用录屏后再试' }
+  }
+
   // 关键：getMediaStreamId 必须在 user activation 还有效时立即 invoke。
   // 任何 await（包括 ensureOffscreenDocument）放在它前面，都会让手势在 microtask 后丢失。
   let streamId: string
