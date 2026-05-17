@@ -37,7 +37,7 @@
       "run_at": "document_start"
     }
   ],
-  "permissions": ["storage", "tabs", "activeTab", "scripting", "cookies", "alarms", "offscreen", "tabCapture"],
+  "permissions": ["storage", "tabs", "activeTab", "scripting", "alarms", "offscreen", "tabCapture"],
   "host_permissions": ["<all_urls>"],
   "commands": {
     "start-recording": {

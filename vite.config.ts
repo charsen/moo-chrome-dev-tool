@@ -17,6 +17,13 @@ export default defineConfig({
     strictPort: true,
     hmr: { port: 5273 }
   },
+  // 生产构建剥所有 console.* / debugger —— 关键诉求：避免 token / 内部状态
+  // 通过 console.warn 落到 service worker / 宿主页 console 被偷窥（v0.1.6 之前
+  // [Moo submit-fail] 那条 warn 含完整 Authorization header 是真实泄漏面）。
+  // dev (pnpm dev) 不受影响，仍保留所有日志便于调试。
+  esbuild: {
+    drop: ['console', 'debugger']
+  },
   build: {
     target: 'esnext',
     // 生产关 sourcemap：release.mjs 用 `zip -r .` 把 dist 全部打包，

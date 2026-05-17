@@ -286,4 +286,3 @@ console.error = function (...args: unknown[]) {
   return origConsoleErr.apply(this, args as never)
 }
 
-console.log('[Moo:main-world] fetch/XHR + error hooks installed')
