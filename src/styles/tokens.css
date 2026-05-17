@@ -181,7 +181,7 @@ html {
 .moo-btn:active:not(:disabled) { background: var(--moo-c-bg-elev); }
 .moo-btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, .18);
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
   border-color: var(--moo-c-brand);
 }
 .moo-btn:disabled { opacity: .5; cursor: not-allowed; }
@@ -254,7 +254,7 @@ textarea.moo-field {
 .moo-field:focus {
   outline: none;
   border-color: var(--moo-c-brand);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, .15);
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
 }
 .moo-field::placeholder { color: var(--moo-c-text-dim); }
 
@@ -338,7 +338,7 @@ textarea.moo-field {
 }
 .moo-close-btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, .22);
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
   color: var(--moo-c-text);
 }
 
@@ -359,7 +359,7 @@ textarea.moo-field {
 .moo-switch:hover { background: #94a3b8; }
 .moo-switch:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, .25);
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
 }
 .moo-switch-thumb {
   position: absolute;
