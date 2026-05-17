@@ -459,10 +459,14 @@ function applyAuthHeaders(project: Project, headers: Record<string, string>): Re
   const token = project.token?.trim()
   if (!token) return headers
   const out = { ...headers }
-  if (!out['Authorization'] && !out['authorization']) {
+  // case-insensitive 检查：之前只看 `Authorization` / `authorization` 两种，
+  // 攻击者导入配置时用 `AUTHORIZATION` 全大写就能绕过、保留预置的恶意 token。
+  // 必须把 key 全 toLowerCase 后比较。
+  const lowerKeys = new Set(Object.keys(out).map((k) => k.toLowerCase()))
+  if (!lowerKeys.has('authorization')) {
     out['Authorization'] = `Bearer ${token}`
   }
-  if (!out['X-Scaffold-Token'] && !out['x-scaffold-token']) {
+  if (!lowerKeys.has('x-scaffold-token')) {
     out['X-Scaffold-Token'] = token
   }
   return out
@@ -470,9 +474,16 @@ function applyAuthHeaders(project: Project, headers: Record<string, string>): Re
 
 // HTTP header 值只允许 ISO-8859-1（基本就是 ASCII），中文/emoji 必须 percent-encode；
 // 服务端拿到后 decodeURIComponent 即可还原。
+// 顺便拦 CRLF：HTTP header injection 的经典攻击载体（`X-Foo: bar\r\nAuthorization: Bearer evil`）。
+// 浏览器层 fetch 大多数情况下会自己拒掉，但代码层主动 scrub 给出明确错误更清晰。
 function sanitizeHeaders(h: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [k, v] of Object.entries(h)) {
+    if (/[\r\n]/.test(v)) {
+      // 不静默修复——header injection 是严重信号，直接拒（fetch 也会拒）
+      console.warn('[Moo] dropped header with CRLF:', k)
+      continue
+    }
     out[k] = /[^\x20-\x7E]/.test(v) ? encodeURIComponent(v) : v
   }
   return out
