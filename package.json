@@ -11,6 +11,7 @@
     "type-check": "vue-tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "mock": "node scripts/mock-server.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "release": "node scripts/release.mjs"
@@ -23,6 +24,7 @@
     "@types/chrome": "^0.0.263",
     "@types/node": "^25.7.0",
     "@vitejs/plugin-vue": "^5.0.4",
+    "@vitest/coverage-v8": "^1.6.1",
     "sharp": "^0.34.5",
     "typescript": "^5.4.2",
     "vite": "^5.2.0",
