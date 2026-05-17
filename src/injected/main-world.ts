@@ -37,7 +37,7 @@ function clip(s: string): string {
 
 function post(p: Payload) {
   try {
-    window.postMessage({ __moo: true, tag: TAG, payload: p }, '*')
+    window.postMessage({ __moo: true, tag: TAG, payload: p }, location.origin)
   } catch {}
 }
 
@@ -244,7 +244,7 @@ interface ErrPayload {
 }
 
 function postErr(p: ErrPayload) {
-  try { window.postMessage({ __moo: true, tag: TAG_ERR, payload: p }, '*') } catch {}
+  try { window.postMessage({ __moo: true, tag: TAG_ERR, payload: p }, location.origin) } catch {}
 }
 
 function errFrom(level: ErrPayload['level'], message: string, stack?: string, extra?: Partial<ErrPayload>): ErrPayload {
