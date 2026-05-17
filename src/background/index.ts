@@ -200,13 +200,17 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
     const text = await resp.text()
     remoteId = parseRemoteId(text)
     if (!resp.ok) {
+      // 注意：不能直接打 sentHeaders —— 里面含 Authorization: Bearer <token> 等
+      // 敏感字段，落到 SW console 后任何能读 chrome://extensions 日志的进程
+      // （或本扩展自身的录屏功能）都能偷走。只 log header **名字**便于确认
+      // 是否真带上了 Authorization，需要 value 时去 DevTools Network 面板看。
       console.warn('[Moo submit-fail]', {
         endpoint: server.endpoint,
         finalUrl: resp.url,
         status: resp.status,
         statusText: resp.statusText,
         bodyPreview: text.slice(0, 400),
-        sentHeaders: safeHeaders
+        headerNames: Object.keys(safeHeaders)
       })
     }
     result = { ok: resp.ok, status: resp.status, body: text, remoteId }

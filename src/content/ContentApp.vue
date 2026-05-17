@@ -138,13 +138,32 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
+// 监听器引用——存起来才能在 unmount 时拆掉。`onConfigChanged` 返回的 dispose
+// 函数和 chrome.runtime.onMessage handler 不在 onBeforeUnmount 里清掉的话，
+// 每次 Vue app 重挂（极少但 SPA 切换 / 扩展 reload 边缘 case 会触发）都会叠加
+// 一份，长期累积导致 storage 变更触发 N 次 refreshProject + 多份 toast。
+let disposeConfigWatcher: (() => void) | null = null
+function onRuntimeMessage(msg: { type?: string; ok?: boolean; error?: string }) {
+  if (msg?.type !== MSG.RECORD_EXTERNAL_STARTED) return
+  if (!msg.ok) {
+    showToast(msg.error || '录屏没能开始（可能浏览器拒了授权）。请按 ⌥⇧R 重试', 'error')
+    return
+  }
+  // 录屏由快捷键触发，没有 UI 让用户挑项目；多匹配时 default 到首个，
+  // 用户在 SubmitDialog 之外没法切换，但符合"快捷键不被打断"的预期
+  if (!project.value && matches.value.length > 0) {
+    onSelectProject(matches.value[0].id)
+  }
+  void beginRecordingFromCommand()
+}
+
 onMounted(async () => {
   // 请求监听需要尽早启动，匹配项目之前先用默认配置开始收集
   reqApi.start()
   errApi.start()
   await refreshProject()
-  // 配置变化时实时更新匹配
-  onConfigChanged(() => refreshProject())
+  // 配置变化时实时更新匹配（保存 dispose 用于 unmount 拆除）
+  disposeConfigWatcher = onConfigChanged(() => refreshProject())
   // SPA 路由变化也重匹配
   let lastUrl = location.href
   spaTimer = window.setInterval(() => {
@@ -157,21 +176,8 @@ onMounted(async () => {
   window.addEventListener('keydown', onKeydown, true)
   // 窗口 resize 时让录制浮条重算位置（clamp 到新视口边缘）
   window.addEventListener('resize', onWindowResize)
-  // 接收 background 通过 chrome.commands 触发的录屏（user gesture 保留在 onCommand 上下文，
-  // 这里只负责开 UI / 接管计时）
-  chrome.runtime.onMessage.addListener((msg) => {
-    if (msg?.type !== MSG.RECORD_EXTERNAL_STARTED) return
-    if (!msg.ok) {
-      showToast(msg.error || '录屏没能开始（可能浏览器拒了授权）。请按 ⌥⇧R 重试', 'error')
-      return
-    }
-    // 录屏由快捷键触发，没有 UI 让用户挑项目；多匹配时 default 到首个，
-    // 用户在 SubmitDialog 之外没法切换，但符合"快捷键不被打断"的预期
-    if (!project.value && matches.value.length > 0) {
-      onSelectProject(matches.value[0].id)
-    }
-    void beginRecordingFromCommand()
-  })
+  // 接收 background 通过 chrome.commands 触发的录屏
+  chrome.runtime.onMessage.addListener(onRuntimeMessage)
 })
 
 onBeforeUnmount(() => {
@@ -179,6 +185,9 @@ onBeforeUnmount(() => {
   if (toastTimer) clearTimeout(toastTimer)
   window.removeEventListener('keydown', onKeydown, true)
   window.removeEventListener('resize', onWindowResize)
+  chrome.runtime.onMessage.removeListener(onRuntimeMessage)
+  disposeConfigWatcher?.()
+  disposeConfigWatcher = null
 })
 
 function onWindowResize() {
