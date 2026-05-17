@@ -157,7 +157,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, ref, onBeforeUnmount, onMounted, watch } from 'vue'
+import { computed, defineComponent, h, ref, onBeforeUnmount, onMounted, watch, type PropType } from 'vue'
 import type { MooConfig, Project } from '@/types/config'
 import { loadConfig, saveConfig } from '@/storage/config'
 import { listHistory, clearHistory } from '@/storage/history'
@@ -356,71 +356,98 @@ onBeforeUnmount(() => {
 
 // ===================================================================
 // 子组件（保持本文件简短，inline 定义）
+//
+// 用 defineComponent 而不是 functional-component-with-as-any：
+// 原来 `(Switch as any).props = [...]` 是 Vue 3 函数式组件挂 props 的
+// 反 pattern —— 不仅丢类型还让 `<Switch v-model>` 没法被 vue-tsc 验证
+// modelValue 类型。defineComponent 走标准 options API 后，props/emits
+// 都有完整类型，模板里写错也会被 vue-tsc 抓住。
 // ===================================================================
-const Row = (props: { label: string; desc?: string }, { slots }: any) =>
-  h('div', { class: 'row' }, [
-    h('div', { class: 'row-text' }, [
-      h('div', { class: 'row-label' }, props.label),
-      props.desc ? h('div', { class: 'row-desc' }, props.desc) : null
-    ]),
-    h('div', { class: 'row-ctrl' }, slots.default?.())
-  ])
-
-const Switch = (props: { modelValue: boolean }, { emit }: any) =>
-  h(
-    'button',
-    {
-      type: 'button',
-      role: 'switch',
-      class: ['moo-switch', { 'is-on': props.modelValue }],
-      'aria-checked': props.modelValue ? 'true' : 'false',
-      onClick: () => emit('update:modelValue', !props.modelValue)
-    },
-    h('span', { class: 'moo-switch-thumb' })
-  )
-;(Switch as any).props = ['modelValue']
-;(Switch as any).emits = ['update:modelValue']
-
-const TagInput = (props: { modelValue: string[]; placeholder?: string }, { emit }: any) => {
-  const input = ref('')
-  function add() {
-    const v = input.value.trim()
-    if (!v) return
-    if (!props.modelValue.includes(v)) emit('update:modelValue', [...props.modelValue, v])
-    input.value = ''
+const Row = defineComponent({
+  props: {
+    label: { type: String, required: true },
+    desc: String
+  },
+  setup(props, { slots }) {
+    return () => h('div', { class: 'row' }, [
+      h('div', { class: 'row-text' }, [
+        h('div', { class: 'row-label' }, props.label),
+        props.desc ? h('div', { class: 'row-desc' }, props.desc) : null
+      ]),
+      h('div', { class: 'row-ctrl' }, slots.default?.())
+    ])
   }
-  function remove(i: number) {
-    emit('update:modelValue', props.modelValue.filter((_, idx) => idx !== i))
-  }
-  return h('div', { class: 'taginput' }, [
-    ...props.modelValue.map((tag, i) =>
-      h('span', { class: 'tag' }, [
-        tag,
-        h(
-          'button',
-          { class: 'tag-x', onClick: () => remove(i), type: 'button', 'aria-label': `移除 ${tag}` },
-          '×'
-        )
-      ])
-    ),
-    h('input', {
-      type: 'text',
-      class: 'tag-add',
-      placeholder: props.placeholder ?? '回车添加',
-      value: input.value,
-      onInput: (e: Event) => { input.value = (e.target as HTMLInputElement).value },
-      onKeydown: (e: KeyboardEvent) => {
-        if (e.key === 'Enter') { e.preventDefault(); add() }
-        else if (e.key === 'Backspace' && !input.value && props.modelValue.length) {
-          remove(props.modelValue.length - 1)
-        }
+})
+
+const Switch = defineComponent({
+  props: {
+    modelValue: { type: Boolean, required: true }
+  },
+  emits: {
+    'update:modelValue': (_v: boolean) => true
+  },
+  setup(props, { emit }) {
+    return () => h(
+      'button',
+      {
+        type: 'button',
+        role: 'switch',
+        class: ['moo-switch', { 'is-on': props.modelValue }],
+        'aria-checked': props.modelValue ? 'true' : 'false',
+        onClick: () => emit('update:modelValue', !props.modelValue)
       },
-      onBlur: add
-    })
-  ])
-}
-;(TagInput as any).props = ['modelValue', 'placeholder']
-;(TagInput as any).emits = ['update:modelValue']
+      h('span', { class: 'moo-switch-thumb' })
+    )
+  }
+})
+
+const TagInput = defineComponent({
+  props: {
+    modelValue: { type: Array as PropType<string[]>, required: true },
+    placeholder: String
+  },
+  emits: {
+    'update:modelValue': (_v: string[]) => true
+  },
+  setup(props, { emit }) {
+    const input = ref('')
+    function add() {
+      const v = input.value.trim()
+      if (!v) return
+      if (!props.modelValue.includes(v)) emit('update:modelValue', [...props.modelValue, v])
+      input.value = ''
+    }
+    function remove(i: number) {
+      emit('update:modelValue', props.modelValue.filter((_, idx) => idx !== i))
+    }
+    return () => h('div', { class: 'taginput' }, [
+      ...props.modelValue.map((tag, i) =>
+        h('span', { class: 'tag' }, [
+          tag,
+          h(
+            'button',
+            { class: 'tag-x', onClick: () => remove(i), type: 'button', 'aria-label': `移除 ${tag}` },
+            '×'
+          )
+        ])
+      ),
+      h('input', {
+        type: 'text',
+        class: 'tag-add',
+        placeholder: props.placeholder ?? '回车添加',
+        value: input.value,
+        onInput: (e: Event) => { input.value = (e.target as HTMLInputElement).value },
+        onKeydown: (e: KeyboardEvent) => {
+          if (e.key === 'Enter') { e.preventDefault(); add() }
+          else if (e.key === 'Backspace' && !input.value && props.modelValue.length) {
+            remove(props.modelValue.length - 1)
+          }
+        },
+        onBlur: add
+      })
+    ])
+  }
+})
 </script>
 
 <style scoped>
