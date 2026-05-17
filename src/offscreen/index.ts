@@ -10,21 +10,47 @@
  *   background → { target: 'offscreen', type: 'START', streamId }
  *   background → { target: 'offscreen', type: 'STOP' }       → { ok, dataUrl, bytes, mime }
  *   background → { target: 'offscreen', type: 'CANCEL' }
+ *
+ * 状态机（v2 重构）：
+ *   idle → STARTING → RECORDING → STOPPING → idle
+ *                              ↘ idle (via CANCEL)
+ *   出错路径任意态 → ERROR → idle (cleanup)
+ *
+ * 重构动机（Batch 8-G）：
+ * 原版用 `recorder == null` 暗示状态，存在多处 race：
+ *   - 急按 START → START：第二次进来时 recorder 还在 getUserMedia await，
+ *     `recorder` 还是 null，不会被"已经在录制"拦下；两个 stream 都拿到，
+ *     第二个覆盖 recorder ref，第一个 stream 永远不 release（内存 + 摄像头
+ *     灯泡 / tab 录制指示器都泄漏）。
+ *   - START → CANCEL → STOP 顺序：CANCEL 时 stream 已 cleanup，STOP 还在
+ *     等 stopResolver；onstop 永不触发，STOP promise 永远 hang。
+ *   - SW 回收后重新 spin-up：原 stopResolver 引用丢，再 STOP 时已 cleanup
+ *     过了，错误文案误导用户。
+ *
+ * 现在所有状态切换都过 transition() 强制 invariant，违反就显式 reject。
  */
 
-interface StartMsg {
-  target: 'offscreen'
-  type: 'START'
-  streamId: string
-}
+interface StartMsg { target: 'offscreen'; type: 'START'; streamId: string }
 interface StopMsg { target: 'offscreen'; type: 'STOP' }
 interface CancelMsg { target: 'offscreen'; type: 'CANCEL' }
 type Msg = StartMsg | StopMsg | CancelMsg
 
+type State = 'idle' | 'starting' | 'recording' | 'stopping'
+
+interface StopResult { ok: boolean; dataUrl?: string; bytes?: number; mime?: string; error?: string }
+
+let state: State = 'idle'
 let recorder: MediaRecorder | null = null
 let chunks: Blob[] = []
 let stream: MediaStream | null = null
-let stopResolver: ((r: any) => void) | null = null
+let stopResolver: ((r: StopResult) => void) | null = null
+
+function transition(from: State | State[], to: State): boolean {
+  const allowed = Array.isArray(from) ? from.includes(state) : state === from
+  if (!allowed) return false
+  state = to
+  return true
+}
 
 chrome.runtime.onMessage.addListener((msg: Msg, _sender, sendResponse) => {
   if (!msg || msg.target !== 'offscreen') return false
@@ -46,12 +72,15 @@ chrome.runtime.onMessage.addListener((msg: Msg, _sender, sendResponse) => {
 })
 
 async function handleStart(streamId: string): Promise<{ ok: boolean; error?: string }> {
-  if (recorder) return { ok: false, error: '当前已经在录制了，请先停止再开始新录制' }
+  if (!transition('idle', 'starting')) {
+    return { ok: false, error: `当前状态 ${state}，无法开始新录制。请先停止再试` }
+  }
+
   try {
     // tabCapture 拿到的 streamId 走这种"曾用名"路径取流；视频走 mandatory，audio 留给后续可选。
     // 必须显式给 min/max 分辨率：tabCapture 不指定时会默认 640x480，1920+ 的 tab 会被压成中间一小块、四周黑边。
     // Chrome 会在 min/max 之间按 tab 实际 viewport 采集，超过 max 才会缩放。
-    stream = await (navigator.mediaDevices as any).getUserMedia({
+    stream = await (navigator.mediaDevices as { getUserMedia: (c: unknown) => Promise<MediaStream> }).getUserMedia({
       audio: false,
       video: {
         mandatory: {
@@ -67,7 +96,14 @@ async function handleStart(streamId: string): Promise<{ ok: boolean; error?: str
       }
     })
   } catch (e) {
-    return { ok: false, error: '没拿到屏幕画面流：' + (e as Error).message + '（如果浏览器弹了选择窗口，需要点"分享"才能继续）' }
+    cleanup('idle')
+    return { ok: false, error: '没拿到屏幕画面流：' + (e as Error).message + '（如果浏览器弹了选择窗口，需要点"分享"才能继续；streamId 也可能已过期 60s，请重新按 ⌥⇧R）' }
+  }
+
+  // starting 期间被 CANCEL：stream 已拿到，state 回到 idle，立即清。
+  if (state !== 'starting') {
+    cleanup('idle')
+    return { ok: false, error: '录制在启动过程中被取消' }
   }
 
   chunks = []
@@ -75,10 +111,10 @@ async function handleStart(streamId: string): Promise<{ ok: boolean; error?: str
   try {
     // 比特率按 1080p ~30fps 经验值：3.5Mbps 视觉够清且 webm/vp9 压缩效率高，30 秒约 13MB。
     recorder = mime
-      ? new MediaRecorder(stream!, { mimeType: mime, videoBitsPerSecond: 3_500_000 })
-      : new MediaRecorder(stream!)
+      ? new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 3_500_000 })
+      : new MediaRecorder(stream)
   } catch (e) {
-    cleanup()
+    cleanup('idle')
     return { ok: false, error: '浏览器版本不支持录屏：' + (e as Error).message + '（需要 Chrome 109+）' }
   }
 
@@ -86,67 +122,99 @@ async function handleStart(streamId: string): Promise<{ ok: boolean; error?: str
     if (e.data && e.data.size > 0) chunks.push(e.data)
   }
   recorder.onstop = async () => {
+    // onstop 同时可能由 STOP / CANCEL / track-ended 触发；只在 stopping 态下 resolve。
+    const wasStopping = state === 'stopping'
     try {
       const blob = new Blob(chunks, { type: recorder?.mimeType || 'video/webm' })
       const dataUrl = blob.size > 0 ? await blobToDataUrl(blob) : ''
-      stopResolver?.({ ok: blob.size > 0, dataUrl, bytes: blob.size, mime: blob.type })
+      if (wasStopping) {
+        stopResolver?.({ ok: blob.size > 0, dataUrl, bytes: blob.size, mime: blob.type })
+      }
     } catch (err) {
-      stopResolver?.({ ok: false, error: (err as Error).message })
+      if (wasStopping) stopResolver?.({ ok: false, error: (err as Error).message })
     } finally {
       stopResolver = null
-      cleanup()
+      cleanup('idle')
     }
   }
 
   // 用户从 chrome 自身的"停止共享"UI 停了 → onended → 自动停止
-  stream!.getVideoTracks()[0]?.addEventListener('ended', () => {
-    if (recorder && recorder.state !== 'inactive') recorder.stop()
+  stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+    if (state === 'recording') {
+      state = 'stopping'  // 没人 await STOP；onstop 会直接 cleanup
+      try { recorder?.stop() } catch { /* ignore */ }
+    }
   })
 
   // 渲染一个 video 元素持有 stream，保证 stream 不被回收（chrome 87+ 必要）
-  attachStreamSink(stream!)
+  attachStreamSink(stream)
 
   recorder.start(1000)
+  state = 'recording'
   return { ok: true }
 }
 
-function handleStop(): Promise<{ ok: boolean; dataUrl?: string; bytes?: number; mime?: string; error?: string }> {
+function handleStop(): Promise<StopResult> {
   return new Promise((resolve) => {
-    if (!recorder) {
+    // starting 期间 STOP：还没真的 recording，且 starting 的 await 完成后会发现状态变了 → 自己 cleanup。
+    // 这里 STOP 调用方需要立刻得到回应，不能 hang 等 starting 完成。
+    if (state === 'starting') {
+      // 标记 stopping，让 handleStart 看到 state !== 'starting' 后清场
+      state = 'stopping'
+      resolve({ ok: false, error: '录制还在启动中就被停止，没拿到画面' })
+      // cleanup 由 handleStart 的 if (state !== 'starting') 分支负责
+      return
+    }
+    if (state !== 'recording' || !recorder) {
       resolve({ ok: false, error: '没有正在进行的录制（可能扩展刚被重新加载，状态丢了。请重新开始录制）' })
       return
     }
-    stopResolver = resolve
-    if (recorder.state !== 'inactive') {
-      try { recorder.stop() } catch (e) {
-        resolve({ ok: false, error: (e as Error).message })
-        stopResolver = null
-        cleanup()
-      }
-    } else {
-      // 状态异常，强制结束
+    if (recorder.state === 'inactive') {
       resolve({ ok: false, error: '录制器状态异常，强制结束。请重新开始录制' })
+      cleanup('idle')
+      return
+    }
+    // 把 resolver 挂上后 stop()，onstop 走 stopping 分支 resolve。
+    stopResolver = resolve
+    state = 'stopping'
+    try {
+      recorder.stop()
+    } catch (e) {
+      resolve({ ok: false, error: (e as Error).message })
       stopResolver = null
-      cleanup()
+      cleanup('idle')
     }
   })
 }
 
 function handleCancel() {
-  if (recorder && recorder.state !== 'inactive') {
-    try { recorder.stop() } catch { /* ignore */ }
+  // CANCEL 在任意态都能调；区分 starting / recording 处理。
+  if (state === 'starting') {
+    // 让 handleStart 的 if (state !== 'starting') 分支 cleanup
+    state = 'idle'
+    return
   }
-  stopResolver = null
-  cleanup()
+  if (state === 'recording' && recorder && recorder.state !== 'inactive') {
+    // 走 stopping 让 onstop 进 cleanup，不 resolve（CANCEL 无 caller 等结果）
+    state = 'stopping'
+    stopResolver = null
+    try { recorder.stop() } catch {
+      cleanup('idle')
+    }
+    return
+  }
+  // idle / stopping 态 CANCEL 是 no-op，但确保资源都释放
+  cleanup('idle')
 }
 
-function cleanup() {
+function cleanup(next: State) {
   if (stream) {
     stream.getTracks().forEach((t) => t.stop())
     stream = null
   }
   recorder = null
   chunks = []
+  state = next
   // 移除可能存在的 video sink
   document.querySelectorAll('video[data-moo-sink]').forEach((v) => v.remove())
 }
