@@ -297,7 +297,16 @@ console.error = function (...args: unknown[]) {
     const stack = args.find((a) => a instanceof Error) ? (args.find((a) => a instanceof Error) as Error).stack : undefined
     postErr(errFrom('console', msg, stack))
   } catch {}
-  return origConsoleErr.apply(this, args as never)
+  // ⚠ 异步切 task 再 forward 给原 console.error：
+  // main-world.ts 虽然在 main-world 跑，但 source 是 extension，Chrome 把从
+  // 这条栈 fire 的所有错误都归到 chrome://extensions 错误页。同步 invoke
+  // origConsoleErr 时 stack 含 hook 帧 → 宿主页任何 console.error('xxx') 都
+  // 被扩展背锅。setTimeout(0) 切到下一 task，stack 重置为 web 平台，归类
+  // 才正确。代价：console.error 由 sync → async，但 99% 调用是 fire-and-
+  // forget，体感无差；不切 task 则扩展错误页被宿主页错误持续污染。
+  setTimeout(() => {
+    try { origConsoleErr.apply(console, args as never) } catch {}
+  }, 0)
 }
 
 // History API monkey-patch：SPA 路由切换（pushState / replaceState）默认不触发任何
