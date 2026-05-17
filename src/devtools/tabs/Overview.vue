@@ -133,7 +133,7 @@
       <p v-if="loading">加载中…</p>
       <p v-else-if="kinds.size === 0">两个类型都已隐藏；点上方筛选重新开启。</p>
       <template v-else>
-        <p class="empty-title">还没捕获到任何请求或错误</p>
+        <p class="empty-title">还没抓到任何请求或错误</p>
         <p class="empty-hint">
           扩展只能抓到「页面加载时已经在场」之后发起的内容。
           <br>

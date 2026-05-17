@@ -339,7 +339,7 @@ async function ensureOffscreenDocument(): Promise<void> {
   await (chrome as any).offscreen.createDocument({
     url: OFFSCREEN_URL,
     reasons: ['USER_MEDIA'],
-    justification: '录制当前标签页画面以附在 bug todo 中'
+    justification: '录制当前标签页画面以附在 bug 提交中'
   })
 }
 

@@ -70,7 +70,7 @@
             <select id="moo-server" v-model="serverId">
               <option v-if="!project.servers.length" disabled value="">还没有上报服务器 —— 请先到 DevTools → Moo → 环境 → 新建一个</option>
               <option v-for="s in project.servers" :key="s.id" :value="s.id">
-                {{ s.name }} — {{ s.endpoint || '(尚未填 URL)' }}
+                {{ s.name }} — {{ s.endpoint || '（尚未填请求 URL）' }}
               </option>
             </select>
             <div v-if="serverEndpointMissing" class="server-warn">
@@ -168,7 +168,7 @@
           </div>
         </details>
 
-        <!-- ⑦ 预览 payload（仅展开后显示） -->
+        <!-- ⑦ 预览请求体（仅展开后显示） -->
         <div class="moo-form-row" v-if="preview">
           <label>预览</label>
           <pre class="moo-preview">{{ preview }}</pre>
@@ -177,7 +177,7 @@
       <footer v-if="!successInfo" class="moo-dialog-foot">
         <button class="moo-btn" @click="emit('cancel')">取消 <span class="kbd-hint">Esc</span></button>
         <button class="moo-btn ghost" :disabled="!canPreview || previewing" @click="onPreview">
-          {{ previewing ? '预览中…' : '预览 payload' }}
+          {{ previewing ? '预览中…' : '预览请求体' }}
         </button>
         <button class="moo-btn primary" :disabled="!canSubmit || submitting" @click="onSubmit">
           {{ submitting ? '提交中…' : '提交' }} <span class="kbd-hint">⌘↵</span>

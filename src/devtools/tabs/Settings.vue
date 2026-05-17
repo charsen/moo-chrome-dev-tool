@@ -118,7 +118,7 @@
               </button>
             </div>
           </Row>
-          <Row label="重试队列" desc="上报失败的 todo 暂存在这里；扩展每 5 分钟自动重试一次">
+          <Row label="重试队列" desc="提交失败的 bug 暂存在这里；扩展每 5 分钟自动重试一次">
             <div class="row-stats">
               <span class="stat">{{ queueCount }} 条</span>
               <button class="moo-btn moo-btn--sm" :disabled="busy === 'flush'" @click="flushQueue">
@@ -316,7 +316,7 @@ async function flushQueue() {
     const processed = (res as { processed?: number } | undefined)?.processed ?? 0
     const total = queueCount.value
     let msg: string
-    if (processed > 0) msg = `成功重发 ${processed} 条`
+    if (processed > 0) msg = `成功重新提交 ${processed} 条`
     else if (total === 0) msg = '队列里没有待重试的内容，不用重试'
     else msg = `${total} 条都还在失败（可能后端没起，或者「请求 URL」写错了）`
     showToast(msg, processed > 0 ? 'success' : 'info')

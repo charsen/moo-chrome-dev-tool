@@ -31,7 +31,7 @@ function friendly(raw: string): string {
   const kind = classify(raw)
   if (kind === 'no-receiver') return '页面尚未就绪或不支持注入，请刷新后重试'
   if (kind === 'context-invalidated') return '扩展已重新加载，请刷新当前页面'
-  if (kind === 'port-closed') return '后台服务被回收，请稍后重试'
+  if (kind === 'port-closed') return '扩展后台刚被浏览器回收，请稍后重试'
   return raw
 }
 

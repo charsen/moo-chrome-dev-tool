@@ -271,7 +271,7 @@ async function resubmit(e: BugHistoryEntry) {
       const { message } = formatSubmitResult(res)
       showToast(message, res.ok ? 'success' : 'error')
     } catch (err) {
-      showToast(`重发失败：${(err as MessagingError).message}。扩展后台可能刚被浏览器回收，请刷新页面后再点一次`, 'error')
+      showToast(`重新提交失败：${(err as MessagingError).message}。扩展后台可能刚被浏览器回收，请刷新页面后再点一次`, 'error')
     }
   } finally {
     busyId.value = ''
