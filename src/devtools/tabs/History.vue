@@ -155,9 +155,19 @@ async function reload() {
     list.value = await listHistory()
     const cfg = await loadConfig()
     projects.value = cfg.projects
-    // 给每条 entry 初始化下拉默认值为原服务器
+    // 当前还有效的 serverId 集合 —— 用来识别 entry 原 server 是否已被删
+    const validIds = new Set<string>()
+    for (const p of projects.value) {
+      for (const s of p.servers) validIds.add(s.id)
+    }
+    const fallback = validIds.size > 0 ? Array.from(validIds)[0] : ''
+    // 给每条 entry 初始化下拉默认值。原 server 还在 → 用原 server；
+    // 原 server 已被删 → 用第一个可用 server，避免 v-model 值不在 <option>
+    // 列表里造成「下拉显示 A 但 v-model 还是已删除的 B」的错位。
     for (const e of list.value) {
-      if (!resubmitTo.value[e.id]) resubmitTo.value[e.id] = e.serverId
+      const existing = resubmitTo.value[e.id]
+      if (existing && validIds.has(existing)) continue
+      resubmitTo.value[e.id] = validIds.has(e.serverId) ? e.serverId : fallback
     }
   } finally {
     loading.value = false

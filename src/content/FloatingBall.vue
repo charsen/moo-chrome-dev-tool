@@ -1,7 +1,10 @@
 <template>
   <div class="moo-ball-wrap" :style="{ left: pos.x + 'px', top: pos.y + 'px' }">
-    <!-- 项目选择器：多匹配且未选 active 时；选完自动触发 pendingAction -->
-    <div v-if="phase === 'picker' && !dragging" class="moo-ball-menu moo-ball-picker">
+    <!-- 项目选择器：多匹配且未选 active 时；选完自动触发 pendingAction
+         注意：state !== 'idle'（录制 / 提交中）时 hidden=true，此时 picker 也必须
+         一起藏起来。否则用户在 SubmitDialog 打开时仍可切项目 → 已挂的 dialog
+         的 serverId / selectedIds 全 stale，提交时取的还是旧数据。 -->
+    <div v-if="phase === 'picker' && !dragging && !hidden" class="moo-ball-menu moo-ball-picker">
       <div class="moo-ball-picker-hd">
         当前页面匹配到 {{ matches.length }} 个项目
         <span v-if="pendingAction" class="moo-ball-picker-pending">
