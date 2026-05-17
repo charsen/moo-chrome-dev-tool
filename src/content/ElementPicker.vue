@@ -61,6 +61,10 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKey, true)
+  if (rafId !== 0) {
+    cancelAnimationFrame(rafId)
+    rafId = 0
+  }
 })
 
 function onKey(e: KeyboardEvent) {
@@ -71,11 +75,28 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
+// mousemove 在原生层最高可达 1000Hz（高刷鼠标），每次都跑 elementFromPoint +
+// getBoundingClientRect + uniqueSelector（querySelector chain ~1-5ms）会让 picker
+// 在复杂页面拖动时明显发顿。rAF coalesce 到每帧最多 1 次足够 hover 反馈用。
+let rafId = 0
+let pendingClientX = 0
+let pendingClientY = 0
+
 function onMove(e: MouseEvent) {
-  // 隐藏 overlay 自身，去拿真实命中元素
+  pendingClientX = e.clientX
+  pendingClientY = e.clientY
+  if (rafId !== 0) return
+  rafId = requestAnimationFrame(() => {
+    rafId = 0
+    resolveHover(pendingClientX, pendingClientY)
+  })
+}
+
+function resolveHover(x: number, y: number) {
   if (!overlayEl.value) return
+  // 隐藏 overlay 自身，去拿真实命中元素
   overlayEl.value.style.pointerEvents = 'none'
-  const target = document.elementFromPoint(e.clientX, e.clientY) as Element | null
+  const target = document.elementFromPoint(x, y) as Element | null
   overlayEl.value.style.pointerEvents = ''
   if (!target || target === currentEl) return
   // 忽略我们自己注入的 shadow host
