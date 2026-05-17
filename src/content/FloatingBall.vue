@@ -182,6 +182,14 @@ onMounted(() => {
   // 没有用户保存过的位置时，按宿主页 fixed/sticky 元素挑一个不冲突的角落
   if (!hasSavedPos) {
     pos.value = pickGoodDefaultPos()
+  } else {
+    // hasSavedPos 路径：localStorage 存的位置可能是上次窗口更大时存的，
+    // 当前视口缩小后这个 x/y 可能直接在屏幕外（用户看不到悬浮球但状态正常）。
+    // 用跟 onResize 一样的 clamp 兜底。
+    pos.value = {
+      x: Math.max(0, Math.min(window.innerWidth - 130, pos.value.x)),
+      y: Math.max(0, Math.min(window.innerHeight - 48, pos.value.y))
+    }
   }
   autoPickIfSingle()
   window.addEventListener('resize', onResize)
