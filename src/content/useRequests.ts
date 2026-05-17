@@ -1,11 +1,18 @@
 import { ref, computed } from 'vue'
 import type { CapturedRequest } from '@/types/requests'
 import type { CaptureConfig, RedactConfig } from '@/types/config'
+import { DEFAULT_REDACT } from '@/types/config'
 import { redactRequest } from '@/utils/redact'
 
 const requests = ref<CapturedRequest[]>([])
 let bufferSize = 50
-let currentRedact: RedactConfig | null = null
+// 用 DEFAULT_REDACT 作为兜底起点：原版 currentRedact: null → 在 refreshProject()
+// 完成前（content script onMounted 起到 MATCH_PROJECT 回应那几百 ms）捕获的请求
+// 完全不脱敏，含原始 Authorization / Cookie 直接进环形缓冲。后面用户截图提交
+// 时这些"早期请求"也不会再被回头脱敏，等于把 token 原样喂给后端服务器。
+// 改成默认 DEFAULT_REDACT（已包含 authorization/cookie/x-auth-token 的 headerKeys
+// + password/token 的 bodyKeys），refreshProject 完成后用项目自定义配置覆盖。
+let currentRedact: RedactConfig = DEFAULT_REDACT
 let started = false
 
 /**
@@ -52,8 +59,8 @@ function start(initialCfg: { capture?: CaptureConfig; redact?: RedactConfig } = 
     const data = e.data as { __moo?: boolean; tag?: string; payload?: unknown }
     if (!data?.__moo || data.tag !== '__moo_req__') return
     if (!isValidRequestPayload(data.payload)) return
-    const r = currentRedact ? redactRequest(data.payload, currentRedact) : data.payload
-    push(r)
+    // 永远经过 redact：默认 DEFAULT_REDACT，刷新项目配置后用用户自定义的覆盖
+    push(redactRequest(data.payload, currentRedact))
   })
 }
 
