@@ -26,6 +26,23 @@ if (!version) {
   process.exit(1)
 }
 
+// 工作区干净再放行。脏树（未提交改动）打包出来的 zip 跟 git tag 对不上 ——
+// 装的人复现不出来，我们也没法回溯。允许 MOO_RELEASE_FORCE=1 临时绕过（紧急热修）。
+if (!process.env.MOO_RELEASE_FORCE) {
+  let dirty = ''
+  try {
+    dirty = execSync('git status --porcelain', { cwd: root, encoding: 'utf8' })
+  } catch {
+    // 不在 git 仓库 / git 不可用 —— 不做强制要求
+  }
+  if (dirty.trim()) {
+    console.error('工作区有未提交的改动，先 commit 再 release（避免 zip 和 git tag 不一致）：')
+    console.error(dirty.trim().split('\n').map((l) => '  ' + l).join('\n'))
+    console.error('真的要带脏树发版，可设 MOO_RELEASE_FORCE=1 跳过。')
+    process.exit(1)
+  }
+}
+
 // 同步 manifest 版本号：只动 version 字段，不用 JSON.parse+stringify 整个重写
 // （会让原来紧凑的 array 全部展开成多行，commit diff 噪音很大）
 const manifestPath = resolve(root, 'manifest.json')
