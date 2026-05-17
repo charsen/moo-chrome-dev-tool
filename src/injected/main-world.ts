@@ -286,3 +286,26 @@ console.error = function (...args: unknown[]) {
   return origConsoleErr.apply(this, args as never)
 }
 
+// History API monkey-patch：SPA 路由切换（pushState / replaceState）默认不触发任何
+// 事件，content script 原本靠 setInterval 1s 轮询 location.href 比对。100 个 tab
+// 同时挂着 = 每秒 100 次轮询。改成 hook history API + 派发 __moo_url__ message，
+// 配合 popstate / hashchange 事件 覆盖所有 SPA 框架的路由切换。
+const TAG_URL = '__moo_url__'
+function postUrl() {
+  try { window.postMessage({ __moo: true, tag: TAG_URL }, location.origin) } catch {}
+}
+const _push = history.pushState
+const _replace = history.replaceState
+history.pushState = function (...args: Parameters<typeof history.pushState>) {
+  const r = _push.apply(this, args)
+  postUrl()
+  return r
+}
+history.replaceState = function (...args: Parameters<typeof history.replaceState>) {
+  const r = _replace.apply(this, args)
+  postUrl()
+  return r
+}
+window.addEventListener('popstate', postUrl)
+window.addEventListener('hashchange', postUrl)
+

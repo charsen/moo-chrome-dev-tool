@@ -268,7 +268,14 @@ function showToast(msg: string, kind: 'success' | 'error' | 'info' = 'info') {
   toastTimer = window.setTimeout(() => (toast.value = ''), kind === 'error' ? 5000 : 2600)
 }
 
-const dirty = computed(() => JSON.stringify(draft.value) !== JSON.stringify(config.value))
+// 改成 ref 而非 computed —— 原本 `JSON.stringify(draft) !== JSON.stringify(config)`
+// 每次 draft 改一字符就跑 2 份整份配置的 stringify（50-200KB）+ 比较。payloadTemplate
+// textarea 编辑时输入延迟肉眼可感。改成 ref + 三处显式 flip：
+//   watch(draft) 触发 → true；doSave 成功 → false；外部 config 应用 → false。
+const isDirty = ref(false)
+// 外部 config 应用 draft 时（reload / 多 tab 同步）抑制下一次 watch fire，
+// 避免「应用外部更新」自身被当成用户改动重新触发 scheduleSave + 死循环写回。
+let applyingExternal = false
 
 // 加载完成 & 外部变更时同步 draft；只有"已初始化且脏"的情况下保留草稿，
 // 第一次进入时 draft 是空、config 已加载——必须放行第一次同步。
@@ -276,12 +283,16 @@ watch(
   () => [loaded.value, config.value] as const,
   ([isLoaded]) => {
     if (!isLoaded) return
-    if (initialized.value && dirty.value) return
+    if (initialized.value && isDirty.value) return
+    applyingExternal = true
     draft.value = clone(config.value)
     if (!activeId.value && draft.value.projects.length) {
       activeId.value = draft.value.projects[0].id
     }
     initialized.value = true
+    isDirty.value = false
+    // microtask 后放回，确保 draft 触发的 watch 已被本帧消化掉
+    void Promise.resolve().then(() => { applyingExternal = false })
   },
   { immediate: true }
 )
@@ -295,7 +306,8 @@ watch(
   draft,
   () => {
     if (!initialized.value) return
-    if (!dirty.value) return // draft 与 config 等价，不需要再写
+    if (applyingExternal) return
+    isDirty.value = true
     scheduleSave()
   },
   { deep: true }
@@ -313,6 +325,7 @@ async function doSave() {
   try {
     config.value = clone(draft.value)
     await save()
+    isDirty.value = false
     // 仅在没有后续保存还在路上时才切到 saved，避免来回闪
     if (!saveDebounceTimer) {
       saveState.value = 'saved'

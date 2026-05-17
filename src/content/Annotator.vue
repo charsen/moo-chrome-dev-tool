@@ -597,6 +597,12 @@ function drawSelectionBox(ctx: CanvasRenderingContext2D, it: Item) {
   ctx.restore()
 }
 
+// 复用的临时画布：原本每条 mosaic 每帧 createElement('canvas')，拖拽 30s
+// 在 100 标注画布上能 churn 几百个 ImageBitmap backing 给 GC。组件作用域内
+// 维持一份单例，每次 resize 到目标小尺寸即可。
+let mosaicTmp: HTMLCanvasElement | null = null
+let mosaicTmpCtx: CanvasRenderingContext2D | null = null
+
 function drawMosaic(ctx: CanvasRenderingContext2D, it: MosaicItem) {
   if (!bgEl.value) return
   const block = Math.max(4, it.block)
@@ -607,13 +613,18 @@ function drawMosaic(ctx: CanvasRenderingContext2D, it: MosaicItem) {
   if (w < 4 || h < 4) return
   // 已有标注（包括前面的 mosaic）会被覆盖在原图上面，但马赛克的来源是原图 bgEl，
   // 因此后画的 mosaic 不会马赛克"先前已经画好的红框"——这是预期行为。
-  const tmp = document.createElement('canvas')
+  if (!mosaicTmp) {
+    mosaicTmp = document.createElement('canvas')
+    mosaicTmpCtx = mosaicTmp.getContext('2d')
+  }
+  const tmp = mosaicTmp
+  const tctx = mosaicTmpCtx
+  if (!tctx) return
   const sw = Math.max(1, Math.floor(w / block))
   const sh = Math.max(1, Math.floor(h / block))
-  tmp.width = sw
-  tmp.height = sh
-  const tctx = tmp.getContext('2d')
-  if (!tctx) return
+  // 复用时只在尺寸变化时改 width/height（改尺寸会清空画布）
+  if (tmp.width !== sw) tmp.width = sw
+  if (tmp.height !== sh) tmp.height = sh
   tctx.imageSmoothingEnabled = true
   // 从背景画布取该区域 → 缩小到 (sw, sh) → 像素化
   tctx.drawImage(bgEl.value, x, y, w, h, 0, 0, sw, sh)

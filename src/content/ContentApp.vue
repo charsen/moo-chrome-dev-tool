@@ -66,7 +66,6 @@ const recordedVideo = ref<RecordingResult | null>(null)
 const toast = ref('')
 const toastKind = ref<'success' | 'error' | 'info' | ''>('')
 let toastTimer: number | undefined
-let spaTimer: number | undefined
 
 const recorder = useRecorder({ maxSeconds: 30 })
 const recordElapsed = computed(() => recorder.elapsed.value)
@@ -157,6 +156,22 @@ function onRuntimeMessage(msg: { type?: string; ok?: boolean; error?: string }) 
   void beginRecordingFromCommand()
 }
 
+// SPA 路由切换：main-world.ts hook 了 history.pushState/replaceState + popstate/hashchange，
+// 通过 postMessage 推 __moo_url__ 信号过来。比之前 1s 轮询省 CPU（尤其是 100 tab 场景）。
+let lastUrl = location.href
+function onUrlMaybeChanged() {
+  if (location.href !== lastUrl) {
+    lastUrl = location.href
+    refreshProject()
+  }
+}
+function onUrlSignalMessage(e: MessageEvent) {
+  if (e.source !== window || e.origin !== location.origin) return
+  const data = e.data as { __moo?: boolean; tag?: string } | undefined
+  if (!data?.__moo || data.tag !== '__moo_url__') return
+  onUrlMaybeChanged()
+}
+
 onMounted(async () => {
   // 请求监听需要尽早启动，匹配项目之前先用默认配置开始收集
   reqApi.start()
@@ -164,14 +179,11 @@ onMounted(async () => {
   await refreshProject()
   // 配置变化时实时更新匹配（保存 dispose 用于 unmount 拆除）
   disposeConfigWatcher = onConfigChanged(() => refreshProject())
-  // SPA 路由变化也重匹配
-  let lastUrl = location.href
-  spaTimer = window.setInterval(() => {
-    if (location.href !== lastUrl) {
-      lastUrl = location.href
-      refreshProject()
-    }
-  }, 1000)
+  // SPA 路由变化也重匹配 —— 主路径走 main-world hook 推过来的 message，
+  // 底兜 popstate / hashchange 直接监听（部分页面可能不经 history API）
+  window.addEventListener('message', onUrlSignalMessage)
+  window.addEventListener('popstate', onUrlMaybeChanged)
+  window.addEventListener('hashchange', onUrlMaybeChanged)
   // 快捷键：Cmd/Ctrl + Shift + B
   window.addEventListener('keydown', onKeydown, true)
   // 窗口 resize 时让录制浮条重算位置（clamp 到新视口边缘）
@@ -181,8 +193,10 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  if (spaTimer) clearInterval(spaTimer)
   if (toastTimer) clearTimeout(toastTimer)
+  window.removeEventListener('message', onUrlSignalMessage)
+  window.removeEventListener('popstate', onUrlMaybeChanged)
+  window.removeEventListener('hashchange', onUrlMaybeChanged)
   window.removeEventListener('keydown', onKeydown, true)
   window.removeEventListener('resize', onWindowResize)
   chrome.runtime.onMessage.removeListener(onRuntimeMessage)

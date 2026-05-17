@@ -1,7 +1,7 @@
 <template>
   <div class="history">
     <header class="toolbar">
-      <input v-model="filter" placeholder="按标题/URL 过滤" class="filter" />
+      <input v-model="filterDraft" placeholder="按标题/URL 过滤" class="filter" />
       <span class="count">{{ filtered.length }} / {{ list.length }}</span>
       <button class="btn" @click="reload" :disabled="loading">刷新</button>
       <button class="btn" @click="syncRemoteStatus" :disabled="syncing">{{ syncing ? '同步中…' : '同步远端状态' }}</button>
@@ -92,7 +92,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { clearHistory, listHistory, onHistoryChanged, removeHistory } from '@/storage/history'
 import { loadConfig } from '@/storage/config'
 import { MSG, type SubmitBugReq, type SubmitBugRes } from '@/types/messages'
@@ -105,7 +105,17 @@ import { confirmDialog } from '../components/confirm'
 const list = ref<BugHistoryEntry[]>([])
 const loading = ref(false)
 const syncing = ref(false)
+// filter 分两个：input v-model 绑定 filterDraft（每键立即更新输入框），
+// 实际触发重新过滤的 filter 走 150ms debounce —— 单次过滤要对 30 条 entry
+// 做 ~100 次 toLowerCase（标题/URL/描述 + 嵌套 requests/errors），快速打字
+// 每键 3000+ 次 toLowerCase 明显卡。
+const filterDraft = ref('')
 const filter = ref('')
+let filterDebounce: number | undefined
+watch(filterDraft, (v) => {
+  if (filterDebounce) clearTimeout(filterDebounce)
+  filterDebounce = window.setTimeout(() => { filter.value = v }, 150)
+})
 const openId = ref('')
 const busyId = ref('')
 const projects = ref<Project[]>([])
@@ -162,6 +172,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   dispose?.()
   if (toastTimer) { clearTimeout(toastTimer); toastTimer = undefined }
+  if (filterDebounce) { clearTimeout(filterDebounce); filterDebounce = undefined }
 })
 
 const filtered = computed(() => {
