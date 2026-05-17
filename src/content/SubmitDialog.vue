@@ -220,28 +220,51 @@ const description = ref('')
 // video src 用 blob URL 代替 dataUrl：Chrome 给 <video src="data:...base64,..."> 有
 // ~2MB 大小上限，1.9MB 的 webm 录像 base64 后 ~2.5MB 直接超限，video 元素显示
 // 黑屏 0:00 但 controls 看着像正常的。blob URL 走 in-memory 引用，没有这个限制。
-// dataUrl 仍然是 props 传入的形态（offscreen → background → content 跨 context
-// 只能传字符串），这里在 content 端转回 blob 再 createObjectURL。
+//
+// ⚠ 不能用 `await fetch(dataUrl)` 转 blob：宿主页 CSP `connect-src 'self'` 不含
+// data: scheme（实测 app.example.com 直接 "Failed to fetch"），catch 后回退到原
+// dataUrl 又撞 video src 2MB 限制 → 黑屏。改 atob + Uint8Array 同步解析，
+// 完全绕开 fetch，不受宿主 CSP 影响。代价：atob 几 MB base64 是同步的，
+// 阻塞主线程几十 ms —— SubmitDialog 打开一次的开销可接受。
 const videoBlobUrl = ref('')
+function dataUrlToBlob(dataUrl: string): Blob | null {
+  if (!dataUrl.startsWith('data:')) return null
+  const comma = dataUrl.indexOf(',')
+  if (comma < 0) return null
+  const header = dataUrl.slice(0, comma)
+  const data = dataUrl.slice(comma + 1)
+  const isB64 = /;base64$/i.test(header)
+  const mime = header.slice(5).replace(/;base64$/i, '') || 'application/octet-stream'
+  try {
+    if (isB64) {
+      const bin = atob(data)
+      const bytes = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+      return new Blob([bytes], { type: mime })
+    }
+    return new Blob([decodeURIComponent(data)], { type: mime })
+  } catch {
+    return null
+  }
+}
 watch(
   () => props.video?.dataUrl,
-  async (dataUrl, _old, onCleanup) => {
-    // 旧 URL 先 revoke 防泄漏（fetch 失败时也会到这里）
+  (dataUrl, _old, onCleanup) => {
     const prev = videoBlobUrl.value
-    onCleanup(() => { if (prev) URL.revokeObjectURL(prev) })
+    onCleanup(() => { if (prev.startsWith('blob:')) URL.revokeObjectURL(prev) })
     if (!dataUrl) { videoBlobUrl.value = ''; return }
-    try {
-      const blob = await (await fetch(dataUrl)).blob()
+    const blob = dataUrlToBlob(dataUrl)
+    if (blob) {
       videoBlobUrl.value = URL.createObjectURL(blob)
-    } catch {
-      // 兜底：转换失败回退到原 dataUrl（小文件还是能播）
+    } else {
+      // 解析失败：小文件 dataUrl 还能直接给 video src 播
       videoBlobUrl.value = dataUrl
     }
   },
   { immediate: true }
 )
 onBeforeUnmount(() => {
-  if (videoBlobUrl.value && videoBlobUrl.value.startsWith('blob:')) {
+  if (videoBlobUrl.value.startsWith('blob:')) {
     URL.revokeObjectURL(videoBlobUrl.value)
   }
 })
