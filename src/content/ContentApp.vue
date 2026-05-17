@@ -153,22 +153,38 @@ function onKeydown(e: KeyboardEvent) {
 // 一份，长期累积导致 storage 变更触发 N 次 refreshProject + 多份 toast。
 let disposeConfigWatcher: (() => void) | null = null
 function onRuntimeMessage(raw: unknown) {
-  // 校验 shape：避免任意 chrome.runtime.sendMessage({type:'RECORD_EXTERNAL_STARTED',...})
-  // 调用伪造 toast。messages.ts 给出了 RecordExternalStartedMsg 接口，这里运行时做最小校验。
+  // 校验 shape：避免任意 chrome.runtime.sendMessage({type:'...',...}) 调用伪造 UI。
+  // messages.ts 给出了相关接口，这里只做运行时最小校验。
   if (!raw || typeof raw !== 'object') return
-  const msg = raw as { type?: unknown; ok?: unknown; error?: unknown }
-  if (msg.type !== MSG.RECORD_EXTERNAL_STARTED) return
-  if (typeof msg.ok !== 'boolean') return
-  if (!msg.ok) {
-    showToast(typeof msg.error === 'string' ? msg.error : '录屏没能开始（可能浏览器拒了授权）。请按 ⌥⇧R 重试', 'error')
+  const msg = raw as { type?: unknown; ok?: unknown; error?: unknown; reason?: unknown }
+  if (typeof msg.type !== 'string') return
+
+  if (msg.type === MSG.RECORD_EXTERNAL_STARTED) {
+    if (typeof msg.ok !== 'boolean') return
+    if (!msg.ok) {
+      showToast(typeof msg.error === 'string' ? msg.error : '录屏没能开始（可能浏览器拒了授权）。请按 ⌥⇧R 重试', 'error')
+      return
+    }
+    // 录屏由快捷键触发，没有 UI 让用户挑项目；多匹配时 default 到首个，
+    // 用户在 SubmitDialog 之外没法切换，但符合"快捷键不被打断"的预期
+    if (!project.value && matches.value[0]) {
+      onSelectProject(matches.value[0].id)
+    }
+    void beginRecordingFromCommand()
     return
   }
-  // 录屏由快捷键触发，没有 UI 让用户挑项目；多匹配时 default 到首个，
-  // 用户在 SubmitDialog 之外没法切换，但符合"快捷键不被打断"的预期
-  if (!project.value && matches.value[0]) {
-    onSelectProject(matches.value[0].id)
+
+  if (msg.type === MSG.RECORD_AUTO_STOPPED) {
+    // 用户点了 Chrome 顶部"停止共享"条 → offscreen 自动 stop → SW 转发。
+    // 必须主动切回 idle，否则 rec-bar 永远停留 + useRecorder.pendingResolve
+    // 永远不 resolve，state.value 卡在 'recording'。
+    if (state.value === 'recording') {
+      recorder.externallyStopped()
+      state.value = 'idle'
+      showToast('录屏已被浏览器停止（点击了"停止共享"条）。如需附视频请重新按 ⌥⇧R 起录', 'info')
+    }
+    return
   }
-  void beginRecordingFromCommand()
 }
 
 // SPA 路由切换：main-world.ts hook 了 history.pushState/replaceState + popstate/hashchange，
@@ -205,7 +221,34 @@ onMounted(async () => {
   window.addEventListener('resize', onWindowResize)
   // 接收 background 通过 chrome.commands 触发的录屏
   chrome.runtime.onMessage.addListener(onRuntimeMessage)
+  // 同 tab navigation 时 content script 会重新挂载，本地 state 是 'idle'。
+  // 但 background 端 currentRecording 还在（offscreen 录屏不受 navigation
+  // 影响）—— 主动查一下，命中就接管 rec-bar 计时，让用户看到"录屏继续"。
+  void recoverRecordingIfActive()
 })
+
+async function recoverRecordingIfActive() {
+  try {
+    const res = await safeSendMessage<{ recording?: boolean; startedAt?: number }>({
+      type: MSG.QUERY_RECORDING_STATE,
+      source: 'content'
+    }, { fallback: { recording: false } })
+    if (!res?.recording || !res.startedAt) return
+    // 匹配项目：跟 beginRecordingFromCommand 一样的项目选取逻辑
+    if (!project.value && matches.value[0]) onSelectProject(matches.value[0].id)
+    state.value = 'recording'
+    const result = await recorder.startExternally(res.startedAt)
+    if (!result) {
+      // externallyStopped 或被 cancel：回 idle
+      state.value = 'idle'
+      return
+    }
+    recordedVideo.value = result
+    state.value = 'submitting'
+  } catch {
+    // SW 不可达：放弃恢复，保持 idle（用户能照常起新录屏）
+  }
+}
 
 onBeforeUnmount(() => {
   if (toastTimer) clearTimeout(toastTimer)

@@ -17,6 +17,10 @@ import type { BugHistoryEntry } from '@/types/history'
 const RETRY_QUEUE_KEY = 'mooRetryQueue'
 const RETRY_ALARM = 'mooRetry'
 
+/** 当前录屏中的 tab 与开始时刻。content script 重挂时通过 QUERY_RECORDING_STATE
+ *  查这个状态恢复 UI；offscreen 自动 stop 时清空并广播给原 tab。 */
+let currentRecording: { tabId: number; startedAt: number } | null = null
+
 chrome.runtime.onInstalled.addListener(({ reason }) => {
   console.log('[Moo] installed:', reason)
   chrome.alarms.create(RETRY_ALARM, { periodInMinutes: 5 })
@@ -63,6 +67,7 @@ chrome.commands?.onCommand.addListener((command, tab) => {
   // 拿到 streamId 后再把后续编排（offscreen + 通知 content）丢给 microtask。
   void startTabRecording(tabId).then(async (res) => {
     console.log('[Moo cmd] startTabRecording →', res)
+    if (res.ok) currentRecording = { tabId, startedAt: Date.now() }
     try {
       await chrome.tabs.sendMessage(tabId, {
         type: MSG.RECORD_EXTERNAL_STARTED,
@@ -158,16 +163,48 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
         case MSG.RECORD_START: {
           const tabId = sender.tab?.id
           const res = await startTabRecording(tabId)
+          if (res.ok && tabId) currentRecording = { tabId, startedAt: Date.now() }
           sendResponse(res)
           break
         }
         case MSG.RECORD_STOP: {
           const res = await stopTabRecording()
+          currentRecording = null
           sendResponse(res)
           break
         }
         case MSG.RECORD_CANCEL: {
           await cancelTabRecording()
+          currentRecording = null
+          sendResponse({ ok: true })
+          break
+        }
+        case MSG.QUERY_RECORDING_STATE: {
+          // content script 重新挂载（同 tab navigation）时主动查这个 tab
+          // 是不是正在录屏；命中就发回 startedAt 让 ContentApp 恢复 rec-bar 计时。
+          const tabId = sender.tab?.id
+          const isThisTabRecording = !!currentRecording && currentRecording.tabId === tabId
+          sendResponse(isThisTabRecording
+            ? { recording: true, startedAt: currentRecording!.startedAt }
+            : { recording: false })
+          break
+        }
+        case MSG.OFFSCREEN_AUTO_STOPPED: {
+          // offscreen 报告 track 'ended' 自动停止（最常见原因：用户点了 Chrome
+          // 顶部"停止共享"条）。通知原录屏 tab 的 content script 切回 idle，
+          // 否则 rec-bar 永远停留 + 用户被迫刷页。
+          if (currentRecording) {
+            const tabId = currentRecording.tabId
+            currentRecording = null
+            try {
+              await chrome.tabs.sendMessage(tabId, {
+                type: MSG.RECORD_AUTO_STOPPED,
+                reason: 'chrome-ui'
+              })
+            } catch {
+              // tab 已关 / content script 没注入，无伤
+            }
+          }
           sendResponse({ ok: true })
           break
         }

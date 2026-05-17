@@ -143,6 +143,12 @@ async function handleStart(streamId: string): Promise<{ ok: boolean; error?: str
     if (state === 'recording') {
       state = 'stopping'  // 没人 await STOP；onstop 会直接 cleanup
       try { recorder?.stop() } catch { /* ignore */ }
+      // 通知 background：本次录屏是被外部停止的（没人在 await STOP），
+      // SW 会把消息转发给原录屏 tab 的 content script，让 rec-bar 收回。
+      // catch 防 SW 暂时不可达（offscreen 文档外部 sendMessage 偶发失败）。
+      try {
+        chrome.runtime.sendMessage({ type: 'OFFSCREEN_AUTO_STOPPED' }).catch(() => {})
+      } catch { /* ignore */ }
     }
   })
 

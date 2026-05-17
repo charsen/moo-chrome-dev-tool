@@ -57,17 +57,21 @@ export function useRecorder(opts: { maxSeconds?: number } = {}) {
   /**
    * background 已经通过 chrome.commands 起好录制后调用：跳过 RECORD_START，
    * 只接管本地计时 / 停止等待逻辑。返回 Promise 在 stop()/cancel() 时 resolve。
+   *
+   * @param startedAtMs 可选：背后真实开始时刻（Date.now() ms 形式）。content
+   *   script 因同 tab navigation 重挂时，用 background 那一刻记录的 startedAt
+   *   恢复 elapsed 计时——否则 rec-bar 会从 00:00 重算，跟真实已录时长不符。
    */
-  function startExternally(): Promise<RecordingResult | null> {
+  function startExternally(startedAtMs?: number): Promise<RecordingResult | null> {
     if (recording.value) return Promise.resolve(null)
     error.value = ''
-    return beginCountdown()
+    return beginCountdown(startedAtMs)
   }
 
-  function beginCountdown(): Promise<RecordingResult | null> {
+  function beginCountdown(startedAtMs?: number): Promise<RecordingResult | null> {
     recording.value = true
-    elapsed.value = 0
-    const startTime = Date.now()
+    const startTime = startedAtMs ?? Date.now()
+    elapsed.value = Math.max(0, Math.floor((Date.now() - startTime) / 1000))
     timer = window.setInterval(() => {
       elapsed.value = Math.floor((Date.now() - startTime) / 1000)
       if (elapsed.value >= maxSec) {
@@ -81,6 +85,16 @@ export function useRecorder(opts: { maxSeconds?: number } = {}) {
         resolve(r)
       }
     })
+  }
+
+  /** 录屏被外部（Chrome"停止共享"条 / SW broadcast）强制停止：清状态，
+   *  pendingResolve 解析为 null（表示没视频可附），不发 RECORD_STOP（offscreen 已自停）。 */
+  function externallyStopped() {
+    if (!recording.value) return
+    error.value = '录屏被浏览器停止'
+    pendingResolve?.(null)
+    pendingResolve = null
+    cleanup()
   }
 
   let pendingResolve: ((r: RecordingResult | null) => void) | null = null
@@ -127,7 +141,7 @@ export function useRecorder(opts: { maxSeconds?: number } = {}) {
     recording.value = false
   }
 
-  return { recording, elapsed, error, start, startExternally, stop, cancel, maxSec }
+  return { recording, elapsed, error, start, startExternally, externallyStopped, stop, cancel, maxSec }
 }
 
 /**

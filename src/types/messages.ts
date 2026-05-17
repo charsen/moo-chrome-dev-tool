@@ -93,6 +93,21 @@ export interface RecordExternalStartedMsg {
   error?: string
 }
 
+/** background → content（仅发给录屏中的 tab）：告诉 content 录屏已被外部停止
+ *  （Chrome 顶部"停止共享"条点击 / tab 关闭等），需要切回 idle 状态。 */
+export interface RecordAutoStoppedMsg {
+  type: 'RECORD_AUTO_STOPPED'
+  /** 'chrome-ui' = 用户点 Chrome 自带"停止共享"条；'other' = 其他原因 */
+  reason?: 'chrome-ui' | 'other'
+}
+
+/** content → background：重新挂载时（同 tab navigation）查录屏是否进行中 */
+export interface QueryRecordingStateRes {
+  recording: boolean
+  /** recording=true 时附 Date.now() ms 形式的开始时刻，用于恢复 elapsed 计时 */
+  startedAt?: number
+}
+
 // 消息 type 常量
 export const MSG = {
   CAPTURE_SCREENSHOT: 'CAPTURE_SCREENSHOT',
@@ -108,7 +123,13 @@ export const MSG = {
   RECORD_START: 'RECORD_START',
   RECORD_STOP: 'RECORD_STOP',
   RECORD_CANCEL: 'RECORD_CANCEL',
-  RECORD_EXTERNAL_STARTED: 'RECORD_EXTERNAL_STARTED'
+  RECORD_EXTERNAL_STARTED: 'RECORD_EXTERNAL_STARTED',
+  /** content 询问当前 tab 是不是正在录屏（用于 navigation 后恢复 UI） */
+  QUERY_RECORDING_STATE: 'QUERY_RECORDING_STATE',
+  /** background 广播：录屏被外部因素自动停止（如 Chrome 停止共享条） */
+  RECORD_AUTO_STOPPED: 'RECORD_AUTO_STOPPED',
+  /** offscreen → background 内部通知：track ended 自动 stopped */
+  OFFSCREEN_AUTO_STOPPED: 'OFFSCREEN_AUTO_STOPPED'
 } as const
 
 // =================================================================
@@ -140,6 +161,8 @@ export type IncomingMessage =
   | { type: typeof MSG.RECORD_START }
   | { type: typeof MSG.RECORD_STOP }
   | { type: typeof MSG.RECORD_CANCEL }
+  | { type: typeof MSG.QUERY_RECORDING_STATE }
+  | { type: typeof MSG.OFFSCREEN_AUTO_STOPPED }
 
 /** type → response 类型映射。background handler 返回对应类型，caller 侧
  *  可以用 `MessageResponse<typeof MSG.X>` 拿到精确返回 shape。 */
@@ -153,5 +176,7 @@ export interface MessageResponseMap {
   [MSG.RECORD_START]: RecordStartRes
   [MSG.RECORD_STOP]: RecordStopRes
   [MSG.RECORD_CANCEL]: RecordCancelRes
+  [MSG.QUERY_RECORDING_STATE]: QueryRecordingStateRes
+  [MSG.OFFSCREEN_AUTO_STOPPED]: { ok: boolean }
 }
 export type MessageResponse<K extends keyof MessageResponseMap> = MessageResponseMap[K]
