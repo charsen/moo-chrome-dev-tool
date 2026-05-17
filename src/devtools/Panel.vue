@@ -161,15 +161,20 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 160px;
+  /* 窄宽（≤ 400px 停靠右侧）下要让 tabs 有空间显示完整，brand-meta 自适应收缩 */
+  max-width: clamp(60px, 18vw, 160px);
 }
 
+/* 窄宽下 tabs 横向滚动而不是撑爆容器（之前 ≤ 400px 整个 head 会触发横向滚动）*/
 .tabs {
   flex: 1;
   display: flex;
   align-items: stretch;
   padding: 0 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.tabs::-webkit-scrollbar { display: none; }
 .tab {
   display: inline-flex;
   align-items: center;

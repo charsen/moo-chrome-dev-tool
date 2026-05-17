@@ -920,7 +920,7 @@ export const SHADOW_CSS = `
 .moo-thumb-action:hover { background: #fff; transform: translateY(-1px); }
 .moo-thumb-action:active { transform: translateY(0); }
 
-/* Ghost 按钮：用于 dev/debug 二级动作（如"预览 payload"），视觉弱化避免和主提交按钮抢焦点 */
+/* Ghost 按钮：用于 dev/debug 二级动作（如"预览请求体"），视觉弱化避免和主提交按钮抢焦点 */
 .moo-btn.ghost {
   background: transparent;
   border-color: transparent;
@@ -1068,6 +1068,7 @@ export const SHADOW_CSS = `
   max-width: min(560px, calc(100vw - 48px));
   word-break: break-word;
   white-space: pre-line;
+  /* toast 比 rec-bar 高一层，录制时弹 toast 不被浮条遮 */
   z-index: 2147483647;
   box-shadow: var(--sh-lg);
   animation: moo-toast-in .2s cubic-bezier(.4, 0, .2, 1);
@@ -1168,13 +1169,13 @@ export const SHADOW_CSS = `
   display: block;
 }
 
-/* 录制中浮条（屏幕顶端） */
+/* 录制中浮条（屏幕顶端）—— z-index 比 toast 低 1，让 toast 能盖在浮条上 */
 .moo-rec-bar {
   position: fixed;
   top: 16px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 2147483647;
+  z-index: 2147483646;
   display: inline-flex;
   align-items: center;
   gap: 12px;

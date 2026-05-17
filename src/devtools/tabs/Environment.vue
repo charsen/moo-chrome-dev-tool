@@ -40,7 +40,9 @@
           >
             <span class="dot" :class="{ off: !p.enabled }" />
             <span class="name">{{ p.name || '(未命名)' }}</span>
-            <span class="count">{{ p.servers.length }}</span>
+            <span class="count" :class="{ 'count--zero': p.servers.length === 0 }" :title="p.servers.length === 0 ? '没有上报服务器，悬浮球能匹配但提交会失败' : `${p.servers.length} 个上报服务器`">
+              {{ p.servers.length === 0 ? '⚠ 无服务器' : p.servers.length }}
+            </span>
           </li>
           <li v-if="!draft.projects.length" class="empty">暂无项目，点击 + 新建</li>
           <li v-else-if="!filteredProjects.length" class="empty">未匹配到项目</li>
@@ -108,8 +110,8 @@
           <button class="btn" @click="addServer">+ 新建服务器</button>
         </div>
 
-        <div v-if="!activeProject.servers.length" class="empty padded">
-          还没有服务器配置，新建一个。
+        <div v-if="!activeProject.servers.length" class="server-empty-warn">
+          ⚠ 这个项目没有上报服务器，<b>悬浮球能匹配但点提交会失败</b>。点上面「+ 新建服务器」配一个。
         </div>
 
         <div v-for="s in activeProject.servers" :key="s.id" class="server-card">
@@ -648,6 +650,20 @@ function collectEndpoints(projects: unknown[]): string[] {
 .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .count { color: var(--moo-c-text-dim); font-size: var(--moo-fs-xs); font-family: var(--moo-ff-mono); }
 .project-item.active .count { color: var(--moo-c-brand); }
+/* 0 服务器的项目：用警示色提示用户这条配置不完整，hover 看 title */
+.count--zero,
+.project-item.active .count--zero { color: var(--moo-c-warn-fg); font-family: var(--moo-ff-sans); }
+
+.server-empty-warn {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  background: var(--moo-c-warn-soft);
+  border: 1px solid var(--moo-c-warn);
+  border-radius: var(--moo-r-md);
+  color: var(--moo-c-warn-fg);
+  font-size: var(--moo-fs-sm);
+  line-height: 1.5;
+}
 .empty {
   padding: 16px;
   color: var(--moo-c-text-dim);

@@ -8,6 +8,7 @@
       <span class="moo-chip">v{{ version }}</span>
     </header>
 
+    <main>
     <div v-if="loading" class="state state--loading">
       <div class="spinner" /> 检测中…
     </div>
@@ -75,6 +76,7 @@
       </ol>
       <button v-if="firstRun" class="onboard-cta" @click="dismissOnboard">我看完了 →</button>
     </section>
+    </main>
 
     <footer class="foot">
       <button class="link" @click="helpOpen = !helpOpen">
@@ -93,7 +95,8 @@ import type { Project } from '@/types/config'
 import { loadConfig, urlMatches } from '@/storage/config'
 
 const version = ref(chrome.runtime.getManifest().version)
-const logoUrl = chrome.runtime.getURL('icons/icon-48.png')
+// 显示尺寸 28px，用 32 比 48 更省字节 + 缩放损失更小（lighthouse image-size-responsive）
+const logoUrl = chrome.runtime.getURL('icons/icon-32.png')
 const ONBOARD_KEY = 'mooOnboardedAt'
 const firstRun = ref(false)
 
