@@ -160,7 +160,7 @@ async function reload() {
     for (const p of projects.value) {
       for (const s of p.servers) validIds.add(s.id)
     }
-    const fallback = validIds.size > 0 ? Array.from(validIds)[0] : ''
+    const fallback = validIds.size > 0 ? (Array.from(validIds)[0] ?? '') : ''
     // 给每条 entry 初始化下拉默认值。原 server 还在 → 用原 server；
     // 原 server 已被删 → 用第一个可用 server，避免 v-model 值不在 <option>
     // 列表里造成「下拉显示 A 但 v-model 还是已删除的 B」的错位。

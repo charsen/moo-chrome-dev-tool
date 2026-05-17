@@ -449,7 +449,10 @@ async function readPageStorage(
 ): Promise<Record<string, { value: string | null; source: 'localStorage' | 'sessionStorage' | 'missing' }>> {
   if (!tabId || keys.length === 0) return {}
   try {
-    const [{ result }] = await chrome.scripting.executeScript({
+    // executeScript 返回 InjectionResult[]，frame 数为 0 时数组空 —— noUncheckedIndexedAccess
+    // 把 [0] 标 possibly-undefined。tab 进程崩溃 / 页面已 unload 时确实会 0 长度，
+    // 防一道返空 storage 比 throw 给上游友好得多。
+    const results = await chrome.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
       func: (ks: string[]) => {
@@ -477,6 +480,7 @@ async function readPageStorage(
       },
       args: [keys]
     })
+    const result = results[0]?.result
     return (result as Record<string, { value: string | null; source: 'localStorage' | 'sessionStorage' | 'missing' }>) ?? {}
   } catch (e) {
     console.warn('[Moo] readPageStorage failed', e)

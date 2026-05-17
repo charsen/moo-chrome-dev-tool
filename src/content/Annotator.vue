@@ -182,7 +182,9 @@ const WIDTHS: { value: number; label: string }[] = [
   { value: 20, label: '粗' }
 ]
 
-const currentColor = ref<string>(COLORS[0].value)
+// COLORS 是 const 字面量数组，[0] 字面意义上一定存在；noUncheckedIndexedAccess
+// 不分析 length，所以这里加 ! 让 TS 闭嘴。
+const currentColor = ref<string>(COLORS[0]!.value)
 const currentWidth = ref<number>(DEFAULT_LINE_WIDTH)
 
 let drawing = false
@@ -273,9 +275,10 @@ function onKey(e: KeyboardEvent) {
   if (editing.value) return
   const mod = e.metaKey || e.ctrlKey
   // 数字键 1-6 切换工具（无修饰键，且不在输入框里）
-  if (!mod && !e.shiftKey && !e.altKey && TOOL_KEY_MAP[e.key]) {
+  const mapped = TOOL_KEY_MAP[e.key]
+  if (!mod && !e.shiftKey && !e.altKey && mapped) {
     e.preventDefault()
-    mode.value = TOOL_KEY_MAP[e.key]
+    mode.value = mapped
     return
   }
   // ⌘Z / ⌘⇧Z（或 Ctrl 等价键）撤销/重做
@@ -349,10 +352,12 @@ function onDown(e: PointerEvent) {
   if (hit >= 0) {
     // 点中已有标注 → 进入"待移动"状态，并把它设为选中
     // 若用户随后没有拖动（只点了一下），就视为单纯选中（在 onUp 里处理）
+    const target = items.value[hit]
+    if (!target) return  // hit >= 0 时存在，防御一下 noUncheckedIndexedAccess
     selectedIdx.value = hit
     redraw() // 把选中高亮立刻画出来
     beginAction()
-    moving = { idx: hit, startPX: p.x, startPY: p.y, orig: clone(items.value[hit]) }
+    moving = { idx: hit, startPX: p.x, startPY: p.y, orig: clone(target) }
     activeCaptureEl = e.currentTarget as HTMLElement
     activeCapturePid = e.pointerId
     activeCaptureEl.setPointerCapture(activeCapturePid)
@@ -405,6 +410,7 @@ function onMove(e: PointerEvent) {
   const p = toCanvasCoord(e)
   if (moving) {
     const cur = items.value[moving.idx]
+    if (!cur) return  // moving.idx 来自先前 hitTest，理论存在；防御 noUncheckedIndexedAccess
     const orig = moving.orig
     const dx = p.x - moving.startPX
     const dy = p.y - moving.startPY
@@ -483,6 +489,7 @@ function hitTest(p: { x: number; y: number }): number {
   const hitTol = DEFAULT_LINE_WIDTH + 4
   for (let i = items.value.length - 1; i >= 0; i--) {
     const it = items.value[i]
+    if (!it) continue
     if (it.type === 'rect' || it.type === 'circle' || it.type === 'mosaic') {
       const x1 = Math.min(it.x, it.x + it.w)
       const x2 = Math.max(it.x, it.x + it.w)
@@ -557,8 +564,9 @@ function redrawNow() {
     else drawText(ctx, it)
   }
   // 选中态高亮：在选中对象外画一个虚线 bounding box
-  if (selectedIdx.value >= 0 && selectedIdx.value < items.value.length) {
-    drawSelectionBox(ctx, items.value[selectedIdx.value])
+  const sel = items.value[selectedIdx.value]
+  if (selectedIdx.value >= 0 && sel) {
+    drawSelectionBox(ctx, sel)
   }
 }
 
@@ -705,8 +713,10 @@ function drawPointer(ctx: CanvasRenderingContext2D, it: PointerItem) {
   ctx.scale(s, s)
   // 白色外圈描边 + 黑色填充，叠加红色高光
   ctx.beginPath()
-  ctx.moveTo(pts[0][0], pts[0][1])
-  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
+  // pts 是函数顶部声明的字面量常量数组，所有元素都是 [number, number]；
+  // noUncheckedIndexedAccess 不分析这一点，加 ! 让 TS 闭嘴。
+  ctx.moveTo(pts[0]![0], pts[0]![1])
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]![0], pts[i]![1])
   ctx.closePath()
   ctx.lineWidth = 3
   ctx.strokeStyle = '#fff'
@@ -794,11 +804,12 @@ let nudgePending = false
 function nudgeSelected(dx: number, dy: number) {
   const idx = selectedIdx.value
   if (idx < 0 || idx >= items.value.length) return
+  const it = items.value[idx]
+  if (!it) return
   if (!nudgePending) {
     beginAction()
     nudgePending = true
   }
-  const it = items.value[idx]
   if (it.type === 'arrow') {
     it.x1 += dx; it.y1 += dy; it.x2 += dx; it.y2 += dy
   } else {

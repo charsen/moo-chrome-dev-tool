@@ -53,7 +53,14 @@ function headersToObj(h: Headers | Record<string, string> | string[][] | undefin
     return out
   }
   if (Array.isArray(h)) {
-    for (const [k, v] of h as string[][]) out[k] = v
+    // string[][] 的元素是 [key, value] tuple，但 noUncheckedIndexedAccess 把
+    // index 访问标 possibly-undefined。畸形输入（如 [[]]）会让 k/v 真的是
+    // undefined —— 直接 skip 比让 out[undefined] = undefined 污染好。
+    for (const row of h as string[][]) {
+      const k = row[0]
+      const v = row[1]
+      if (typeof k === 'string' && typeof v === 'string') out[k] = v
+    }
     return out
   }
   return { ...(h as Record<string, string>) }

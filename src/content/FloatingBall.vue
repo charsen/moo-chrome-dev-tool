@@ -164,14 +164,14 @@ function pickGoodDefaultPos(): { x: number; y: number } {
   for (const c of candidates) {
     if (!isBlockedByFixed(c.x, c.y)) return c
   }
-  return candidates[0] // 全冲突也只能退回右下
+  return candidates[0]! // 全冲突也只能退回右下；candidates 是字面量 4 元素数组
 }
 
 /** 单匹配时进入页面就自动选定；多匹配则等用户点 picker */
 function autoPickIfSingle() {
   if (props.matches.length === 1) {
     const only = props.matches[0]
-    if (activeProjectId.value !== only.id) {
+    if (only && activeProjectId.value !== only.id) {
       activeProjectId.value = only.id
       emit('select-project', only.id)
     }
@@ -234,9 +234,10 @@ function ensureActive(action: PendingAction): boolean {
   if (activeProjectId.value && props.matches.some((p) => p.id === activeProjectId.value)) {
     return true
   }
-  if (props.matches.length === 1) {
-    activeProjectId.value = props.matches[0].id
-    emit('select-project', props.matches[0].id)
+  const only = props.matches[0]
+  if (props.matches.length === 1 && only) {
+    activeProjectId.value = only.id
+    emit('select-project', only.id)
     return true
   }
   // 多匹配且未选：进 picker，记下用户要做什么

@@ -142,21 +142,21 @@
             <label>请求头</label>
           </div>
           <div class="kv-list">
-            <div v-for="(_, i) in headerEntries(s)" :key="i" class="kv-row">
+            <div v-for="(entry, i) in headerEntries(s)" :key="i" class="kv-row">
               <input
-                :value="headerEntries(s)[i][0]"
+                :value="entry[0]"
                 @change="onHeaderKeyChange(s, i, ($event.target as HTMLInputElement).value)"
                 placeholder="Header-Name"
               />
               <input
-                :value="headerEntries(s)[i][1]"
+                :value="entry[1]"
                 @input="onHeaderValChange(s, i, ($event.target as HTMLInputElement).value)"
                 placeholder="value"
               />
               <button
                 class="icon-btn"
-                :aria-label="`移除 Header ${headerEntries(s)[i][0]}`"
-                @click="removeHeader(s, headerEntries(s)[i][0])"
+                :aria-label="`移除 Header ${entry[0]}`"
+                @click="removeHeader(s, entry[0])"
               >×</button>
             </div>
             <button class="btn small" @click="addHeader(s)">+ 添加 Header</button>
@@ -286,7 +286,7 @@ watch(
     if (initialized.value && isDirty.value) return
     applyingExternal = true
     draft.value = clone(config.value)
-    if (!activeId.value && draft.value.projects.length) {
+    if (!activeId.value && draft.value.projects[0]) {
       activeId.value = draft.value.projects[0].id
     }
     initialized.value = true
@@ -417,16 +417,18 @@ function headerEntries(s: BugServer): [string, string][] {
 }
 
 function onHeaderKeyChange(s: BugServer, idx: number, newKey: string) {
-  const entries = Object.entries(s.headers)
-  const [oldKey, val] = entries[idx]
+  const entry = Object.entries(s.headers)[idx]
+  if (!entry) return
+  const [oldKey, val] = entry
   if (oldKey === newKey) return
   delete s.headers[oldKey]
   s.headers[newKey] = val
 }
 
 function onHeaderValChange(s: BugServer, idx: number, newVal: string) {
-  const [key] = Object.entries(s.headers)[idx]
-  s.headers[key] = newVal
+  const entry = Object.entries(s.headers)[idx]
+  if (!entry) return
+  s.headers[entry[0]] = newVal
 }
 
 function addHeader(s: BugServer) {

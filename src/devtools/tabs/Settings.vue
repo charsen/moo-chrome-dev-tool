@@ -188,7 +188,7 @@ async function refreshStats() {
 
 onMounted(async () => {
   config.value = await loadConfig()
-  if (config.value.projects.length) activeId.value = config.value.projects[0].id
+  if (config.value.projects[0]) activeId.value = config.value.projects[0].id
   await refreshStats()
   loaded.value = true
 })
@@ -202,7 +202,7 @@ watch(
       activeId.value = ''
       return
     }
-    if (!projects.find((p) => p.id === activeId.value)) {
+    if (!projects.find((p) => p.id === activeId.value) && projects[0]) {
       activeId.value = projects[0].id
     }
   },

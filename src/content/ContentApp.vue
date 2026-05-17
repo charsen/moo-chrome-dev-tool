@@ -116,7 +116,7 @@ async function refreshProject() {
   // 唯一匹配 → 直接 active；多匹配 → 留空，等用户在悬浮球里选
   // 抓取配置始终走 matches[0]（同一 URL 命中的项目，抓取/脱敏通常一致；
   // 即使有差异，submit 时仍用用户选定的 active project，所以问题可控）
-  project.value = matches.value.length === 1 ? matches.value[0] : null
+  project.value = matches.value.length === 1 ? (matches.value[0] ?? null) : null
   const cfgSrc = project.value ?? matches.value[0]
   if (cfgSrc) reqApi.setConfig({ capture: cfgSrc.capture, redact: cfgSrc.redact })
 }
@@ -135,7 +135,7 @@ function onKeydown(e: KeyboardEvent) {
   if (mod && e.shiftKey && (e.key === 'B' || e.key === 'b')) {
     e.preventDefault()
     // 快捷键场景没 UI 让用户挑，多匹配时 default 到首个；用户事后想换可在悬浮球点切换
-    if (!project.value) onSelectProject(matches.value[0].id)
+    if (!project.value && matches.value[0]) onSelectProject(matches.value[0].id)
     startCapture()
   }
 }
@@ -158,7 +158,7 @@ function onRuntimeMessage(raw: unknown) {
   }
   // 录屏由快捷键触发，没有 UI 让用户挑项目；多匹配时 default 到首个，
   // 用户在 SubmitDialog 之外没法切换，但符合"快捷键不被打断"的预期
-  if (!project.value && matches.value.length > 0) {
+  if (!project.value && matches.value[0]) {
     onSelectProject(matches.value[0].id)
   }
   void beginRecordingFromCommand()
