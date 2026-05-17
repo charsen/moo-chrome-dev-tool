@@ -221,34 +221,18 @@ onMounted(async () => {
   window.addEventListener('resize', onWindowResize)
   // 接收 background 通过 chrome.commands 触发的录屏
   chrome.runtime.onMessage.addListener(onRuntimeMessage)
-  // 同 tab navigation 时 content script 会重新挂载，本地 state 是 'idle'。
-  // 但 background 端 currentRecording 还在（offscreen 录屏不受 navigation
-  // 影响）—— 主动查一下，命中就接管 rec-bar 计时，让用户看到"录屏继续"。
-  void recoverRecordingIfActive()
+  // ⚠ 这里曾经加过 recoverRecordingIfActive() — 用 QUERY_RECORDING_STATE 查
+  // background 是否在录、命中就恢复 rec-bar。看起来对，实际撞 race：用户在
+  // 录屏中刷新 tab，page reload 触发 tabCapture stream end，offscreen 发
+  // OFFSCREEN_AUTO_STOPPED 给 SW；但新 content script 的 QUERY 跟这条
+  // OFFSCREEN_AUTO_STOPPED 是异步 race。QUERY 抢到时 currentRecording 还
+  // 没清 → 返回 recording=true → ContentApp 切 'recording' → 悬浮球被
+  // hidden → 用户看到"刷新后悬浮球不见"。
+  //
+  // 撤掉。同 tab navigation 中恢复 rec-bar 是真实需求但要走另一条路（譬如
+  // background 等 OFFSCREEN_AUTO_STOPPED 收到再回 QUERY，或者用 port 长连接
+  // 让 reload 也能区分）。这次先回退，先保住"刷新一定看得到悬浮球"这条底线。
 })
-
-async function recoverRecordingIfActive() {
-  try {
-    const res = await safeSendMessage<{ recording?: boolean; startedAt?: number }>({
-      type: MSG.QUERY_RECORDING_STATE,
-      source: 'content'
-    }, { fallback: { recording: false } })
-    if (!res?.recording || !res.startedAt) return
-    // 匹配项目：跟 beginRecordingFromCommand 一样的项目选取逻辑
-    if (!project.value && matches.value[0]) onSelectProject(matches.value[0].id)
-    state.value = 'recording'
-    const result = await recorder.startExternally(res.startedAt)
-    if (!result) {
-      // externallyStopped 或被 cancel：回 idle
-      state.value = 'idle'
-      return
-    }
-    recordedVideo.value = result
-    state.value = 'submitting'
-  } catch {
-    // SW 不可达：放弃恢复，保持 idle（用户能照常起新录屏）
-  }
-}
 
 onBeforeUnmount(() => {
   if (toastTimer) clearTimeout(toastTimer)
