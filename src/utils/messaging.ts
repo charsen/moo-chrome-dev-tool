@@ -56,21 +56,6 @@ export async function safeSendMessage<T = unknown>(
   }
 }
 
-/** chrome.tabs.sendMessage 的安全包装。tab 上没 content script（chrome:// / Web Store / 新标签页）时常见 reject。 */
-export async function safeSendTabMessage<T = unknown>(
-  tabId: number,
-  msg: unknown,
-  opts: SendOptions<T> = {}
-): Promise<T | undefined> {
-  try {
-    return (await chrome.tabs.sendMessage(tabId, msg)) as T
-  } catch (e) {
-    const raw = (e as Error)?.message ?? String(e)
-    if ('fallback' in opts) return (opts as { fallback: T }).fallback
-    throw new MessagingError(raw)
-  }
-}
-
 export function sendToBackground<T = unknown>(
   type: string,
   source: MooSource,

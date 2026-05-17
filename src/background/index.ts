@@ -102,16 +102,31 @@ chrome.runtime.onMessage.addListener((message: MooMessage, sender, sendResponse)
           break
         }
         case MSG.MATCH_PROJECT: {
-          const { url } = (message.payload as MatchProjectReq) ?? { url: '' }
-          const config = await loadConfig()
-          const matches = matchProjects(config, url)
-          sendResponse({ project: matches[0] ?? null, matches } satisfies MatchProjectRes)
+          try {
+            const { url } = (message.payload as MatchProjectReq) ?? { url: '' }
+            const config = await loadConfig()
+            const matches = matchProjects(config, url)
+            sendResponse({ project: matches[0] ?? null, matches } satisfies MatchProjectRes)
+          } catch (err) {
+            // 保持 shape 一致：outer catch 默认返 {ok:false,error} 不符 MatchProjectRes 声明，
+            // ContentApp 那边读 res.matches 拿到 undefined → 悬浮球默默消失没解释。
+            console.warn('[Moo] MATCH_PROJECT failed:', (err as Error).message)
+            sendResponse({ project: null, matches: [] } satisfies MatchProjectRes)
+          }
           break
         }
         case MSG.PREVIEW_PAYLOAD: {
-          const { server, context } = message.payload as PreviewPayloadReq
-          const rendered = renderTemplate(server.payloadTemplate, context)
-          sendResponse({ rendered } satisfies PreviewPayloadRes)
+          const payload = message.payload as PreviewPayloadReq | undefined
+          if (!payload || !payload.server) {
+            sendResponse({ ok: false, error: 'PREVIEW_PAYLOAD payload 缺 server' } satisfies PreviewPayloadRes)
+            break
+          }
+          try {
+            const rendered = renderTemplate(payload.server.payloadTemplate, payload.context ?? {})
+            sendResponse({ ok: true, rendered } satisfies PreviewPayloadRes)
+          } catch (e) {
+            sendResponse({ ok: false, error: (e as Error).message } satisfies PreviewPayloadRes)
+          }
           break
         }
         case MSG.SUBMIT_BUG: {

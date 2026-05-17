@@ -402,7 +402,11 @@ async function onPreview() {
         source: 'content',
         payload: { server, context: buildContext() } satisfies PreviewPayloadReq
       })) as PreviewPayloadRes
-      preview.value = res.rendered
+      if (res.ok) {
+        preview.value = res.rendered
+      } else {
+        preview.value = `生成预览时出错：${res.error}\n（可能「Payload 模板」里有语法问题，去 DevTools → Moo → 环境 → 上报服务器 → Payload 模板 检查一下）`
+      }
     } catch (err) {
       preview.value = `生成预览时出错：${(err as Error).message}\n（可能「Payload 模板」里有语法问题，去 DevTools → Moo → 环境 → 上报服务器 → Payload 模板 检查一下）`
     }

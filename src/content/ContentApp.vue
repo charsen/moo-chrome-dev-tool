@@ -142,10 +142,15 @@ function onKeydown(e: KeyboardEvent) {
 // 每次 Vue app 重挂（极少但 SPA 切换 / 扩展 reload 边缘 case 会触发）都会叠加
 // 一份，长期累积导致 storage 变更触发 N 次 refreshProject + 多份 toast。
 let disposeConfigWatcher: (() => void) | null = null
-function onRuntimeMessage(msg: { type?: string; ok?: boolean; error?: string }) {
-  if (msg?.type !== MSG.RECORD_EXTERNAL_STARTED) return
+function onRuntimeMessage(raw: unknown) {
+  // 校验 shape：避免任意 chrome.runtime.sendMessage({type:'RECORD_EXTERNAL_STARTED',...})
+  // 调用伪造 toast。messages.ts 给出了 RecordExternalStartedMsg 接口，这里运行时做最小校验。
+  if (!raw || typeof raw !== 'object') return
+  const msg = raw as { type?: unknown; ok?: unknown; error?: unknown }
+  if (msg.type !== MSG.RECORD_EXTERNAL_STARTED) return
+  if (typeof msg.ok !== 'boolean') return
   if (!msg.ok) {
-    showToast(msg.error || '录屏没能开始（可能浏览器拒了授权）。请按 ⌥⇧R 重试', 'error')
+    showToast(typeof msg.error === 'string' ? msg.error : '录屏没能开始（可能浏览器拒了授权）。请按 ⌥⇧R 重试', 'error')
     return
   }
   // 录屏由快捷键触发，没有 UI 让用户挑项目；多匹配时 default 到首个，

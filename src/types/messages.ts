@@ -67,9 +67,12 @@ export interface PreviewPayloadReq {
   server: BugServer
   context: Record<string, unknown>
 }
-export interface PreviewPayloadRes {
-  rendered: string
-}
+/** 成功 / 失败两条路径明确区分。原来失败路径走 background outer catch
+ *  返回 { ok:false, error } 而声明只有 rendered，调用方读 res.rendered 拿到
+ *  undefined 但没 throw —— 用户看到空 pre 而非错误信息。 */
+export type PreviewPayloadRes =
+  | { ok: true; rendered: string }
+  | { ok: false; error: string }
 
 export interface GetRequestsRes {
   requests: CapturedRequest[]
@@ -77,6 +80,14 @@ export interface GetRequestsRes {
 
 export interface GetErrorsRes {
   errors: ConsoleError[]
+}
+
+/** background → content 通过 chrome.runtime.sendMessage 广播，告诉所有 tab
+ *  录屏快捷键已被触发 + 是否真正进入录制（getMediaStreamId 可能被用户拒）。 */
+export interface RecordExternalStartedMsg {
+  type: 'RECORD_EXTERNAL_STARTED'
+  ok: boolean
+  error?: string
 }
 
 // 消息 type 常量
