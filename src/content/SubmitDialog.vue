@@ -56,7 +56,7 @@
         <div class="moo-form-row" v-if="video">
           <label>录像</label>
           <div class="req-panel">
-            <video class="moo-video-preview" :src="video.dataUrl" controls preload="metadata" />
+            <video class="moo-video-preview" :src="videoBlobUrl" controls preload="metadata" />
             <div class="req-controls" style="border-top: 1px solid var(--c-divider); border-bottom: 0;">
               <span class="req-hint">已录制 {{ fmtDuration(video.duration) }} · {{ fmtBytes(video.bytes) }}</span>
             </div>
@@ -216,6 +216,35 @@ const emit = defineEmits<{
 
 const title = ref('')
 const description = ref('')
+
+// video src 用 blob URL 代替 dataUrl：Chrome 给 <video src="data:...base64,..."> 有
+// ~2MB 大小上限，1.9MB 的 webm 录像 base64 后 ~2.5MB 直接超限，video 元素显示
+// 黑屏 0:00 但 controls 看着像正常的。blob URL 走 in-memory 引用，没有这个限制。
+// dataUrl 仍然是 props 传入的形态（offscreen → background → content 跨 context
+// 只能传字符串），这里在 content 端转回 blob 再 createObjectURL。
+const videoBlobUrl = ref('')
+watch(
+  () => props.video?.dataUrl,
+  async (dataUrl, _old, onCleanup) => {
+    // 旧 URL 先 revoke 防泄漏（fetch 失败时也会到这里）
+    const prev = videoBlobUrl.value
+    onCleanup(() => { if (prev) URL.revokeObjectURL(prev) })
+    if (!dataUrl) { videoBlobUrl.value = ''; return }
+    try {
+      const blob = await (await fetch(dataUrl)).blob()
+      videoBlobUrl.value = URL.createObjectURL(blob)
+    } catch {
+      // 兜底：转换失败回退到原 dataUrl（小文件还是能播）
+      videoBlobUrl.value = dataUrl
+    }
+  },
+  { immediate: true }
+)
+onBeforeUnmount(() => {
+  if (videoBlobUrl.value && videoBlobUrl.value.startsWith('blob:')) {
+    URL.revokeObjectURL(videoBlobUrl.value)
+  }
+})
 const serverId = ref(props.project.defaultServerId || props.project.servers[0]?.id || '')
 const preview = ref('')
 const submitting = ref(false)
