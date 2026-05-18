@@ -1,23 +1,10 @@
 /**
- * 状态回查链路上需要传播的 header 白名单（token 类）。
+ * 状态回查相关的纯函数。
  *
- * 抽出来独立模块的动机：background/index.ts 里这俩纯函数原本是私有的，
- * 但单测只测 SW 入口 dispatch 太重，逻辑核心（白名单 / charset / size limit）
+ * 抽出来独立模块的动机：background/index.ts 里这函数原本是私有的，
+ * 但单测只测 SW 入口 dispatch 太重，逻辑核心（charset / size limit）
  * 是纯字符串处理 —— 拆到 utils 里既能直接 import 测，又让 background 文件更专注。
  */
-
-/** 仅保留状态回查需要的 token 类 header，避免把 Content-Type 等也带过去。
- *  key 不区分大小写。 */
-export function pickPropagatedHeaders(src: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(src)) {
-    const lk = k.toLowerCase()
-    if (lk === 'x-scaffold-token' || lk === 'authorization' || lk.startsWith('x-submitter')) {
-      out[k] = v
-    }
-  }
-  return out
-}
 
 /** remoteId 会被拼到 GET ${remoteBase}/${remoteId}/status-public，
  *  必须限制字符集防恶意服务端注入路径 / query（如 `../../admin?token=`）。

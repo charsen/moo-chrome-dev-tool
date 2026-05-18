@@ -100,9 +100,9 @@
           </div>
         </div>
         <div class="tpl-hint">
-          上报时会自动注入 <code class="inline-code">Authorization: Bearer …</code> 与
-          <code class="inline-code">X-Scaffold-Token</code> 两个 header；服务端命中后会用账号 username 作为提交人。
-          留空则按匿名提交（若服务端配了共享 token 也会被拒）。
+          token 通过 payload 模板的 <code class="inline-code" v-pre>{{token}}</code> 占位符注入 POST body 的 <code class="inline-code">token</code> 字段（webhook 风格，不进 header）。
+          服务端从 body 读出 token 校验，命中后用账号 username 作为提交人。
+          留空则按匿名提交（若服务端要求 token 会被拒）。
         </div>
 
         <div class="section-head">

@@ -4,83 +4,110 @@
 
 ## 一句话现状
 
-扩展功能完整可用（v0.1.6 已发布，下一版 0.1.7 是最近 5 轮 bug 修复待发），核心三件事都跑通了：**抓数据 + 标注 + 提交后端**。最近一周没新功能，全在修隐性 bug 和打磨 UX。
+v0.1.10 已发。功能盘子没动，过去两周全部用来收口：上 CI、上 pre-commit、补单测、给录屏换底盘、把所有"边界 case 不崩"的功夫都补完。当前没有大特性堆在路上，状态适合稳一段时间或做样式系统化这种欠了很久的事。
 
-## 这周做了什么
+## 这两周做了什么
 
-**主线**：发完 0.1.2 之后，针对实际用过的反馈做了一轮 UX 大重构（24 项，见 commit `86df0fa`），然后又跑了 5 轮深度审计修了 5 类隐性问题（commit `b1db56c` → `7708834`，本文叫 Pass 1-5）。
+按版本时间线：
 
-| Pass | 主题 | 为什么重要 |
-|---|---|---|
-| 1 | 商店审核三件套 | 删多余的 cookies 权限、抹掉注入页面的 console 留痕、生产构建剥 console（防 token 落到日志被人偷看）|
-| 2 | token leak 防御 + listener 泄漏 | 后台日志原本会打印完整 Authorization header；ContentApp 两个 listener 没拆，每次配置变更触发 N 次刷新 |
-| 3 | postMessage origin 校验 + payload 形状校验 | 抓请求是页面跨 world `postMessage` 投递的，原来同源脚本可以伪造一条假请求让用户提交给后端 |
-| 4 | 重试队列 / 状态回查 / 失败留痕 | 带视频的失败提交超 storage 配额 set 抛错，老 history 缺 token header 导致同步状态永远 0 更新，找不到项目时直接 return 留历史黑洞 |
-| 5 | 截图入库前压缩 + history 字段归一化 | 1080p PNG 入 storage 实际只能存 5-8 条（声称 30 条是误导），现在缩到 ≤1280 宽 + JPEG 0.75 |
+**v0.1.7（Batch 3）** — UX 收尾：focus ring 改 token、暗色 brand + 状态点 halo、文案再去黑话动词统一、z-index/窄宽溢出/popup a11y、模板防御性兜底。
 
-并发的 UX 重构主要是：Annotator 撤销重做 / 选中删除、SubmitDialog 字段重排和折叠、Overview 请求+错误合并时间线、Environment 自动保存、暗色主题适配、a11y 收尾。详细 24 项在 commit `86df0fa` 的 message 里。
+**v0.1.8（Batch 4-5-6）** — 安全 + 数据健壮性大扫除：
+- normalize/import 边界硬化，applyAuthHeaders 大小写敏感修，sanitizeHeaders 拦 CRLF
+- parseRemoteId 字符集校验，renderTemplate JSON-escape
+- storageKeys 白名单 + Unicode 同形字符防御
+- ElementPicker 抹 password、dataUrlToBlob guard、sender.id 校验
+- 卡顿优化 4 项、消息协议契约 4 项、JSON.parse null 防御、XHR url 非 string 防崩
+- pickTokenHeaders defense-in-depth、ElementPicker mousemove 改 rAF coalesce
+- release/打包安全收口
+
+**v0.1.9（Batch 7-8）** — 工程基础设施 + 录屏底盘：
+- **CI**：GitHub Actions 跑 `type-check + test + build`（`.github/workflows/ci.yml`）
+- **Pre-commit**：simple-git-hooks 跑 `pnpm type-check && pnpm test`
+- **单测**：vitest + 100+ case，覆盖 clone/redact/submitMessage/history/normalizeProject/remoteHeaders/template（`test/*.test.ts`）
+- **类型严**：开 `noUncheckedIndexedAccess`，修 108 处
+- **录屏重构**：`src/offscreen/` 状态机重构修了多个 race；rec-bar 任意 tab 都能显示；视频预览改 atob 绕宿主 CSP
+- **权限窄化**：`tabCapture` 改 optional permission（按需 request）
+- 撤掉 `console.error` monkey-patch（之前会污染扩展错误页）
+- Settings.vue 移除 `(Switch as any).props` 反 pattern
+- messages.ts 强类型 dispatch
+
+**v0.1.10** — 一堆边缘 case 补完 + 换 logo：
+- 录屏中切 tab 悬浮球不消失（`refreshProject` fallback 保留旧 matches）
+- 录屏边缘 case 全覆盖（Chrome 停止共享条、同 tab navigation 恢复）
+- 悬浮球 onMounted 也 clamp，不再被推到视口外；clamp 用对了尺寸常量
+- 录像视频预览黑屏修（dataUrl 超 Chrome 上限，改用 blob URL）
+- useRequests 用 `DEFAULT_REDACT` 兜底，修早期请求未脱敏漏洞
+- logo 换成 f44 黑鹰头 + 黄色 reticle 眼（这一版稳了，别再换）
 
 ## 你最该知道的 3 个坑
 
-### 1. 录屏的入口必须是键盘快捷键，不能是按钮
+老坑没变（前任 HANDOFF 提的 3 个仍然成立），这里只补**新增/演化**的部分。
 
-Chrome MV3 要求 `tabCapture.getMediaStreamId` 在用户键盘手势上下文里调。content script 里 click 经过消息转一手，手势就丢了——所以悬浮球的「录屏」按钮永远不能真正触发录屏。
+### 1. 录屏的入口仍然必须是键盘快捷键
 
-**当前做法**：按钮只显示一个 `⌥⇧R` 的 kbd 标签提示。如果你想做新入口，必须走 `chrome.commands` 注册快捷键，不要再尝试 click。
+老规矩：`tabCapture.getMediaStreamId` 必须在用户键盘手势上下文里调，content script 里 click 经消息转一手手势就丢了。悬浮球的"录屏"按钮只显示 `⌥⇧R` kbd 提示。
 
-### 2. 抓请求是同源 postMessage，假数据很容易塞进来
+**v0.1.9 之后新增的事**：录屏实际跑在 offscreen document（`src/offscreen/`）里，状态机刚重构过修了一批 race。改这块前先把 `src/offscreen/index.ts` 看完——里头每个状态迁移都有原因，不要凭直觉简化。
 
-`src/injected/main-world.ts` 注入 MAIN world hook 住页面的 fetch/XHR，然后 `window.postMessage` 投递到 content script 的 `useRequests.ts` / `useErrors.ts`。
+另：`tabCapture` 现在是 **optional permission**（v0.1.9 Batch 8-F），首次录屏会触发权限弹窗。装包测试时记得清掉 chrome://extensions 里的 site access 再试一遍首次流程。
 
-Pass 3 已经加了三重防御（origin 限定、收端 origin 校验、payload shape 校验），但**同源恶意脚本还是可以精心构造一条合法 shape 的假请求**。这是 contract 的固有缺陷——同源脚本本身能干更糟的事（直接 fetch、改 cookie、读 localStorage），所以现在只做劝退式防御。
+### 2. 抓请求是同源 postMessage，假数据仍能塞进来
 
-新增字段时记得同步更新 `isValidRequestPayload` / `isValidErrorPayload`，否则旁路就开了。
+Pass 3 的三重防御（origin 限定、收端 origin 校验、payload shape 校验）仍在。固有缺陷没变：同源恶意脚本可以精心构造合法 shape 的假请求。新增字段时**必须**同步更新 `isValidRequestPayload` / `isValidErrorPayload`。
 
-### 3. chrome.storage.local 只有 10MB
+补强：`useRequests.ts` 现在用 `DEFAULT_REDACT` 兜底（cec6294），修了"用户配置脱敏规则之前就抓到的请求"那段空窗期。
 
-history 一条带原图能到 800KB，30 条 = 24MB 直接爆。Pass 5 已经处理了**截图**（入库前缩到 ~150KB），但提交时**给后端的还是原图**（`screenshot` 字段直接拿 `chrome.tabs.captureVisibleTab` 的原图，没缩）。
+### 3. chrome.storage.local 仍只有 10MB
 
-录屏更狠，30 秒 webm ~17MB。所以：
-- 重试队列对单条 body > 1MB 不入队（Pass 4 加的）
-- 录屏失败的提交不会自动重试，要用户手动到「历史」Tab 点重新提交
-- 任何新加的写 storage 的代码都要 try/catch 配额错，别让上游误以为成功了
+老约束没变。新规矩：
+
+- `noUncheckedIndexedAccess` 已开，新代码访问数组/对象索引必须处理 `undefined`。Batch 7-D 改了 108 处，别又写回去。
+- pre-commit 会跑 `type-check + test`，过不了就 commit 不上。**不要 `--no-verify` 绕**——hooks 是这一版才刚立起来的，绕一次就废一半。
+
+### 隐藏的第 4 个：扩展错误页污染
+
+之前 background 里 `console.error` 被 monkey-patch 包过一层（为了上报 SW 错误），结果**所有**插件错误都被吃掉/重写，扩展错误页全是噪声。Batch 7-A 已撤（abf1124）。如果你想再上报 SW 错误，**不要**重新 monkey-patch console；走显式 `reportError(err)` 函数。
 
 ## 现在最值得做的下一件事
 
-**发 0.1.7**。Pass 1-5 累积的 5 个修都是高价值（安全 + 用户感知的"无声 bug"），已经够一个版本，再憋下去就忘了。
+按价值排序：
 
-发版步骤：
-
-```bash
-pnpm release       # 走 scripts/release.mjs，会改 manifest 版本 + 打 tag
-pnpm build         # 打包出 dist
-# 把 dist 压 zip 传到 gitee Releases
-```
-
-发完之后，按价值排序的下一批：
-
-1. **悬浮球默认位置避开宿主页 fixed 元素**——现在写死 `right:200, bottom:70`，可能盖住网站客服气泡。可以做边缘吸附 + 拖出去后记忆位置（已有位置记忆，缺的是初始位避让）。
-2. **按钮样式系统化**——`.moo-btn` 在 devtools / tokens.css / content shadow DOM 三处各有副本，命名也不一致（`primary` vs `moo-btn--primary`）。改动面大但拖久了越乱，建议单独立项 PR。
-3. **暗色主题打磨**——tokens 全套 dark 已加，但实际跑深色模式时各 tab 内还有硬编码颜色没扫到。建议实机走一圈截图回看。
+1. **按钮样式系统化**（欠了三版的债）。`.moo-btn` 在 `src/styles/tokens.css` 有正规一套，但 `Environment.vue`、`Overview.vue`、`History.vue` 还各自留着 `.btn` / `.danger-btn` / `.icon-btn` 旧类，命名不一致。建议单 PR 统一到 `.moo-btn` + 修饰符。
+2. **暗色硬编码扫尾**。Batch 3-B 把 brand 和 halo 都 token 化了，但各 Tab 内还可能有零散硬编码颜色。建议实机走一遍深色模式截图回看，把剩下的 hex 替换成 token。
+3. **录屏失败恢复 UX**。Pass 4 加了重试队列，但录屏失败的提交仍需用户手动到「历史」点重新提交。可以做一个明显的失败提示 + 一键重试，少一步用户认知成本。
 
 不急的：
 - 多 server 时附件元素 × 删除按钮加二次确认（故意没加，可重新评估）
-- 关闭按钮做 `<MooCloseBtn>` Vue 组件（现在只提了 CSS）
-- Settings 和 Environment 走同一个自动保存范式（现在 Environment 用 draft 中间层，Settings 直接 v-model）
+- `<MooCloseBtn>` Vue 组件（关闭按钮现在只统一了 CSS）
+- Settings 和 Environment 走同一个自动保存范式（Environment 用 draft 中间层，Settings 直接 v-model）
+
+旧 HANDOFF 提的「悬浮球默认位置避让宿主 fixed 元素」已经做了（c852992，5 候选角落 + `elementsFromPoint` 探测），从清单划掉。
 
 ## 干活之前先看几个文件
 
 | 你要碰这个 | 先读这个 |
 |---|---|
-| 上报 / 重试 / 状态回查逻辑 | `src/background/index.ts` |
+| 上报 / 重试 / 状态回查 | `src/background/index.ts` |
 | 抓 fetch/XHR 的钩子 | `src/injected/main-world.ts` + `src/content/useRequests.ts` |
+| 录屏状态机 | `src/offscreen/index.ts`（v0.1.9 重构过，每个状态迁移都有原因）|
 | 截图标注 | `src/content/Annotator.vue` |
 | DevTools 4 个 Tab | `src/devtools/tabs/{Overview,Environment,History,Settings}.vue` |
+| 消息协议 | `src/types/messages.ts`（强类型 dispatch）|
 | 字段语义、模板变量 | `docs/SERVER_INTEGRATION.md` |
-| logo / 品牌 | `docs/LOGO_BRIEF.md`（鹰图腾来自团队身份，**不要**换成虫子 / 箭头 / 光标）|
+| logo / 品牌 | `docs/LOGO_BRIEF.md`（鹰图腾来自团队身份，**不要**换）|
+| CI / pre-commit | `.github/workflows/ci.yml` + `package.json` 的 `simple-git-hooks` |
+
+## 工程约束（新规矩，必须遵守）
+
+- **不绕 hook**：`pnpm type-check && pnpm test` 是 pre-commit 跑的，过不了就修，不要 `--no-verify`。
+- **不关 `noUncheckedIndexedAccess`**：写数组/对象索引时显式处理 `undefined`。
+- **改 `src/types/messages.ts` 要看清下游**：dispatch 走强类型，新增 message 要把所有 handler 补齐才能过编译。
+- **改 `injected/main-world.ts` 的 payload shape 必同步改 validator**：见上面坑 #2。
 
 ## 几条沟通备忘
 
-- 团队名是 **mooeen（沐恩）**，基督教背景，鹰图腾呼应「如鹰展翅上腾」。这是身份核心，不要被改。
-- 发版节奏：每改一次就 bump + release 太碎，**等成批了再发**。这次 Pass 1-5 就够一版。
-- 文档风格：用户用过反馈是「不要堆术语，用人话」，所有文档都按这个标准写。
+- 团队名 **mooeen（沐恩）**，基督教背景，鹰图腾呼应「如鹰展翅上腾」。身份核心，不要改。
+- 发版节奏：成批了再发。这次 Batch 3-8 累积发了 4 个版本，节奏对。
+- 文档风格：「不要堆术语，用人话」。所有 commit message / 文档都按这个标准写。
+- Logo 不要再换。f44 黑鹰头 + 黄 reticle 这版定稿（v0.1.10）。

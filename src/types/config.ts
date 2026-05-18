@@ -55,8 +55,9 @@ export interface Project {
   enabled: boolean
   /**
    * 上报 token（每个开发者一个）。从 scaffold 的 /scaffold/accounts 页面获取。
-   * 上报时会作为 Authorization: Bearer {token} 与 X-Scaffold-Token 同时注入；
-   * 服务端命中后会自动用账号 username 作为提交人。
+   * 通过 payload 模板的 `{{token}}` 占位符写进 POST body 的 token 字段（webhook 风格，
+   * 不进 header / 不进 URL），后端读 body.token 校验。服务端命中后自动用账号 username
+   * 作为提交人。
    */
   token?: string
 }
@@ -81,6 +82,7 @@ export const DEFAULT_REDACT: RedactConfig = {
 }
 
 export const DEFAULT_PAYLOAD_TEMPLATE = `{
+  "token": "{{token}}",
   "title": "{{title}}",
   "description": "{{description}}\\n\\n页面: {{url}}\\nUA: {{userAgent}}\\n视口: {{viewport}}\\n时间: {{timestamp}}",
   "screenshot": "{{image}}",

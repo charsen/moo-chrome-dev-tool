@@ -34,6 +34,4 @@ export interface BugHistoryEntry {
   remoteStatusUpdatedAt?: string
   /** 服务端基地址，用于状态回查（取 server.endpoint 去掉 /intake 后缀） */
   remoteBase?: string
-  /** 状态回查时要带的 header（仅 token 类，例如 X-Scaffold-Token） */
-  remoteHeaders?: Record<string, string>
 }

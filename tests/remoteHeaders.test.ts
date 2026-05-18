@@ -1,55 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pickPropagatedHeaders, parseRemoteId } from '@/utils/remoteHeaders'
-
-describe('pickPropagatedHeaders', () => {
-  it('保留白名单内的 token 类 header', () => {
-    expect(pickPropagatedHeaders({
-      'Authorization': 'Bearer abc',
-      'X-Scaffold-Token': 'token123',
-      'X-Submitter-Name': 'alice',
-      'X-Submitter-Id': '7'
-    })).toEqual({
-      'Authorization': 'Bearer abc',
-      'X-Scaffold-Token': 'token123',
-      'X-Submitter-Name': 'alice',
-      'X-Submitter-Id': '7'
-    })
-  })
-
-  it('过滤非 token 类 header（Content-Type / 自定义 X-Foo）', () => {
-    expect(pickPropagatedHeaders({
-      'Authorization': 'Bearer abc',
-      'Content-Type': 'application/json',
-      'X-Custom-Foo': 'bar',
-      'Accept': '*/*'
-    })).toEqual({ 'Authorization': 'Bearer abc' })
-  })
-
-  it('白名单匹配不区分大小写', () => {
-    expect(pickPropagatedHeaders({
-      'authorization': 'Bearer abc',
-      'x-scaffold-token': 'token123',
-      'X-SUBMITTER-FOO': 'v'
-    })).toEqual({
-      'authorization': 'Bearer abc',
-      'x-scaffold-token': 'token123',
-      'X-SUBMITTER-FOO': 'v'
-    })
-  })
-
-  it('空对象返回空对象', () => {
-    expect(pickPropagatedHeaders({})).toEqual({})
-  })
-
-  it('幂等：对已过滤过的输入再过一次不变', () => {
-    const once = pickPropagatedHeaders({ 'Authorization': 'x', 'Content-Type': 'y' })
-    expect(pickPropagatedHeaders(once)).toEqual(once)
-  })
-
-  it('保留原始 key 拼写（不强行转小写）', () => {
-    expect(pickPropagatedHeaders({ 'AuThoRiZation': 'Bearer abc' })).toEqual({ 'AuThoRiZation': 'Bearer abc' })
-  })
-})
+import { parseRemoteId } from '@/utils/remoteHeaders'
 
 describe('parseRemoteId', () => {
   it('合法 JSON + 字符串 id 字段时返回 id', () => {

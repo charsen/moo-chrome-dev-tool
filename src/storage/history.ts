@@ -20,11 +20,6 @@ function normalizeHistoryEntry(raw: unknown): BugHistoryEntry {
   const bool = (v: unknown, fb = false): boolean => typeof v === 'boolean' ? v : fb
   const arr = <T>(v: unknown): T[] => Array.isArray(v) ? v as T[] : []
   const result = (e.result && typeof e.result === 'object') ? e.result as Record<string, unknown> : {}
-  const headers = (e.remoteHeaders && typeof e.remoteHeaders === 'object')
-    ? Object.fromEntries(
-        Object.entries(e.remoteHeaders as Record<string, unknown>).filter(([, v]) => typeof v === 'string')
-      ) as Record<string, string>
-    : undefined
 
   return {
     id: str(e.id) || crypto.randomUUID(),
@@ -57,8 +52,7 @@ function normalizeHistoryEntry(raw: unknown): BugHistoryEntry {
     remoteStatusUpdatedAt: typeof e.remoteStatusUpdatedAt === 'string'
       ? e.remoteStatusUpdatedAt
       : undefined,
-    remoteBase: typeof e.remoteBase === 'string' ? e.remoteBase : undefined,
-    remoteHeaders: headers
+    remoteBase: typeof e.remoteBase === 'string' ? e.remoteBase : undefined
   }
 }
 

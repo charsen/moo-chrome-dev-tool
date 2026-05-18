@@ -127,7 +127,7 @@ describe('history.ts — normalize 边界', () => {
   beforeEach(() => { makeChrome() })
 
   it('老 storage 数据缺字段 → list 时补默认值（不让 .vue 模板 crash）', async () => {
-    // 直接往 storage 塞一个老 shape entry（v0.1.5 之前可能没 remoteHeaders / requests / result）
+    // 直接往 storage 塞一个老 shape entry（早期版本可能没 requests / result / remoteBase 等字段）
     const raw = { id: 'old', title: 'Old', timestamp: 123 }
     ;(globalThis as { chrome: { storage: { local: { set: (o: unknown) => Promise<void> } } } })
       .chrome.storage.local.set({ mooHistory: [raw] })

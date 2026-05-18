@@ -10,7 +10,7 @@ import { MSG } from '@/types/messages'
 import { loadConfig, matchProjects } from '@/storage/config'
 import { addHistoryEntry, listHistory, updateHistoryEntry } from '@/storage/history'
 import { renderTemplate } from '@/utils/template'
-import { pickPropagatedHeaders, parseRemoteId } from '@/utils/remoteHeaders'
+import { parseRemoteId } from '@/utils/remoteHeaders'
 import type { BugServer, MooConfig, Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
 
@@ -293,10 +293,13 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
     storage,
     video: req.video ? req.video.dataUrl : '',
     videoBytes: req.video?.bytes ?? 0,
-    videoDuration: req.video?.duration ?? 0
+    videoDuration: req.video?.duration ?? 0,
+    // 让模板可以用 {{token}} 把项目 token 写进 body。
+    // 后端只读 body 字段做鉴权时（不走 Authorization header）必须有这个。
+    token: project.token ?? ''
   }
 
-  const { body, headers } = buildRequestBody(server, ctx, project)
+  const { body, headers } = buildRequestBody(server, ctx)
   const safeHeaders = sanitizeHeaders(headers)
   let result: SubmitBugRes
   let remoteId: string | undefined
@@ -305,10 +308,9 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
     const text = await resp.text()
     remoteId = parseRemoteId(text)
     if (!resp.ok) {
-      // 注意：不能直接打 sentHeaders —— 里面含 Authorization: Bearer <token> 等
-      // 敏感字段，落到 SW console 后任何能读 chrome://extensions 日志的进程
-      // （或本扩展自身的录屏功能）都能偷走。只 log header **名字**便于确认
-      // 是否真带上了 Authorization，需要 value 时去 DevTools Network 面板看。
+      // 只 log header 名字不打 value：用户配的 server.headers 可能含敏感字段
+      // （token 已经在 body 里，但有人会额外手配 Authorization 等），SW console
+      // 落盘后任何能读 chrome://extensions 日志的进程都能拿到。
       console.warn('[Moo submit-fail]', {
         endpoint: server.endpoint,
         finalUrl: resp.url,
@@ -349,8 +351,7 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
     errors: req.errors,
     result,
     remoteId,
-    remoteBase: deriveRemoteBase(server.endpoint),
-    remoteHeaders: pickPropagatedHeaders(applyAuthHeaders(project, { ...server.headers }))
+    remoteBase: deriveRemoteBase(server.endpoint)
   }
   try {
     const writeRes = await addHistoryEntry(entry)
@@ -398,10 +399,7 @@ async function writeFailureHistory(
     requests: req.requests,
     errors: req.errors,
     result: { ok: false, error: errorMsg },
-    remoteBase: server?.endpoint ? deriveRemoteBase(server.endpoint) : undefined,
-    remoteHeaders: server && project
-      ? pickPropagatedHeaders(applyAuthHeaders(project, { ...(server.headers ?? {}) }))
-      : undefined
+    remoteBase: server?.endpoint ? deriveRemoteBase(server.endpoint) : undefined
   }
   try {
     await addHistoryEntry(entry)
@@ -553,33 +551,6 @@ async function readPageStorage(
   }
 }
 
-// ============================================================
-// 上报 token
-// ============================================================
-
-/**
- * 把项目级 token 注入到 header：
- *   Authorization: Bearer {token}
- *   X-Scaffold-Token: {token}
- * 服务端 AccountStore 命中后会自动用账号 username 作为提交人。
- */
-function applyAuthHeaders(project: Project, headers: Record<string, string>): Record<string, string> {
-  const token = project.token?.trim()
-  if (!token) return headers
-  const out = { ...headers }
-  // case-insensitive 检查：之前只看 `Authorization` / `authorization` 两种，
-  // 攻击者导入配置时用 `AUTHORIZATION` 全大写就能绕过、保留预置的恶意 token。
-  // 必须把 key 全 toLowerCase 后比较。
-  const lowerKeys = new Set(Object.keys(out).map((k) => k.toLowerCase()))
-  if (!lowerKeys.has('authorization')) {
-    out['Authorization'] = `Bearer ${token}`
-  }
-  if (!lowerKeys.has('x-scaffold-token')) {
-    out['X-Scaffold-Token'] = token
-  }
-  return out
-}
-
 // HTTP header 值只允许 ISO-8859-1（基本就是 ASCII），中文/emoji 必须 percent-encode；
 // 服务端拿到后 decodeURIComponent 即可还原。
 // 顺便拦 CRLF：HTTP header injection 的经典攻击载体（`X-Foo: bar\r\nAuthorization: Bearer evil`）。
@@ -687,17 +658,20 @@ async function flushRetryQueue(): Promise<number> {
 
 async function refreshHistoryStatus(): Promise<number> {
   const list = await listHistory()
-  // 老 entry（v0.1.5 之前）没存 remoteHeaders；裸 GET 会被服务端 401 拒，
-  // 用户的「同步状态」按钮永远显示 0 已更新。每次同步前用当前 config 给
-  // 这些 entry 补一份 token —— 现网账号体系仍合法时能跑通。
   const config = await loadConfig()
   let updated = 0
   for (const entry of list) {
     if (!entry.remoteId || !entry.remoteBase) continue
     try {
+      // 后端鉴权一律从 POST body 取 token（webhook 风格，URL 不沾 token 避免落 access log）。
+      // 项目被删 / token 没填时拿到空串，后端会 401，catch 吞掉。
+      const token = pickToken(entry, config)
       const url = `${entry.remoteBase}/${entry.remoteId}/status-public`
-      const headers = pickTokenHeaders(entry, config)
-      const resp = await fetch(url, { method: 'GET', headers })
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      })
       if (!resp.ok) continue
       const data = await resp.json()
       if (data && data.ok && data.status) {
@@ -714,21 +688,9 @@ async function refreshHistoryStatus(): Promise<number> {
   return updated
 }
 
-function pickTokenHeaders(entry: BugHistoryEntry, config?: MooConfig): Record<string, string> {
-  // 优先用 entry 自带的（每次提交时 snapshot 的 token，最贴近上报当时的状态）
-  // 写入路径（addHistoryEntry 那条）已经过了 pickPropagatedHeaders；但 v0.1.5
-  // 之前的老 entry 直接拷了 server.headers 进来，可能残留 Content-Type / 自定义
-  // X-Foo —— 状态回查是 GET，带这些既无用也徒增打到服务端的指纹。再过一遍 propagate 白名单。
-  if (entry.remoteHeaders && Object.keys(entry.remoteHeaders).length > 0) {
-    return pickPropagatedHeaders(entry.remoteHeaders)
-  }
-  // fallback：从当前 config 找回项目 + 服务器，重新构造 auth header
-  if (!config) return {}
+function pickToken(entry: BugHistoryEntry, config: MooConfig): string {
   const project = config.projects.find((p) => p.id === entry.projectId)
-  if (!project) return {}
-  const server = project.servers.find((s) => s.id === entry.serverId)
-  if (!server) return {}
-  return pickPropagatedHeaders(applyAuthHeaders(project, { ...(server.headers ?? {}) }))
+  return project?.token?.trim() ?? ''
 }
 
 function deriveRemoteBase(endpoint: string): string {
@@ -738,8 +700,7 @@ function deriveRemoteBase(endpoint: string): string {
 
 function buildRequestBody(
   server: BugServer,
-  ctx: Record<string, unknown>,
-  project: Project
+  ctx: Record<string, unknown>
 ): { body: BodyInit; headers: Record<string, string> } {
   const rendered = renderTemplate(server.payloadTemplate, ctx)
   if (server.imageFormat === 'multipart') {
@@ -754,13 +715,12 @@ function buildRequestBody(
       form.append('payload', rendered)
     }
     form.append(server.imageField, dataUrlToBlob(String(ctx.image)), 'screenshot.png')
-    const headers = applyAuthHeaders(project, { ...server.headers })
+    const headers = { ...server.headers }
     delete headers['Content-Type']
     delete headers['content-type']
     return { body: form, headers }
   }
-  const headers = applyAuthHeaders(project, { ...server.headers })
-  return { body: rendered, headers }
+  return { body: rendered, headers: { ...server.headers } }
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
