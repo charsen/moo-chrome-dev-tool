@@ -95,11 +95,8 @@
       </div>
       <div v-if="recError" class="rec-err">{{ recError }}</div>
 
-      <button class="link" @click="helpOpen = !helpOpen">
-        如何打开 DevTools 面板 {{ helpOpen ? '▴' : '▾' }}
-      </button>
-      <div v-if="helpOpen" class="help-pop">
-        在网页上按 <span class="kbd">F12</span>（或右键 → <b>检查</b>），切到 <b>Moo</b> 面板。
+      <div class="help-pop">
+        打开 DevTools 控制面板：在网页上按 <span class="kbd">F12</span>（或右键 → <b>检查</b>），切到 <b>Moo</b> 面板。
       </div>
     </footer>
   </div>
@@ -126,7 +123,6 @@ const matched = ref<Project[]>([])
 const projects = ref<Project[]>([])
 const currentUrl = ref('')
 const loading = ref(true)
-const helpOpen = ref(false)
 const recEnabled = ref(false)
 const recBusy = ref(false)
 const recError = ref('')
@@ -428,17 +424,6 @@ onMounted(async () => {
 .popup-switch.is-on .popup-switch-thumb { transform: translateX(14px); }
 
 .foot { margin-top: 12px; text-align: center; }
-.link {
-  background: transparent;
-  border: none;
-  color: var(--moo-c-brand);
-  font-size: var(--moo-fs-xs);
-  font-family: var(--moo-ff-sans);
-  cursor: pointer;
-  padding: 4px;
-  transition: color var(--moo-motion-fast);
-}
-.link:hover { color: var(--moo-c-brand-hover); text-decoration: underline; }
 .help-pop {
   margin-top: 8px;
   padding: 8px 10px;
