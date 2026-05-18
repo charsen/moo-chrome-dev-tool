@@ -175,16 +175,30 @@ function send<T>(msg: { type: string }): Promise<T | undefined> {
     try {
       chrome.tabs.sendMessage(tabId, { ...msg, source: 'devtools' }, (r) => {
         if (chrome.runtime.lastError) {
-          error.value = chrome.runtime.lastError.message ?? ''
+          error.value = humanizeMsgError(chrome.runtime.lastError.message ?? '')
           resolve(undefined)
         } else resolve(r as T)
       })
     } catch (e) {
-      error.value = (e as Error).message
+      error.value = humanizeMsgError((e as Error).message)
       if (timer) { clearInterval(timer); timer = undefined }
       resolve(undefined)
     }
   })
+}
+
+// 把 chrome.runtime stock 错误翻成用户能看懂的话。
+// 最常见一条："Could not establish connection. Receiving end does not exist." ——
+// 扩展刚重载完、当前页内容脚本还没注入；不是 bug，刷新页面就好。
+function humanizeMsgError(raw: string): string {
+  if (!raw) return ''
+  if (raw.includes('Could not establish connection') || raw.includes('Receiving end does not exist')) {
+    return '扩展刚重载过，当前页面的内容脚本还没注入——刷新一下当前页面（⌘R / F5）就好。'
+  }
+  if (raw.includes('The message port closed before a response was received')) {
+    return '消息超时（内容脚本可能崩了 / 页面切走了）。刷新当前页面后重试。'
+  }
+  return raw
 }
 
 async function refresh() {

@@ -13,6 +13,10 @@
 
 实现位置：`src/devtools/tabs/Overview.vue`（DevTools 面板）+ `src/content/styles.ts` + `src/content/SubmitDialog.vue`（提交弹窗）。两边用同一套语义类（`is-warn` / `is-err` / `dur--slow` / `dur--xslow`）。
 
+### Overview Tab 错误信息人话化
+
+之前 `chrome.runtime.sendMessage` 失败时直接把 Chrome stock 错误原文塞到顶栏，比如 「Could not establish connection. Receiving end does not exist.」。99% 是扩展刚重载完、宿主页内容脚本还没注入。新版翻译为「扩展刚重载过，当前页面的内容脚本还没注入——刷新一下当前页面（⌘R / F5）就好」。顺手把另一条常见的 message port closed 也翻了。
+
 ### 新增快捷键：`Alt+Shift+M` 打开 Moo popup
 
 之前打开 popup 必须点扩展图标。现在快捷键直接调起，键盘流不用碰鼠标。
