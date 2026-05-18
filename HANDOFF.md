@@ -4,7 +4,9 @@
 
 ## 一句话现状
 
-v0.1.10 已发。功能盘子没动，过去两周全部用来收口：上 CI、上 pre-commit、补单测、给录屏换底盘、把所有"边界 case 不崩"的功夫都补完。当前没有大特性堆在路上，状态适合稳一段时间或做样式系统化这种欠了很久的事。
+v0.1.11 已发。最后一版做了一次架构纠偏：**token 从 header 移到 POST body，扩展退回 webhook 客户端的本分**。之前十个版本一直用 `Authorization: Bearer` + `X-Scaffold-Token` 两个 header，把扩展跟 scaffold 后端绑死了；其实 token 走 body 字段就够，跟 webhook 一样——扩展不该假设后端长啥样。**这是 BREAKING 变更**，详见 CHANGELOG.md。
+
+往前看，过去两周主线是收口：上 CI、上 pre-commit、补单测、给录屏换底盘、把所有"边界 case 不崩"的功夫都补完。当前没有大特性堆在路上，状态适合稳一段时间或做样式系统化这种欠了很久的事。
 
 ## 这两周做了什么
 
@@ -24,7 +26,7 @@ v0.1.10 已发。功能盘子没动，过去两周全部用来收口：上 CI、
 **v0.1.9（Batch 7-8）** — 工程基础设施 + 录屏底盘：
 - **CI**：GitHub Actions 跑 `type-check + test + build`（`.github/workflows/ci.yml`）
 - **Pre-commit**：simple-git-hooks 跑 `pnpm type-check && pnpm test`
-- **单测**：vitest + 100+ case，覆盖 clone/redact/submitMessage/history/normalizeProject/remoteHeaders/template（`test/*.test.ts`）
+- **单测**：vitest + 100+ case，覆盖 clone/redact/submitMessage/history/normalizeProject/parseRemoteId/template（`test/*.test.ts`）
 - **类型严**：开 `noUncheckedIndexedAccess`，修 108 处
 - **录屏重构**：`src/offscreen/` 状态机重构修了多个 race；rec-bar 任意 tab 都能显示；视频预览改 atob 绕宿主 CSP
 - **权限窄化**：`tabCapture` 改 optional permission（按需 request）
@@ -39,6 +41,22 @@ v0.1.10 已发。功能盘子没动，过去两周全部用来收口：上 CI、
 - 录像视频预览黑屏修（dataUrl 超 Chrome 上限，改用 blob URL）
 - useRequests 用 `DEFAULT_REDACT` 兜底，修早期请求未脱敏漏洞
 - logo 换成 f44 黑鹰头 + 黄色 reticle 眼（这一版稳了，别再换）
+
+**v0.1.11（BREAKING）** — webhook 化纠偏 + scaffold 配套：
+- 删 `applyAuthHeaders` 函数及全部调用；fetch 不再注 `Authorization` / `X-Scaffold-Token` 任何 header
+- 默认 Payload 模板顶部加 `"token": "{{token}}"`（用户在模板里直接渲染）
+- `buildRequestBody` 不再吃 `project` 参数，纯粹根据 server.headers + 渲染后的 body 出请求
+- 状态回查也走 POST + body token：路径 `/status-public` 还在，但 method 改 POST，URL 完全不沾 token
+- 删 `BugHistoryEntry.remoteHeaders` 字段（type + storage normalize）；老 entry 落盘的字段会被静默丢
+- 删 `utils/remoteHeaders.ts` 的 `pickPropagatedHeaders`（保留 `parseRemoteId`）
+- 配套 scaffold 后端改：`authenticateWithReason` 改读 `$req->json('token')`；路由 `/status-public` GET → POST；webhook 接口拆出独立 group 不沾用户 `$middleware`（修 `['web']` 配置撞 419 CSRF 的坑）；rate limiter 注册时机修对（之前用 `app->resolving(Router)` 永远不 fire，请求 500）
+- `docs/SERVER_INTEGRATION.md` 整段重写为 webhook 风格，Node 骨架例子全换
+- 文档侧 9 个文件同步：scaffold `CLAUDE.md` / `09-accounts.md` / `12-security.md` / `07-todo-inbox.md`；ext `Environment.vue` UI 提示、`config.ts` token 字段注释
+
+**升级现网部署的事项**（口头跟同事说）：
+1. 后端必须配套升到本次 scaffold commit，`composer update` + `php artisan optimize:clear`
+2. 老 server 的 Payload 模板手工改：进 DevTools → Moo → 环境，每条 server 第一行加 `"token": "{{token}}",`。新建的 server 默认模板已带，不用动
+3. 配自定义后端（非 scaffold）的同事：参照新版 `docs/SERVER_INTEGRATION.md` 把鉴权改成从 body 读 token
 
 ## 你最该知道的 3 个坑
 
