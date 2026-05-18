@@ -16,13 +16,7 @@
    - `req.body.token` 校验
    - `/status-public` 路由从 GET 改 POST，从 `req.body.token` 校验
 
-2. **扩展用户**：所有**老 server**的 Payload 模板还是旧 snapshot，不含 `"token": "{{token}}"` 字段。升级后**首次提交会 401「missing token」**。手工修：
-   - DevTools → Moo → 环境 → 服务器（每条）→ 「Payload 模板」第一行加 `"token": "{{token}}",`
-   - 保存
-
-   新建的 server 默认模板已带 token 字段，不用动。
-
-3. **现有 history 条目**：老 entry 的 `remoteHeaders` 字段不再使用（已从类型删除），storage 里残留无害。
+2. **现有 history 条目**：老 entry 的 `remoteHeaders` 字段不再使用（已从类型删除），storage 里残留无害。
 
 ### 其它
 
