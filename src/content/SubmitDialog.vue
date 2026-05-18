@@ -102,12 +102,12 @@
                 <button class="moo-btn small" @click="selectNone">清空</button>
               </div>
               <div class="req-list" v-if="filtered.length">
-                <label v-for="r in filtered" :key="r.id" class="req-item">
+                <label v-for="r in filtered" :key="r.id" :class="['req-item', failClass(r.status)]">
                   <input type="checkbox" :checked="selectedIds.has(r.id)" @change="toggle(r.id)" />
                   <span :class="['method', String(r.method ?? '').toLowerCase()]">{{ r.method }}</span>
                   <span :class="['status', statusClass(r.status)]">{{ r.status || 'ERR' }}</span>
                   <span class="url" :title="r.url">{{ shortUrl(r.url) }}</span>
-                  <span class="dur">{{ Math.round(r.duration) }}ms</span>
+                  <span :class="['dur', durClass(r.duration)]">{{ Math.round(r.duration) }}ms</span>
                 </label>
               </div>
               <div v-else class="req-empty">
@@ -382,6 +382,23 @@ function statusClass(status: number): string {
   if (status >= 500) return 'err'
   if (status >= 400) return 'warn'
   return 'ok'
+}
+
+// 行级"出错强调"：4xx 给橙色左色条，5xx / 网络错给红色左色条。
+// 配合现有 status chip 一起看：chip 标点、左色条扫面（眼睛跨几十行一扫就知道哪条挂了）
+function failClass(status: number): string {
+  if (!status) return 'is-err'
+  if (status >= 500) return 'is-err'
+  if (status >= 400) return 'is-warn'
+  return ''
+}
+
+// 慢请求 duration 染色：≥1s 橙、≥3s 红。chip 系统只看 status，
+// duration 是另一维度——200 但 5s 也是问题，光看 chip 看不出来
+function durClass(duration: number): string {
+  if (duration >= 3000) return 'dur--xslow'
+  if (duration >= 1000) return 'dur--slow'
+  return ''
 }
 
 function errLevelLabel(level: ConsoleError['level']): string {

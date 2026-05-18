@@ -842,6 +842,20 @@ export const SHADOW_CSS = `
   text-align: right;
   color: var(--c-text-dim);
 }
+/* 慢请求 duration 染色（≥1s 橙 / ≥3s 红）。
+   status chip 只看 HTTP 码，duration 是另一维度——200 但 5s 同样是问题 */
+.req-item .dur.dur--slow  { color: var(--c-warn-fg); font-weight: 600; }
+.req-item .dur.dur--xslow { color: var(--c-danger-fg); font-weight: 600; }
+/* 行级失败强调：左色条 + padding 补偿（4xx 橙 / 5xx + 网络错红）。
+   配合 status chip 一起看：chip 标点、左色条扫面 */
+.req-item.is-warn {
+  border-left: 3px solid var(--c-warn-fg);
+  padding-left: 7px;
+}
+.req-item.is-err {
+  border-left: 3px solid var(--c-danger-fg);
+  padding-left: 7px;
+}
 .req-empty {
   padding: 16px;
   font-size: 11px;

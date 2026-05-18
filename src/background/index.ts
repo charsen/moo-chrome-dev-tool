@@ -57,6 +57,16 @@ chrome.alarms?.onAlarm.addListener((alarm) => {
 // getMediaStreamId 在 user activation 还在的瞬间被 invoke。
 chrome.commands?.onCommand.addListener((command, tab) => {
   console.log('[Moo cmd]', command, 'tab:', tab?.id, tab?.url)
+
+  if (command === 'open-popup') {
+    // chrome.action.openPopup() 在 MV3 SW 里可用（Chrome 99+），不需要 tab 上下文
+    // 失败常见原因：浏览器窗口非焦点 / popup 已经打开。失败时只 log，不弹通知（噪音）
+    chrome.action.openPopup().catch((err) => {
+      console.warn('[Moo cmd] openPopup failed:', (err as Error).message)
+    })
+    return
+  }
+
   if (command !== 'start-recording') return
   const tabId = tab?.id
   if (!tabId) {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Moo Dev Tool",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "前后端业务调试工具",
   "action": {
     "default_popup": "src/popup/index.html",
@@ -47,6 +47,13 @@
         "mac": "Alt+Shift+R"
       },
       "description": "开始录制当前标签页（tabCapture 需要快捷键 / 扩展图标这类用户手势才能调起）"
+    },
+    "open-popup": {
+      "suggested_key": {
+        "default": "Alt+Shift+M",
+        "mac": "Alt+Shift+M"
+      },
+      "description": "打开 Moo 控制面板（toolbar popup，含项目匹配状态 + 录屏开关 + DevTools 跳转提示）"
     }
   },
   "web_accessible_resources": [

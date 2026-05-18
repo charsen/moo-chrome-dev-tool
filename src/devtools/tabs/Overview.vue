@@ -65,12 +65,12 @@
           v-if="item.kind === 'request'"
           :class="['row', { open: openId === item.data.id }]"
         >
-          <div class="row-head" @click="toggle(item.data.id)">
+          <div :class="['row-head', failClass(item.data.status)]" @click="toggle(item.data.id)">
             <span class="kind-tag kind-tag--req" title="网络请求">REQ</span>
             <span :class="['method', String(item.data.method ?? '').toLowerCase()]">{{ item.data.method }}</span>
             <span :class="['status', statusClass(item.data.status)]">{{ item.data.status || 'ERR' }}</span>
             <span class="url" :title="item.data.url">{{ shortUrl(item.data.url) }}</span>
-            <span class="dur">{{ Math.round(item.data.duration) }}ms</span>
+            <span :class="['dur', durClass(item.data.duration)]">{{ Math.round(item.data.duration) }}ms</span>
             <span class="time">{{ formatTime(item.data.startedAt) }}</span>
           </div>
           <div class="row-detail" v-if="openId === item.data.id">
@@ -297,6 +297,23 @@ function statusClass(s: number) {
   if (s >= 500) return 'err'
   if (s >= 400) return 'warn'
   return 'ok'
+}
+
+// 行级"出错强调"：4xx 给橙色左色条，5xx / 网络错给红色左色条。
+// 跟 SubmitDialog 用同一套语义；视觉上 chip 标点 + 左色条扫面
+function failClass(s: number): string {
+  if (!s) return 'is-err'
+  if (s >= 500) return 'is-err'
+  if (s >= 400) return 'is-warn'
+  return ''
+}
+
+// 慢请求 duration 染色（≥1s 橙 / ≥3s 红）。200 但 5s 同样是问题，
+// 光看 status chip 看不出来
+function durClass(d: number): string {
+  if (d >= 3000) return 'dur--xslow'
+  if (d >= 1000) return 'dur--slow'
+  return ''
 }
 
 function errLevelLabel(level: ConsoleError['level']): string {
@@ -581,6 +598,14 @@ onBeforeUnmount(() => {
 .row-head .status.ok    { background: var(--moo-c-success-soft); color: var(--moo-c-success-fg); }
 .row-head .status.warn  { background: var(--moo-c-warn-soft);    color: var(--moo-c-warn-fg); }
 .row-head .status.err   { background: var(--moo-c-danger-soft);  color: var(--moo-c-danger-fg); }
+/* 行级失败强调：左色条扫面（4xx 橙 / 5xx + 网络错红）。
+   配合 status chip 一起看：chip 标点、左色条扫面 */
+.row-head.is-warn { box-shadow: inset 3px 0 0 var(--moo-c-warn-fg); }
+.row-head.is-err  { box-shadow: inset 3px 0 0 var(--moo-c-danger-fg); }
+/* 慢请求 duration 染色（≥1s 橙 / ≥3s 红）。
+   200 但 5s 同样是问题，光看 status chip 看不出来 */
+.row-head .dur.dur--slow  { color: var(--moo-c-warn-fg); font-weight: 600; }
+.row-head .dur.dur--xslow { color: var(--moo-c-danger-fg); font-weight: 600; }
 .row-head .url {
   flex: 1;
   overflow: hidden;

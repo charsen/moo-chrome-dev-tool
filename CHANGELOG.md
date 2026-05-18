@@ -2,6 +2,25 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.1.12
+
+### 请求列表染色升级
+
+请求/错误列表（Overview Tab + 提交弹窗）原本只有 method + status chip 颜色。这版加两维度，扫一眼就抓到坏请求：
+
+- **行级失败强调**：4xx 整行左边 3px 橙色色条，5xx + 网络错红色色条。chip 标点、色条扫面，互补
+- **慢请求 duration 染色**：≥1s 橙字加粗，≥3s 红字加粗。200 但 5s 也是问题，光看 chip 看不出来
+
+实现位置：`src/devtools/tabs/Overview.vue`（DevTools 面板）+ `src/content/styles.ts` + `src/content/SubmitDialog.vue`（提交弹窗）。两边用同一套语义类（`is-warn` / `is-err` / `dur--slow` / `dur--xslow`）。
+
+### 新增快捷键：`Alt+Shift+M` 打开 Moo popup
+
+之前打开 popup 必须点扩展图标。现在快捷键直接调起，键盘流不用碰鼠标。
+
+- 注册在 `manifest.json` commands 里，描述：「打开 Moo 控制面板」
+- 实现走 `chrome.action.openPopup()`（MV3 Chrome 99+ 可用）
+- ⚠️ Chrome MV3 限制：**不能**用 API 直接打开 DevTools 或跳到 DevTools 里某个面板。这快捷键开的是 toolbar popup，不是 DevTools Moo 面板——后者只能 F12 手动开
+
 ## v0.1.11
 
 ### BREAKING：token 从 header 改 POST body

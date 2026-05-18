@@ -22,6 +22,14 @@
 | 6 | 跨 engine 后端 | wn 站对应 accounts.yaml 加你账号 token → 重启 wn 后端 → 扩展项目 endpoint 改 `app2.example.com/scaffold/todos/intake` → 提交 | 200；证明同份 moo-scaffold 在不同 engine 都跑通 | ☐ |
 | 7 | 网络异常 + 重试 | 关掉后端进程 → 提交一条（无录屏）→ 等 toast → 等 5 分钟后看 SW console 是否自动重试 | toast 形态是「提交失败：Failed to fetch」，加一行「已加入重试队列」；5 分钟后 console 看到重试动作 | ☐ |
 
+## v0.1.12 — 染色 + 快捷键
+
+| # | 场景 | 操作 | 期望 | ☐ |
+|---|---|---|---|---|
+| 8 | 失败行左色条 | 故意触发一个 404（比如改前端请求路径） + 一个 500（后端 throw） → DevTools Moo 面板 Overview Tab 看那两行；再开提交弹窗看请求列表 | 404 那行左 3px 橙色条；500 那行左 3px 红色条；status chip 颜色不变 | ☐ |
+| 9 | 慢请求 duration 染色 | 后端故意 `sleep(2)` 跑一个接口 → Overview 看那行；同样去提交弹窗看 | duration `2000ms` 显示橙色加粗；如果 `sleep(4)` 则红色加粗 | ☐ |
+| 10 | `Alt+Shift+M` 开 popup | 任意网页焦点下按 `Alt+Shift+M` | toolbar popup 弹出来，显示项目匹配状态 + 录屏开关；第二次按再开会失败（已打开），SW console 有一行 warn | ☐ |
+
 ## 失败处理
 
 任何一条挂掉，**先抓现场再回退**：
