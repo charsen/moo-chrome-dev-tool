@@ -92,15 +92,19 @@
             </section>
             <section v-if="item.data.requestBody">
               <h5>Request Body</h5>
-              <pre class="mono" v-html="highlightBody(item.data.requestBody, bodySearch)" />
+              <BodyViewer :text="item.data.requestBody" :search="bodySearch" />
             </section>
             <section v-if="Object.keys(item.data.responseHeaders ?? {}).length">
               <h5>Response Headers</h5>
               <pre class="mono">{{ formatHeaders(item.data.responseHeaders) }}</pre>
             </section>
             <section v-if="item.data.responseBody">
-              <h5>Response Body ({{ item.data.responseSizeBytes }}b)</h5>
-              <pre class="mono" v-html="highlightBody(item.data.responseBody, bodySearch)" />
+              <h5>Response Body</h5>
+              <BodyViewer
+                :text="item.data.responseBody"
+                :search="bodySearch"
+                :sizeBytes="item.data.responseSizeBytes"
+              />
             </section>
           </div>
         </div>
@@ -122,7 +126,7 @@
             <div class="kv" v-if="item.data.source"><span class="k">Source</span><span class="v mono">{{ item.data.source }}:{{ item.data.line }}:{{ item.data.col }}</span></div>
             <section v-if="item.data.stack">
               <h5>Stack</h5>
-              <pre class="mono">{{ item.data.stack }}</pre>
+              <pre class="mono stack" v-html="highlightStack(item.data.stack)" />
             </section>
           </div>
         </div>
@@ -150,6 +154,8 @@ import type { CapturedRequest } from '@/types/requests'
 import type { ConsoleError } from '@/types/errors'
 import { MSG, type GetErrorsRes, type GetRequestsRes } from '@/types/messages'
 import { confirmDialog } from '../components/confirm'
+import BodyViewer from '../components/BodyViewer.vue'
+import { highlightStack } from '@/utils/stackFormat'
 
 type Kind = 'request' | 'error'
 type TimelineItem =
@@ -276,26 +282,6 @@ function toggle(id: string) {
 /** Body 搜索 query —— 切换展开的行时重置，避免上一个搜索状态串到下一行 */
 const bodySearch = ref('')
 watch(openId, () => { bodySearch.value = '' })
-
-function highlightBody(text: string | undefined, query: string): string {
-  if (!text) return ''
-  const escaped = escapeHtml(text)
-  const q = query.trim()
-  if (!q) return escaped
-  // 先 escape body，再用已 escape 的 query 做 regex 替换，结果是安全的（不会注入 HTML）
-  const rx = new RegExp(escapeRegex(escapeHtml(q)), 'gi')
-  return escaped.replace(rx, (m) => `<mark>${m}</mark>`)
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[c] as string))
-}
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
 
 function shortUrl(url: string): string {
   try {
@@ -690,13 +676,11 @@ onBeforeUnmount(() => {
   border-color: var(--moo-c-brand);
   box-shadow: 0 0 0 2px var(--moo-c-focus-ring);
 }
-.row-detail .mono :deep(mark) {
-  background: var(--moo-c-warn);
-  color: var(--moo-c-bg);
-  padding: 0 2px;
-  border-radius: 2px;
-  font-weight: 600;
-}
+/* 错误 stack 行内染色：fn 加粗 / file 正常 / 行:列变弱
+   信息层级：函数名 > 文件路径 > 行号——和肉眼诊断错误时的扫读顺序一致 */
+.row-detail .mono.stack :deep(.st-fn)   { color: var(--moo-c-text); font-weight: 600; }
+.row-detail .mono.stack :deep(.st-file) { color: var(--moo-c-text-muted); }
+.row-detail .mono.stack :deep(.st-loc)  { color: var(--moo-c-text-faint); }
 
 .row-detail .mono {
   background: var(--moo-c-bg-soft);
