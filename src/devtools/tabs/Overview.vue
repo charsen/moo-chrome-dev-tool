@@ -30,8 +30,8 @@
         <option :value="-1">全部</option>
       </select>
       <button
-        class="icon-btn"
-        :class="{ 'is-on': autoRefresh }"
+        class="moo-icon-btn"
+        :class="{ 'moo-icon-btn--toggle-on': autoRefresh }"
         :title="autoRefresh ? '自动刷新：开（点击关）' : '自动刷新：关（点击开）'"
         :aria-pressed="autoRefresh"
         @click="autoRefresh = !autoRefresh"
@@ -39,15 +39,15 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 6V3l-4 4 4 4V8a6 6 0 1 1-6 6"/>
         </svg>
-        <span v-if="autoRefresh" class="icon-btn-pulse" aria-hidden="true" />
+        <span v-if="autoRefresh" class="moo-icon-btn-pulse" aria-hidden="true" />
       </button>
-      <button class="icon-btn" title="刷新" :disabled="loading" @click="refresh">
+      <button class="moo-icon-btn" title="刷新" :disabled="loading" @click="refresh">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 12a9 9 0 1 1 3 6.7"/>
           <path d="M3 21v-5h5"/>
         </svg>
       </button>
-      <button class="icon-btn danger" title="清空当前 Tab 数据" @click="clearAll">
+      <button class="moo-icon-btn moo-icon-btn--danger" title="清空当前 Tab 数据" @click="clearAll">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"/>
           <path d="M10 11v6M14 11v6"/>
@@ -469,54 +469,8 @@ onBeforeUnmount(() => {
   color: var(--moo-c-text-muted);
   cursor: pointer;
 }
-/* 二级动作图标按钮（刷新 / 清空 / 自动刷新 toggle）—— 28×28 方形，title 揭示功能 */
-.toolbar .icon-btn {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--moo-c-border);
-  background: var(--moo-c-bg);
-  color: var(--moo-c-text-muted);
-  border-radius: var(--moo-r-md);
-  cursor: pointer;
-  transition: background-color var(--moo-motion-fast), border-color var(--moo-motion-fast), color var(--moo-motion-fast);
-}
-.toolbar .icon-btn:hover:not(:disabled) {
-  background: var(--moo-c-bg-soft);
-  border-color: var(--moo-c-text-faint);
-  color: var(--moo-c-text);
-}
-.toolbar .icon-btn:disabled { opacity: .5; cursor: not-allowed; }
-.toolbar .icon-btn svg { width: 14px; height: 14px; display: block; }
-.toolbar .icon-btn.is-on {
-  background: var(--moo-c-brand-soft);
-  border-color: var(--moo-c-brand);
-  color: var(--moo-c-brand);
-}
-.toolbar .icon-btn.is-on:hover { background: var(--moo-c-brand-soft); }
-.toolbar .icon-btn.danger { color: var(--moo-c-danger-fg); }
-.toolbar .icon-btn.danger:hover:not(:disabled) {
-  background: var(--moo-c-danger-soft);
-  border-color: var(--moo-c-danger-soft);
-}
-.icon-btn-pulse {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--moo-c-brand);
-  animation: icon-btn-pulse 1.6s ease-in-out infinite;
-}
-@keyframes icon-btn-pulse {
-  0%, 100% { transform: scale(1); opacity: .7; }
-  50% { transform: scale(1.25); opacity: 1; }
-}
+/* 二级动作图标按钮：基础类 .moo-icon-btn / 修饰 --toggle-on / --danger 均
+   定义在 tokens.css。这里没自定义，只通过 scoped 选择器无 override。 */
 .toolbar .count {
   font-size: var(--moo-fs-xs);
   color: var(--moo-c-text-dim);

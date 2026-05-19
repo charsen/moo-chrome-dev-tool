@@ -239,6 +239,70 @@ html {
 .moo-btn--sm { height: 24px; padding: 0 10px; font-size: var(--moo-fs-xs); }
 .moo-btn--lg { height: 32px; padding: 0 16px; font-size: var(--moo-fs-base); }
 
+/* === Icon-only 按钮 ===
+   28×28 方形容器，专给 SVG / 单字符图标的工具栏按钮用；
+   和 .moo-btn 不同形态（pill 标签按钮 → 方块图标按钮），所以独立基类。 */
+.moo-icon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--moo-c-border);
+  background: var(--moo-c-bg);
+  color: var(--moo-c-text-muted);
+  border-radius: var(--moo-r-md);
+  cursor: pointer;
+  transition: background-color var(--moo-motion-fast),
+              border-color var(--moo-motion-fast),
+              color var(--moo-motion-fast);
+}
+.moo-icon-btn:hover:not(:disabled) {
+  background: var(--moo-c-bg-soft);
+  border-color: var(--moo-c-text-faint);
+  color: var(--moo-c-text);
+}
+.moo-icon-btn:disabled { opacity: .5; cursor: not-allowed; }
+.moo-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
+  border-color: var(--moo-c-brand);
+}
+.moo-icon-btn svg { width: 14px; height: 14px; display: block; }
+
+/* 切换 on 态（如自动刷新 toggle）：品牌色软背景 */
+.moo-icon-btn--toggle-on {
+  background: var(--moo-c-brand-soft);
+  border-color: var(--moo-c-brand);
+  color: var(--moo-c-brand);
+}
+.moo-icon-btn--toggle-on:hover:not(:disabled) { background: var(--moo-c-brand-soft); }
+
+/* 危险动作图标按钮（如清空数据） */
+.moo-icon-btn--danger { color: var(--moo-c-danger-fg); }
+.moo-icon-btn--danger:hover:not(:disabled) {
+  background: var(--moo-c-danger-soft);
+  border-color: var(--moo-c-danger-soft);
+}
+
+/* 状态指示小光点（如自动刷新进行中），定位在 icon-btn 右上角 */
+.moo-icon-btn-pulse {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--moo-c-brand);
+  animation: moo-icon-btn-pulse 1.6s ease-in-out infinite;
+}
+@keyframes moo-icon-btn-pulse {
+  0%, 100% { transform: scale(1); opacity: .7; }
+  50% { transform: scale(1.25); opacity: 1; }
+}
+
 /* === Input / Select / Textarea === */
 .moo-field {
   width: 100%;

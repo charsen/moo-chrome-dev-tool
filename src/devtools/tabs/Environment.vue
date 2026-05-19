@@ -7,7 +7,7 @@
         <template v-if="saveState === 'saving'">保存中…</template>
         <template v-else-if="saveState === 'error'">
           ⚠ 保存没成功 — 可能 chrome.storage 配额满了，请点「重试」或清理一些项目
-          <button class="retry-btn" @click="retrySave">重试</button>
+          <button class="moo-btn moo-btn--sm moo-btn--danger" @click="retrySave">重试</button>
         </template>
         <template v-else>✓ 已自动保存</template>
       </span>
@@ -17,9 +17,9 @@
         <div class="sidebar-head">
           <span>项目</span>
           <div class="head-actions">
-            <button class="icon-btn" title="新建项目" @click="addProject">+</button>
-            <button class="icon-btn" title="导入配置" @click="importConfig">↓</button>
-            <button class="icon-btn" title="导出配置" @click="exportConfig">↑</button>
+            <button class="moo-btn moo-btn--sm" title="新建项目" @click="addProject">+</button>
+            <button class="moo-btn moo-btn--sm" title="导入配置" @click="importConfig">↓</button>
+            <button class="moo-btn moo-btn--sm" title="导出配置" @click="exportConfig">↑</button>
           </div>
         </div>
         <!-- 项目数 > 6 才显示搜索框：少量项目时一眼能看完，搜索反而占空间 -->
@@ -57,7 +57,7 @@
             <input type="checkbox" v-model="activeProject.enabled" />
             启用
           </label>
-          <button class="danger-btn" @click="removeProject(activeProject.id)">删除项目</button>
+          <button class="moo-btn moo-btn--danger" @click="removeProject(activeProject.id)">删除项目</button>
         </div>
 
         <div class="row">
@@ -107,7 +107,7 @@
 
         <div class="section-head">
           <h4>上报服务器</h4>
-          <button class="btn" @click="addServer">+ 新建服务器</button>
+          <button class="moo-btn" @click="addServer">+ 新建服务器</button>
         </div>
 
         <div v-if="!activeProject.servers.length" class="server-empty-warn">
@@ -127,7 +127,7 @@
               />
               默认
             </label>
-            <button class="danger-btn small" @click="removeServer(s.id)">删除</button>
+            <button class="moo-btn moo-btn--sm moo-btn--danger" @click="removeServer(s.id)">删除</button>
           </div>
           <div class="row">
             <label>请求 URL</label>
@@ -154,12 +154,12 @@
                 placeholder="value"
               />
               <button
-                class="icon-btn"
+                class="moo-btn moo-btn--sm"
                 :aria-label="`移除 Header ${entry[0]}`"
                 @click="removeHeader(s, entry[0])"
               >×</button>
             </div>
-            <button class="btn small" @click="addHeader(s)">+ 添加 Header</button>
+            <button class="moo-btn moo-btn--sm" @click="addHeader(s)">+ 添加 Header</button>
           </div>
           <div class="row">
             <label>图片字段</label>
@@ -172,7 +172,7 @@
           </div>
           <div class="row template-row-head">
             <label>Payload 模板</label>
-            <button class="btn small" type="button" @click="openTemplateEditor(s)">
+            <button class="moo-btn moo-btn--sm" type="button" @click="openTemplateEditor(s)">
               ⤢ 大尺寸编辑
             </button>
           </div>
@@ -610,17 +610,7 @@ function truncate(s: string, n: number): string {
 .save-bar.is-saving .status-msg { color: var(--moo-c-text); }
 .save-bar.is-saved  .status-msg { color: var(--moo-c-success); font-weight: 500; }
 .save-bar.is-error  .status-msg { color: var(--moo-c-danger);  font-weight: 500; }
-.save-bar .retry-btn {
-  background: transparent;
-  border: 1px solid var(--moo-c-danger);
-  color: var(--moo-c-danger);
-  border-radius: var(--moo-r-sm);
-  padding: 1px 8px;
-  font-size: var(--moo-fs-xs);
-  cursor: pointer;
-  font-family: inherit;
-}
-.save-bar .retry-btn:hover { background: var(--moo-c-danger-soft); }
+/* retry 按钮按 canonical .moo-btn--sm.moo-btn--danger 出，无需 override */
 
 /* 项目搜索框（项目 > 6 时显示） */
 .project-search {
@@ -900,35 +890,8 @@ function truncate(s: string, n: number): string {
   box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
 }
 
-/* 通用按钮 */
-.btn, .danger-btn, .icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 26px;
-  padding: 0 12px;
-  font-size: var(--moo-fs-sm);
-  font-weight: 500;
-  font-family: inherit;
-  border: 1px solid var(--moo-c-border);
-  background: var(--moo-c-bg);
-  color: var(--moo-c-text);
-  border-radius: var(--moo-r-md);
-  cursor: pointer;
-  transition: background-color var(--moo-motion-fast), border-color var(--moo-motion-fast), color var(--moo-motion-fast);
-}
-.btn:hover, .icon-btn:hover {
-  background: var(--moo-c-bg-soft);
-  border-color: var(--moo-c-text-faint);
-}
-.btn.small, .danger-btn.small, .icon-btn.small,
-.btn.small { height: 22px; padding: 0 9px; font-size: var(--moo-fs-xs); }
-.danger-btn { color: var(--moo-c-danger-fg); }
-.danger-btn:hover {
-  background: var(--moo-c-danger-soft);
-  border-color: var(--moo-c-danger-soft);
-}
-.icon-btn { padding: 0 9px; }
+/* 按钮全部走 canonical .moo-btn / .moo-btn--sm / .moo-btn--danger（tokens.css），
+   不再 scoped 局部覆盖 */
 
 /* 模板提示 */
 .tpl-hint {

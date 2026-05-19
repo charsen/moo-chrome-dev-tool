@@ -3,9 +3,9 @@
     <header class="toolbar">
       <input v-model="filterDraft" placeholder="按标题/URL 过滤" class="filter" />
       <span class="count">{{ filtered.length }} / {{ list.length }}</span>
-      <button class="btn" @click="reload" :disabled="loading">刷新</button>
-      <button class="btn" @click="syncRemoteStatus" :disabled="syncing">{{ syncing ? '同步中…' : '同步远端状态' }}</button>
-      <button class="btn danger" @click="clearAll" :disabled="!list.length">清空</button>
+      <button class="moo-btn" @click="reload" :disabled="loading">刷新</button>
+      <button class="moo-btn" @click="syncRemoteStatus" :disabled="syncing">{{ syncing ? '同步中…' : '同步远端状态' }}</button>
+      <button class="moo-btn moo-btn--danger" @click="clearAll" :disabled="!list.length">清空</button>
     </header>
 
     <div v-if="toast" :class="['moo-toast', `moo-toast--${toastKind}`]">{{ toast }}</div>
@@ -41,10 +41,10 @@
             <select v-model="resubmitTo[e.id]" class="select" @click.stop>
               <option v-for="s in servers" :key="s.id" :value="s.id">{{ s.label }}</option>
             </select>
-            <button class="btn small" @click="resubmit(e)" :disabled="busyId === e.id">
+            <button class="moo-btn moo-btn--sm" @click="resubmit(e)" :disabled="busyId === e.id">
               {{ busyId === e.id ? '提交中…' : '重新提交' }}
             </button>
-            <button class="btn danger small" @click="remove(e.id)">删除</button>
+            <button class="moo-btn moo-btn--sm moo-btn--danger" @click="remove(e.id)">删除</button>
           </div>
         </div>
         <div class="row-detail" v-if="openId === e.id">
@@ -345,31 +345,8 @@ async function resubmit(e: BugHistoryEntry) {
   color: var(--moo-c-text-dim);
   font-family: var(--moo-ff-mono);
 }
-.toolbar .btn {
-  display: inline-flex;
-  align-items: center;
-  height: 26px;
-  padding: 0 12px;
-  font-size: var(--moo-fs-xs);
-  font-weight: 500;
-  font-family: inherit;
-  border: 1px solid var(--moo-c-border);
-  background: var(--moo-c-bg);
-  color: var(--moo-c-text);
-  border-radius: var(--moo-r-md);
-  cursor: pointer;
-  transition: background-color var(--moo-motion-fast), border-color var(--moo-motion-fast);
-}
-.toolbar .btn:hover:not(:disabled) {
-  background: var(--moo-c-bg-soft);
-  border-color: var(--moo-c-text-faint);
-}
-.toolbar .btn.danger { color: var(--moo-c-danger-fg); }
-.toolbar .btn.danger:hover:not(:disabled) {
-  background: var(--moo-c-danger-soft);
-  border-color: var(--moo-c-danger-soft);
-}
-.toolbar .btn:disabled { opacity: .5; cursor: not-allowed; }
+/* 按钮全部走 canonical .moo-btn / .moo-btn--sm / .moo-btn--danger（tokens.css），
+   不再 scoped 局部覆盖 */
 
 /* 列表 */
 .list { flex: 1; overflow: auto; padding: 4px; }
@@ -506,23 +483,7 @@ async function resubmit(e: BugHistoryEntry) {
   max-width: 160px;
   font-family: inherit;
 }
-.btn.small {
-  display: inline-flex;
-  align-items: center;
-  height: 26px;
-  padding: 0 10px;
-  font-size: var(--moo-fs-xs);
-  font-weight: 500;
-  font-family: inherit;
-  border: 1px solid var(--moo-c-border);
-  background: var(--moo-c-bg);
-  color: var(--moo-c-text);
-  border-radius: var(--moo-r-md);
-  cursor: pointer;
-  transition: background-color var(--moo-motion-fast);
-}
-.btn.small:hover:not(:disabled) { background: var(--moo-c-bg-soft); }
-.btn.small:disabled { opacity: .5; cursor: not-allowed; }
+/* row .actions 按钮按 canonical .moo-btn--sm 出，无 scoped override */
 
 /* 详情展开 */
 .row-detail {
