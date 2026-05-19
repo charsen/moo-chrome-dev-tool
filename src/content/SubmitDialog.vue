@@ -5,7 +5,7 @@
     <div class="moo-dialog" role="dialog" aria-modal="true" aria-labelledby="moo-submit-title">
       <header class="moo-dialog-head">
         <h3 id="moo-submit-title">提交 Bug — {{ project.name }}</h3>
-        <button class="moo-close-btn" aria-label="关闭" @click="emit('cancel')">×</button>
+        <MooCloseBtn @click="emit('cancel')" />
       </header>
 
       <!-- 提交成功内嵌反馈：取代 toast 一闪而过的反馈方式 -->
@@ -161,7 +161,7 @@
                 <div v-for="(el, i) in pickedElements" :key="i" class="req-item el-item">
                   <span class="method" :title="'tag: ' + el.tag">{{ el.tag }}</span>
                   <span class="url" :title="el.selector">{{ el.selector }}</span>
-                  <button class="moo-close-btn" aria-label="移除此元素" @click="pickedElements.splice(i, 1)">×</button>
+                  <MooCloseBtn aria-label="移除此元素" @click="pickedElements.splice(i, 1)" />
                 </div>
               </div>
             </div>
@@ -218,6 +218,7 @@ import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq,
 import { formatSubmitResult } from '@/utils/submitMessage'
 import { safeSendMessage } from '@/utils/messaging'
 import ElementPicker, { type PickedElement } from './ElementPicker.vue'
+import MooCloseBtn from '@/components/MooCloseBtn.vue'
 import type { RecordingResult } from './useRecorder'
 
 const props = defineProps<{

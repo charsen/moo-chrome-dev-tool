@@ -3,7 +3,7 @@
     <div class="payload-modal" role="dialog" aria-modal="true" aria-labelledby="payload-edit-title">
       <header class="payload-hd">
         <h3 id="payload-edit-title">编辑 Payload 模板</h3>
-        <button class="moo-close-btn" aria-label="关闭" @click="onCancel">×</button>
+        <MooCloseBtn @click="onCancel" />
       </header>
       <div class="payload-bd">
         <div class="payload-editor">
@@ -45,6 +45,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import MooCloseBtn from '@/components/MooCloseBtn.vue'
 
 const props = defineProps<{
   modelValue: string
