@@ -8,9 +8,10 @@ import type {
 } from '@/types/messages'
 import { MSG } from '@/types/messages'
 import { loadConfig, matchProjects } from '@/storage/config'
-import { addHistoryEntry, listHistory, updateHistoryEntry } from '@/storage/history'
+import { addHistoryEntry, listHistory, onHistoryChanged, updateHistoryEntry } from '@/storage/history'
 import { renderTemplate } from '@/utils/template'
 import { parseRemoteId } from '@/utils/remoteHeaders'
+import { updateActionBadge } from '@/utils/badge'
 import type { BugServer, MooConfig, Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
 
@@ -24,12 +25,26 @@ let currentRecording: { tabId: number; startedAt: number } | null = null
 chrome.runtime.onInstalled.addListener(({ reason }) => {
   console.log('[Moo] installed:', reason)
   chrome.alarms.create(RETRY_ALARM, { periodInMinutes: 5 })
+  void refreshBadge()
 })
 
 chrome.runtime.onStartup?.addListener(() => {
   chrome.alarms.create(RETRY_ALARM, { periodInMinutes: 5 })
   void flushRetryQueue()
+  void refreshBadge()
 })
+
+async function refreshBadge(): Promise<void> {
+  try {
+    await updateActionBadge(await listHistory())
+  } catch {
+    // history 读失败 / chrome.action 不可用——badge 不是关键路径，静默
+  }
+}
+
+// History tab 里的删除 / 清空也要让 badge 同步缩水。submitBug 自己已经显式调
+// refreshBadge，所以这里事件回调被自身写入触发是无害的——只是多读一次 storage
+onHistoryChanged(() => { void refreshBadge() })
 
 chrome.alarms?.onAlarm.addListener((alarm) => {
   if (alarm.name === RETRY_ALARM) void flushRetryQueue()
@@ -49,6 +64,9 @@ chrome.alarms?.onAlarm.addListener((alarm) => {
   } catch (e) {
     console.warn('[Moo] SW boot flush 失败', e)
   }
+  // SW 每次 spin-up 都同步一次 badge：onStartup 只触发于浏览器启动，
+  // SW 30s 闲置回收后再次唤醒时 onStartup 不会再触发，badge 状态会过期
+  void refreshBadge()
 })()
 
 // 录屏入口必须由用户手势触发：chrome.commands 命中算手势，并直接把当前 tab 传进来。
@@ -377,6 +395,10 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
     console.warn('[Moo] failed to save history', e)
   }
 
+  // 提交成功/失败都刷一次 badge：成功条让 24h 内的失败计数不动，但读 history
+  // 也顺手处理掉「老 entry 超出 24h 窗口要从 badge 里减掉」的衰减
+  void refreshBadge()
+
   return result
 }
 
@@ -416,6 +438,7 @@ async function writeFailureHistory(
   } catch (e) {
     console.warn('[Moo] writeFailureHistory failed', (e as Error).message)
   }
+  void refreshBadge()
 }
 
 // ============================================================
