@@ -209,6 +209,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useConfig } from '@/composables/useConfig'
+import { useAutoSave } from '@/composables/useAutoSave'
 import {
   createDefaultProject,
   createDefaultServer,
@@ -252,12 +253,6 @@ function onTemplateSave(value: string) {
 // === 自动保存：draft 任何深层变化触发 800ms 防抖，再提交到 config 并落盘 ===
 // 沿用了原有 draft 层是为了在用户高频输入（如 URL 模板）期间避免每次 keystroke
 // 都触发 onConfigChanged → 内容脚本重新匹配的"在键入中已被部分应用"问题。
-type SaveState = 'idle' | 'saving' | 'saved' | 'error'
-const SAVE_DEBOUNCE_MS = 800
-const saveState = ref<SaveState>('idle')
-let saveDebounceTimer: number | undefined
-let savedHideTimer: number | undefined
-
 const toast = ref('')
 const toastKind = ref<'success' | 'error' | 'info'>('info')
 let toastTimer: number | undefined
@@ -267,6 +262,19 @@ function showToast(msg: string, kind: 'success' | 'error' | 'info' = 'info') {
   if (toastTimer) clearTimeout(toastTimer)
   toastTimer = window.setTimeout(() => (toast.value = ''), kind === 'error' ? 5000 : 2600)
 }
+
+// 防抖 + saveState 状态机统一走 useAutoSave；本 tab 关心的只剩 draft → config 同步逻辑
+const { saveState, scheduleSave, flush: flushSave } = useAutoSave({
+  debounceMs: 800,
+  save: async () => {
+    config.value = clone(draft.value)
+    await save()
+    isDirty.value = false
+  },
+  onError: (e) => {
+    showToast(`改动没保存成功：${e.message}。点击顶部的"重试"按钮再试一次`, 'error')
+  }
+})
 
 // 改成 ref 而非 computed —— 原本 `JSON.stringify(draft) !== JSON.stringify(config)`
 // 每次 draft 改一字符就跑 2 份整份配置的 stringify（50-200KB）+ 比较。payloadTemplate
@@ -301,7 +309,7 @@ const activeProject = computed<Project | undefined>(() =>
   draft.value.projects.find((p) => p.id === activeId.value)
 )
 
-// 任何 draft 变更 → 防抖 800ms → 落盘
+// 任何 draft 变更 → useAutoSave 防抖 800ms → 落盘
 watch(
   draft,
   () => {
@@ -313,47 +321,13 @@ watch(
   { deep: true }
 )
 
-function scheduleSave() {
-  saveState.value = 'saving'
-  if (saveDebounceTimer) clearTimeout(saveDebounceTimer)
-  saveDebounceTimer = window.setTimeout(doSave, SAVE_DEBOUNCE_MS)
-}
-
-async function doSave() {
-  // 标记防抖 timer 已 fire；若 save 期间用户继续输入会再次 scheduleSave 把它设回 number
-  saveDebounceTimer = undefined
-  try {
-    config.value = clone(draft.value)
-    await save()
-    isDirty.value = false
-    // 仅在没有后续保存还在路上时才切到 saved，避免来回闪
-    if (!saveDebounceTimer) {
-      saveState.value = 'saved'
-      if (savedHideTimer) clearTimeout(savedHideTimer)
-      savedHideTimer = window.setTimeout(() => {
-        if (saveState.value === 'saved') saveState.value = 'idle'
-      }, 1500)
-    }
-  } catch (e) {
-    saveState.value = 'error'
-    showToast(`改动没保存成功：${(e as Error).message}。点击顶部的"重试"按钮再试一次`, 'error')
-  }
-}
-
 function retrySave() {
-  if (saveDebounceTimer) {
-    clearTimeout(saveDebounceTimer)
-    saveDebounceTimer = undefined
-  }
-  void doSave()
+  void flushSave()
 }
 
-// 切 tab 时清掉所有 pending timer，否则切走后 doSave 还会执行写陈旧 draft，
-// savedHideTimer / toastTimer 同样要清，避免 setState 到已销毁的 ref
+// toastTimer 是本 tab 自己的，不归 useAutoSave 管，单独清
 onBeforeUnmount(() => {
-  if (saveDebounceTimer) { clearTimeout(saveDebounceTimer); saveDebounceTimer = undefined }
-  if (savedHideTimer)    { clearTimeout(savedHideTimer);    savedHideTimer = undefined }
-  if (toastTimer)        { clearTimeout(toastTimer);        toastTimer = undefined }
+  if (toastTimer) { clearTimeout(toastTimer); toastTimer = undefined }
 })
 
 function addProject() {

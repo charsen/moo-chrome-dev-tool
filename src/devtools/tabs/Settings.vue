@@ -157,18 +157,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, ref, onBeforeUnmount, onMounted, watch, type PropType } from 'vue'
-import type { MooConfig, Project } from '@/types/config'
-import { loadConfig, saveConfig } from '@/storage/config'
+import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch, type PropType } from 'vue'
+import type { Project } from '@/types/config'
 import { listHistory, clearHistory } from '@/storage/history'
 import { MSG } from '@/types/messages'
 import { safeSendMessage } from '@/utils/messaging'
+import { useConfig } from '@/composables/useConfig'
+import { useAutoSave } from '@/composables/useAutoSave'
 import { confirmDialog } from '../components/confirm'
 
 const HISTORY_MAX = 30
 
-const config = ref<MooConfig>({ projects: [], globalEnabled: true })
-const loaded = ref(false)
+// 用 useConfig composable：跟 Environment 一致 + 顺手补多 tab 同步（之前 Settings
+// 直接 loadConfig 一次性读，Environment 那边改了配置 Settings 不会跟着刷）
+const { config, loaded } = useConfig()
 const activeId = ref('')
 const historyCount = ref(0)
 const queueCount = ref(0)
@@ -187,10 +189,17 @@ async function refreshStats() {
 }
 
 onMounted(async () => {
-  config.value = await loadConfig()
+  // useConfig 模块级 init promise 已经在跑；这里只等它完事 + 拿首项 + 拉统计
+  // （useConfig.ready 内部已 await loadConfig）
   if (config.value.projects[0]) activeId.value = config.value.projects[0].id
   await refreshStats()
-  loaded.value = true
+})
+
+// loaded 翻 true 时再选第一项：onMounted 那会儿可能还没加载完
+watch(loaded, (v) => {
+  if (v && !activeId.value && config.value.projects[0]) {
+    activeId.value = config.value.projects[0].id
+  }
 })
 
 // 用户在 Environment 删了当前激活的项目时，这里 activeId 会变成 stale id，
@@ -209,15 +218,6 @@ watch(
   { deep: false }
 )
 
-// 仅在 mounted 后才允许自动保存（避免 onMounted 写一份 default config 进去）
-const ready = ref(false)
-watch(loaded, (v) => { if (v) ready.value = true })
-
-type SaveState = 'idle' | 'saving' | 'saved' | 'error'
-const saveState = ref<SaveState>('idle')
-let inflight = 0
-let savedTimer: number | undefined
-
 const toast = ref('')
 const toastKind = ref<'success' | 'error' | 'info'>('info')
 let toastTimer: number | undefined
@@ -228,27 +228,19 @@ function showToast(msg: string, kind: 'success' | 'error' | 'info' = 'info') {
   toastTimer = window.setTimeout(() => (toast.value = ''), kind === 'error' ? 5000 : 2600)
 }
 
-async function save() {
-  if (!ready.value) return
-  inflight++
-  saveState.value = 'saving'
-  try {
-    await saveConfig(config.value)
-    inflight--
-    // 仅在没有后续保存还在路上时才切到 saved，避免来回闪 saving↔saved
-    if (inflight === 0) {
-      saveState.value = 'saved'
-      if (savedTimer) clearTimeout(savedTimer)
-      savedTimer = window.setTimeout(() => {
-        if (saveState.value === 'saved') saveState.value = 'idle'
-      }, 1500)
-    }
-  } catch (e) {
-    inflight--
-    saveState.value = 'error'
-    console.error('[Moo settings] 保存失败', e)
-  }
-}
+// 跟 Environment 一致走 useAutoSave；这里编辑路径都是显式 commit（toggle / blur 后），
+// 不像 textarea 需要长时间防抖，给个 0 让 click toggle 立刻落盘但仍走统一状态机。
+// 多次 toggle 命中 inflight 计数防止 saving↔saved 来回闪。
+const { save: writeConfig } = useConfig()
+const { saveState, scheduleSave: save } = useAutoSave({
+  debounceMs: 0,
+  save: writeConfig,
+  onError: (e) => { showToast(`保存失败：${e.message}`, 'error') }
+})
+
+onBeforeUnmount(() => {
+  if (toastTimer) { clearTimeout(toastTimer); toastTimer = undefined }
+})
 
 // 缓冲条数行内校验：input 时显示错误，blur/change 时 clamp 并保存。
 // 这样用户在键入过程中能看到「5–500」范围提示，不用等失焦才发现输错了。
@@ -347,12 +339,6 @@ async function clearQueue() {
     busy.value = ''
   }
 }
-
-// 切 tab 时清掉 pending timer，避免在已销毁组件上 setState
-onBeforeUnmount(() => {
-  if (savedTimer) { clearTimeout(savedTimer); savedTimer = undefined }
-  if (toastTimer) { clearTimeout(toastTimer); toastTimer = undefined }
-})
 
 // ===================================================================
 // 子组件（保持本文件简短，inline 定义）
