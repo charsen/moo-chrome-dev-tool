@@ -1,8 +1,11 @@
 /* ============================================================
    Moo Dev Tool · 设计令牌
    ------------------------------------------------------------
-   被 popup / devtools 直接 import；content scripts 因 shadow DOM
-   独立，颜色等值在 src/content/styles.ts 中保持同步。
+   被 popup / devtools 直接 import；content scripts 通过 vite ?raw
+   把本文件当字符串导入（见 src/content/styles.ts），抽顶层 :root {...}
+   块嵌进 shadow DOM 的 .moo-root，单一来源。
+   ⚠️ 改 :root 块格式时小心——styles.ts 用 ^:root...^} 正则抓块，
+   把 } 缩进进去会让正则失配，build 时 throw。
    ============================================================ */
 
 /* 根级 reset：消掉 body 默认 8px margin + 让 html/body 跟随主题底色

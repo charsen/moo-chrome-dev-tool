@@ -1,40 +1,68 @@
 // 所有内容脚本 UI 的样式，注入到 Shadow Root 中，与宿主页面隔离。
-// 设计令牌与 src/styles/tokens.css 保持一致（shadow DOM 拿不到外面的 :root 变量，所以这里硬编码同值）。
+// 设计令牌走 src/styles/tokens.css 单一来源——vite ?raw 把它当字符串导入，
+// 抽顶层 :root {...} 块嵌进 .moo-root，shadow DOM 就拿到全套 --moo-c-* 变量。
+// 旧代码里 144+ 处 var(--c-*) 短名通过 .moo-root 底部一组 alias 转到 --moo-c-*，
+// 无需大改。
+
+import tokensCSS from '@/styles/tokens.css?raw'
+
+// 抓 tokens.css 顶层 :root { ... } 块内容。dark mode 块 @media 内的嵌套 :root 不抓——
+// content 是叠在任意宿主页上的覆盖层，跟着系统切深色会跟宿主主题打架，故意保持浅色。
+// 正则约束：^:root 行首 + ^} 行首，避开缩进过的嵌套块；如果 tokens.css 改了 :root 块
+// 的格式（比如把 } 缩进进去），这里 throw，build 时立即可见。
+const SHARED_TOKENS = (() => {
+  const m = tokensCSS.match(/^:root\s*\{([\s\S]+?)^\}/m)
+  if (!m) throw new Error('[shadow CSS] tokens.css 顶层 :root 块抓不到——格式变了？')
+  return m[1]!.trim()
+})()
+
 export const SHADOW_CSS = `
 * { box-sizing: border-box; }
 
 .moo-root {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-               "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  font-size: 13px;
-  color: #0f172a;
-  --c-brand:        #4f46e5;
-  --c-brand-hover:  #4338ca;
-  --c-brand-soft:   #eef2ff;
-  --c-info:         #2563eb;
-  --c-text:         #0f172a;
-  --c-text-muted:   #475569;
-  --c-text-dim:     #94a3b8;
-  --c-border:       #e2e8f0;
-  --c-divider:      #f1f5f9;
-  --c-bg:           #ffffff;
-  --c-bg-soft:      #f8fafc;
-  --c-bg-elev:      #f1f5f9;
-  --c-success:      #16a34a;
-  --c-success-soft: #dcfce7;
-  --c-success-fg:   #15803d;
-  --c-danger:       #dc2626;
-  --c-danger-soft:  #fee2e2;
-  --c-danger-fg:    #b91c1c;
-  --c-warn:         #d97706;
-  --c-warn-soft:    #fef3c7;
-  --c-warn-fg:      #b45309;
-  --c-mark:         #ef4444;
-  --r-sm: 4px;
-  --r-md: 6px;
-  --r-lg: 8px;
-  --sh-md: 0 4px 12px rgba(15, 23, 42, .08);
-  --sh-lg: 0 12px 32px rgba(15, 23, 42, .18);
+  font-family: var(--moo-ff-sans);
+  font-size: var(--moo-fs-base);
+  color: var(--moo-c-text);
+
+  /* === tokens.css :root 块复用（颜色 / 字号 / 间距 / 圆角 / 阴影 / 动效） === */
+  ${SHARED_TOKENS}
+
+  /* === Shadow 独占：tokens.css 没有的 token === */
+  --c-mark: #ef4444;   /* annotator 标注红，主世界不用 */
+
+  /* === Drift override：shadow 跟 tokens.css 不一致的两处，故意保留 ===
+     都是因为 shadow 叠在任意宿主页上，对比度需要比 popup/devtools 这种自有
+     chrome 的环境再狠一档。改 tokens.css 时这两个值不会被带跑。 */
+  --moo-c-warn-fg: #b45309;                            /* tokens.css 用 #92400e */
+  --moo-sh-lg:     0 12px 32px rgba(15, 23, 42, .18);  /* tokens.css 用 .12 */
+
+  /* === 旧短名 → 新长名别名（避免一次性改 144 处 var(--c-*)） === */
+  --c-brand:        var(--moo-c-brand);
+  --c-brand-hover:  var(--moo-c-brand-hover);
+  --c-brand-soft:   var(--moo-c-brand-soft);
+  --c-info:         var(--moo-c-info);
+  --c-text:         var(--moo-c-text);
+  --c-text-muted:   var(--moo-c-text-muted);
+  --c-text-dim:     var(--moo-c-text-dim);
+  --c-text-faint:   var(--moo-c-text-faint);
+  --c-border:       var(--moo-c-border);
+  --c-divider:      var(--moo-c-divider);
+  --c-bg:           var(--moo-c-bg);
+  --c-bg-soft:      var(--moo-c-bg-soft);
+  --c-bg-elev:      var(--moo-c-bg-elev);
+  --c-success:      var(--moo-c-success);
+  --c-success-soft: var(--moo-c-success-soft);
+  --c-success-fg:   var(--moo-c-success-fg);
+  --c-danger:       var(--moo-c-danger);
+  --c-danger-soft:  var(--moo-c-danger-soft);
+  --c-danger-fg:    var(--moo-c-danger-fg);
+  --c-warn-soft:    var(--moo-c-warn-soft);
+  --c-warn-fg:      var(--moo-c-warn-fg);
+  --r-sm:   var(--moo-r-sm);
+  --r-md:   var(--moo-r-md);
+  --r-lg:   var(--moo-r-lg);
+  --r-pill: var(--moo-r-pill);
+  --sh-lg:  var(--moo-sh-lg);
 }
 
 /* ============================================
