@@ -582,6 +582,23 @@ export const SHADOW_CSS = `
   border-color: var(--c-danger-fg);
 }
 
+/* 两步确认按钮的"待确认"态：用于 SubmitDialog 附带元素「清空」按钮。
+   第一次点击后变红色，3 秒内再点才真清；避免误点丢光辛苦挑的所有元素。 */
+.moo-btn.is-confirming {
+  background: var(--c-danger);
+  border-color: var(--c-danger);
+  color: #fff;
+  animation: moo-confirm-pulse 1s ease-in-out infinite;
+}
+.moo-btn.is-confirming:hover {
+  background: var(--c-danger-fg);
+  border-color: var(--c-danger-fg);
+}
+@keyframes moo-confirm-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, .4); }
+  50%      { box-shadow: 0 0 0 4px rgba(220, 38, 38, .15); }
+}
+
 /* ============================================
    提交对话框
 ============================================ */

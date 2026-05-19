@@ -154,7 +154,11 @@
             <div class="req-panel">
               <div class="req-controls">
                 <button class="moo-btn small" @click="picking = true">📍 选元素</button>
-                <button v-if="pickedElements.length" class="moo-btn small" @click="pickedElements = []">清空</button>
+                <button
+                  v-if="pickedElements.length"
+                  :class="['moo-btn', 'small', { 'is-confirming': clearElementsConfirming }]"
+                  @click="onClearElementsClick"
+                >{{ clearElementsConfirming ? '再点一下确认清空' : '清空' }}</button>
                 <span class="req-hint" v-if="!pickedElements.length">点击"选元素"，在页面上指定 bug 涉及的具体 DOM</span>
               </div>
               <div v-if="pickedElements.length" class="req-list">
@@ -315,6 +319,34 @@ const selectedErrIds = ref<Set<string>>(new Set())
 // element picker
 const picking = ref(false)
 const pickedElements = ref<PickedElement[]>([])
+
+// 「清空」附带元素时的两步确认：第一次点 → 按钮文字变「再点一下确认清空」，3 秒内
+// 再点才真清；3 秒后自动复位。挑元素是有成本的工作（要在页面里找回每一个 DOM 节点
+// 重选），误点「清空」全部丢光得不偿失。单个 × 删除不在此列，重选一个成本低不必拦。
+const clearElementsConfirming = ref(false)
+let clearElementsConfirmTimer: number | undefined
+const CLEAR_CONFIRM_MS = 3000
+
+function onClearElementsClick() {
+  if (pickedElements.value.length < 2) {
+    // 单个或空：confirm 没必要，徒增 friction
+    pickedElements.value = []
+    clearElementsConfirming.value = false
+    return
+  }
+  if (!clearElementsConfirming.value) {
+    clearElementsConfirming.value = true
+    if (clearElementsConfirmTimer) clearTimeout(clearElementsConfirmTimer)
+    clearElementsConfirmTimer = window.setTimeout(() => {
+      clearElementsConfirming.value = false
+    }, CLEAR_CONFIRM_MS)
+    return
+  }
+  // 第二次点击 → 真的清
+  if (clearElementsConfirmTimer) { clearTimeout(clearElementsConfirmTimer); clearElementsConfirmTimer = undefined }
+  clearElementsConfirming.value = false
+  pickedElements.value = []
+}
 
 function onElementPicked(el: PickedElement) {
   pickedElements.value.push(el)
@@ -604,5 +636,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown, true)
   if (successTimer) clearTimeout(successTimer)
+  if (clearElementsConfirmTimer) clearTimeout(clearElementsConfirmTimer)
 })
 </script>
