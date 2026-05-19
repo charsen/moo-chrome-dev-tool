@@ -576,10 +576,7 @@ const TagInput = defineComponent({
   transition: background-color var(--moo-motion-fast);
 }
 .row:first-child, .moo-card__bd > .sub + .row { border-top: none; }
-.row:hover { background: rgba(0, 0, 0, .015); }
-@media (prefers-color-scheme: dark) {
-  .row:hover { background: rgba(255, 255, 255, .025); }
-}
+.row:hover { background: var(--moo-c-row-hover); }
 .row-text { flex: 1; min-width: 0; }
 .row-label {
   font-size: var(--moo-fs-sm);

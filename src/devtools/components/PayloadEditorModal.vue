@@ -113,7 +113,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
 .payload-mask {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, .55);
+  background: var(--moo-c-scrim);
   z-index: 9100;
   display: flex;
   align-items: center;

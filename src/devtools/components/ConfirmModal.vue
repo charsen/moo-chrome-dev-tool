@@ -75,7 +75,7 @@ onBeforeUnmount(() => {
 .modal-mask {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, .5);
+  background: var(--moo-c-scrim);
   backdrop-filter: blur(2px);
   z-index: 9000;
   display: flex;

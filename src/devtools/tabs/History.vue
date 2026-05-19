@@ -384,9 +384,9 @@ async function resubmit(e: BugHistoryEntry) {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  background: #0f172a;
-  border-color: #0f172a;
-  color: #fff;
+  background: var(--moo-c-bg-inverse);
+  border-color: var(--moo-c-bg-inverse);
+  color: var(--moo-c-bg);
 }
 .thumb-video .thumb-icon { font-size: 16px; line-height: 1; }
 .thumb-video .thumb-dur {
