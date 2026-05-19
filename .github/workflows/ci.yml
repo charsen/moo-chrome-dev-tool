@@ -37,3 +37,36 @@ jobs:
         run: pnpm build
 
       # 不上传 artifact —— dist/ 由本地 pnpm release 流程产出；CI 这里仅做"能 build"验证。
+
+  e2e:
+    # 并行跑（不 needs: test）—— 跑 13 个 Playwright case，真起 chromium + 真加载 dist 当扩展
+    # 加载扩展必须 launchPersistentContext + --headless=new；headless 老模式装不了扩展
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright chromium (+ Linux 系统依赖)
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build + E2E (13 case)
+        run: pnpm test:e2e
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
