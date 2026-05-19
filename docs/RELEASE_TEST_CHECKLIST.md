@@ -29,6 +29,11 @@
 | 8 | 失败行左色条 | 故意触发一个 404（比如改前端请求路径） + 一个 500（后端 throw） → DevTools Moo 面板 Overview Tab 看那两行；再开提交弹窗看请求列表 | 404 那行左 3px 橙色条；500 那行左 3px 红色条；status chip 颜色不变 | ☐ |
 | 9 | 慢请求 duration 染色 | 后端故意 `sleep(2)` 跑一个接口 → Overview 看那行；同样去提交弹窗看 | duration `2000ms` 显示橙色加粗；如果 `sleep(4)` 则红色加粗 | ☐ |
 | 10 | `Alt+Shift+M` 开 popup | 任意网页焦点下按 `Alt+Shift+M` | toolbar popup 弹出来，显示项目匹配状态 + 录屏开关；第二次按再开会失败（已打开），SW console 有一行 warn | ☐ |
+| 11 | JSON viewer · 格式化 + 染色 | 触发一个返回 JSON 的请求 → Overview 展开行 → 看 Response Body 段 | toolbar 显示「JSON」chip + 「格式化/原文」按钮；默认 pretty + 染色（key 蓝 / string 绿 / number 橙 / bool 加粗 / null 灰斜体）。点切到原文 = 单行紧凑。复制按钮可复制当前显示态文本 | ☐ |
+| 12 | JSON viewer · 大 body 折叠 | 触发一个返回 >3KB JSON 的请求（比如 list API 一次拉 100 条） | body 区只显示前一段 + 底部出现「展开剩余 X K 字符」按钮；点了展开全文 | ☐ |
+| 13 | 错误 stack 染色 | 在页面 console 跑 `setTimeout(() => { throw new Error('boom') })` → Overview 错误行展开 → 看 Stack 段 | 函数名加粗、文件路径中灰、`:line:col` 弱灰；不是平的一坨等宽字 | ☐ |
+| 14 | popup 最近提交区 | 至少做过一次提交后开 popup（点扩展图标 / 按 `Alt+Shift+M`） | 底部出现「最近提交」section，第 1 条是 prominent 卡，往下最多 2 条 compact 行；状态 chip 颜色与含义匹配；点任意一条 → 新 tab 打开当时所在页面 url | ☐ |
+| 15 | toolbar 图标 badge | 故意制造一次失败提交（endpoint 填错 / 401 token） | 扩展图标右下角出现红色 badge 数字 `1`；再失败一次变 `2`；去 History tab 删掉这两条，badge 应该消失（依赖 `onHistoryChanged`） | ☐ |
 
 ## 失败处理
 
