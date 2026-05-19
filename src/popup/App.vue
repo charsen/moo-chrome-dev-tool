@@ -76,6 +76,43 @@
       </ol>
       <button v-if="firstRun" class="onboard-cta" @click="dismissOnboard">我看完了 →</button>
     </section>
+
+    <!-- 最近提交（有任何 history 都显示，不限 matched / nomatch / empty 三态） -->
+    <section v-if="latest" class="recent">
+      <div class="recent-head">
+        <span class="recent-title">最近提交</span>
+        <span class="recent-count">{{ recent.length }} 条</span>
+      </div>
+      <!-- 第 1 条：prominent 卡 -->
+      <div
+        class="rh-card"
+        :title="`访问当时所在的页面：${latest.url}`"
+        @click="openTabUrl(latest.url)"
+      >
+        <div class="rh-card-row1">
+          <span class="rh-status" :class="statusOf(latest).cls" :title="statusOf(latest).title">{{ statusOf(latest).label }}</span>
+          <span class="rh-title" :title="latest.title">{{ latest.title }}</span>
+        </div>
+        <div class="rh-card-row2">
+          <span class="rh-proj">{{ latest.projectName }}</span>
+          <span class="rh-time">{{ relativeTime(latest.timestamp) }}</span>
+        </div>
+      </div>
+      <!-- 第 2-3 条：compact 行 -->
+      <ul v-if="rest.length" class="rh-list">
+        <li
+          v-for="e in rest"
+          :key="e.id"
+          class="rh-row"
+          :title="`访问当时所在的页面：${e.url}`"
+          @click="openTabUrl(e.url)"
+        >
+          <span class="rh-status" :class="statusOf(e).cls" :title="statusOf(e).title">{{ statusOf(e).label }}</span>
+          <span class="rh-row-title" :title="e.title">{{ e.title }}</span>
+          <span class="rh-row-time">{{ relativeTime(e.timestamp) }}</span>
+        </li>
+      </ul>
+    </section>
     </main>
 
     <footer class="foot">
@@ -103,9 +140,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import type { Project } from '@/types/config'
+import type { BugHistoryEntry } from '@/types/history'
 import { loadConfig, urlMatches } from '@/storage/config'
+import { listHistory } from '@/storage/history'
 
 const version = ref(chrome.runtime.getManifest().version)
 // 显示尺寸 28px，用 32 比 48 更省字节 + 缩放损失更小（lighthouse image-size-responsive）
@@ -126,6 +165,42 @@ const loading = ref(true)
 const recEnabled = ref(false)
 const recBusy = ref(false)
 const recError = ref('')
+const recent = ref<BugHistoryEntry[]>([])
+const latest = computed<BugHistoryEntry | undefined>(() => recent.value[0])
+const rest = computed<BugHistoryEntry[]>(() => recent.value.slice(1, 3))
+
+// 点击最近提交行 → 在新 tab 打开当时提交所在的页面。
+// 不要打开 remoteBase/remoteId（不一定是可访问的 web 页面，可能是裸 webhook 端点）；
+// 打开 entry.url 是「回到当时出 bug 的页面」最朴素也最通用的语义。
+function openTabUrl(url: string) {
+  if (!url) return
+  void chrome.tabs.create({ url })
+  // popup 调用 chrome.tabs.create 后 popup 会自动关掉
+}
+
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts
+  if (diff < 60_000) return '刚刚'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
+  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`
+  return new Date(ts).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+}
+
+interface StatusBadge { label: string; cls: string; title: string }
+function statusOf(e: BugHistoryEntry): StatusBadge {
+  if (!e.result.ok) {
+    if (e.result.queued) return { label: '重试中', cls: 'rh-queued', title: '已加入重试队列，后台周期重试' }
+    return { label: '失败', cls: 'rh-fail', title: e.result.error || `HTTP ${e.result.status ?? '?'}` }
+  }
+  switch (e.remoteStatus) {
+    case 'done':        return { label: '完成', cls: 'rh-done', title: '后端已标记完成' }
+    case 'in_progress': return { label: '处理中', cls: 'rh-prog', title: '后端处理中' }
+    case 'deleted':     return { label: '已删', cls: 'rh-del', title: '后端已删除' }
+    case 'open':        return { label: '待处理', cls: 'rh-open', title: '后端 open' }
+    default:            return { label: '已提交', cls: 'rh-ok', title: '已提交（后端尚未回查或不支持状态）' }
+  }
+}
 
 async function toggleRecording() {
   recBusy.value = true
@@ -167,6 +242,12 @@ onMounted(async () => {
     }
     // 读 tabCapture optional permission 当前状态
     recEnabled.value = await chrome.permissions.contains({ permissions: ['tabCapture'] })
+    // 最近提交：只取前 3 条（1 prominent 卡 + 2 compact 行）；read 失败静默——
+    // 历史区是辅助信息，不该挡住核心状态显示
+    try {
+      const list = await listHistory()
+      recent.value = list.slice(0, 3)
+    } catch { /* ignore */ }
   } finally {
     loading.value = false
   }
@@ -378,6 +459,116 @@ onMounted(async () => {
   line-height: 1.55;
 }
 .hint b { color: var(--moo-c-text); font-weight: 600; }
+
+/* 最近提交（顶层 section） */
+.recent {
+  margin-top: 12px;
+  padding: 10px;
+  background: var(--moo-c-bg-soft);
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-md);
+}
+.recent-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.recent-title {
+  font-size: var(--moo-fs-xs);
+  font-weight: 600;
+  color: var(--moo-c-text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.recent-count {
+  font-family: var(--moo-ff-mono);
+  font-size: 10px;
+  color: var(--moo-c-text-dim);
+}
+
+/* 第 1 条：prominent 卡 */
+.rh-card {
+  background: var(--moo-c-bg);
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-md);
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: border-color var(--moo-motion-fast), background-color var(--moo-motion-fast);
+}
+.rh-card:hover { border-color: var(--moo-c-brand); background: var(--moo-c-brand-soft); }
+.rh-card-row1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.rh-title {
+  flex: 1;
+  font-size: var(--moo-fs-sm);
+  font-weight: 500;
+  color: var(--moo-c-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rh-card-row2 {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--moo-c-text-dim);
+}
+.rh-proj { font-family: var(--moo-ff-mono); }
+.rh-time { font-family: var(--moo-ff-mono); }
+
+/* 第 2~3 条：compact 行 */
+.rh-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.rh-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  border-top: 1px solid var(--moo-c-divider);
+  cursor: pointer;
+  font-size: var(--moo-fs-xs);
+  transition: background-color var(--moo-motion-fast);
+}
+.rh-row:hover { background: var(--moo-c-bg-elev); border-radius: var(--moo-r-sm); }
+.rh-row-title {
+  flex: 1;
+  color: var(--moo-c-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rh-row-time {
+  font-family: var(--moo-ff-mono);
+  font-size: 10px;
+  color: var(--moo-c-text-dim);
+}
+
+/* 状态 chip：和 History tab 那套配色保持一致 */
+.rh-status {
+  flex: 0 0 auto;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--moo-r-sm);
+  letter-spacing: .02em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.rh-status.rh-fail   { color: var(--moo-c-danger-fg);  background: var(--moo-c-danger-soft);  border-color: var(--moo-c-danger-soft); }
+.rh-status.rh-queued { color: var(--moo-c-brand);      background: var(--moo-c-brand-soft);   border-color: var(--moo-c-brand-soft); }
+.rh-status.rh-done   { color: var(--moo-c-success-fg); background: var(--moo-c-success-soft); border-color: var(--moo-c-success-soft); }
+.rh-status.rh-prog   { color: var(--moo-c-warn-fg);    background: var(--moo-c-warn-soft);    border-color: var(--moo-c-warn-soft); }
+.rh-status.rh-del    { color: var(--moo-c-text-muted); background: var(--moo-c-bg-soft);      border-color: var(--moo-c-border); }
+.rh-status.rh-open   { color: var(--moo-c-danger-fg);  background: var(--moo-c-danger-soft);  border-color: var(--moo-c-danger-soft); }
+.rh-status.rh-ok     { color: var(--moo-c-text-muted); background: var(--moo-c-bg-soft);      border-color: var(--moo-c-border); }
 
 .rec-toggle {
   display: flex;
