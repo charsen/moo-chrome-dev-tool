@@ -35,6 +35,16 @@
 | 14 | popup 最近提交区 | 至少做过一次提交后开 popup（点扩展图标 / 按 `Alt+Shift+M`） | 底部出现「最近提交」section，第 1 条是 prominent 卡，往下最多 2 条 compact 行；状态 chip 颜色与含义匹配；点任意一条 → 新 tab 打开当时所在页面 url | ☐ |
 | 15 | toolbar 图标 badge | 故意制造一次失败提交（endpoint 填错 / 401 token） | 扩展图标右下角出现红色 badge 数字 `1`；再失败一次变 `2`；去 History tab 删掉这两条，badge 应该消失（依赖 `onHistoryChanged`） | ☐ |
 
+## v0.1.12 第二批 — refactor / 体验补完
+
+| # | 场景 | 操作 | 期望 | ☐ |
+|---|---|---|---|---|
+| 16 | 按钮样式系统化（视觉一致） | 走一遍 Environment / Overview / History 三个 Tab，看所有按钮 | 同尺寸（普通 28px / 小号 24px）、同字号、同 hover 反馈；Environment 「+ 新建项目」「↓」「↑」按钮跟「+ 新建服务器」一套视觉；Overview toolbar 自动刷新 toggle 开启时品牌色软底；History 「清空」红字 | ☐ |
+| 17 | 深色模式硬编码扫尾 | 系统偏好切到深色 → 打开 DevTools Moo 面板：① 删除项目时看 ConfirmModal 背景半透明 ② Settings 鼠标悬浮某一行 ③ History 提交带录像的条目看视频缩略图 | ① 黑色半透明 backdrop（不是纯黑 / 透明 / 过亮）② 行 hover 极轻提亮（不刺眼）③ 视频缩略图块是 slate-600 灰（不是纯黑融进背景，能看清是个「视频块」） | ☐ |
+| 18 | 提交失败横幅 + 一键重试 | 故意把 endpoint 改成假 URL → 提交（不带录像）→ 看 dialog；按横幅里的「重试」按钮（不改任何字段）；再把 endpoint 改对，按 footer「重试」 | 失败后 footer 上方出现红色横幅含「⚠ 提交失败」+ 失败原因 + 「重试」按钮；footer「提交」按钮文字变「重试」；按重试时正确再发请求；改对后重试成功 → 横幅消失走成功视图。**再带录像跑一次**：横幅多一行明确提示「关窗后只能去 历史 Tab 重提」 | ☐ |
+| 19 | Settings ↔ Environment 多 Tab 同步 | 打开 DevTools Moo 面板 → Settings Tab 看一下当前项目；切到 Environment Tab 改一下项目名（比如加个空格）；等 1 秒；切回 Settings | Settings 那边显示的项目名 = Environment 改后的；以前 Settings 读 loadConfig 一次性，不监听变化，会显示旧名（这一版应已修） | ☐ |
+| 20 | 元素「清空」两步确认 | 提交弹窗里 → 「📍 选元素」挑 ≥2 个 DOM → 点「清空」一次 | 按钮文字变「再点一下确认清空」+ 变红 + 微弱脉动；3 秒不点 → 自动复位；3 秒内再点 → 真清；**单个元素时**直接清不走二步（避免单元素 friction） | ☐ |
+
 ## 失败处理
 
 任何一条挂掉，**先抓现场再回退**：
