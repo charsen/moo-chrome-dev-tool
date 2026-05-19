@@ -1087,11 +1087,6 @@ export const SHADOW_CSS = `
   border-top: 1px dashed var(--c-danger);
 }
 .moo-submit-fail-hint b { color: var(--c-danger-fg); font-weight: 600; }
-.moo-submit-fail-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 8px;
-}
 
 /* 折叠附件组（请求 / 错误 / 元素）——基于原生 <details> 实现，
    a11y 和键盘交互（Enter/Space 展开）由浏览器内置 */

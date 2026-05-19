@@ -178,7 +178,8 @@
           <pre class="moo-preview">{{ preview }}</pre>
         </div>
       </div>
-      <!-- 失败横幅：成功视图期间隐藏；toast 是一次性的，这里持久指示让用户清楚状态 -->
+      <!-- 失败横幅：成功视图期间隐藏；toast 是一次性的，这里持久指示让用户清楚状态。
+           不带操作按钮——footer 的「重试」按钮 ⌘↵ 已经是主操作位，重复一个会显得冗余 -->
       <div v-if="!successInfo && failureInfo" class="moo-submit-fail" role="alert">
         <div class="moo-submit-fail-head">
           <span class="moo-submit-fail-icon" aria-hidden="true">⚠</span>
@@ -193,11 +194,6 @@
         <div class="moo-submit-fail-msg">{{ failureInfo.message }}</div>
         <div v-if="failureInfo.cannotAutoRetry" class="moo-submit-fail-hint">
           这条带录像，body 太大没法进自动重试队列。<b>关闭此窗口后，只能去 DevTools → Moo → 历史 找到这条记录手动「重新提交」</b>。
-        </div>
-        <div class="moo-submit-fail-actions">
-          <button class="moo-btn primary" :disabled="submitting" @click="onSubmit">
-            {{ submitting ? '重试中…' : '重试' }}
-          </button>
         </div>
       </div>
       <footer v-if="!successInfo" class="moo-dialog-foot">
