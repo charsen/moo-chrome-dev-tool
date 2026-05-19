@@ -37,7 +37,10 @@ export default defineConfig({
         // chrome.devtools.panels.create() 动态注册），必须显式声明 input，
         // 否则 build 不会把它写到 dist，DevTools 打开 Moo 面板会报
         // “该文件可能已被移至别处、修改或删除。”
-        devtoolsPanel: resolve(__dirname, 'src/devtools/panel.html')
+        devtoolsPanel: resolve(__dirname, 'src/devtools/panel.html'),
+        // BodyViewer 的 E2E 测试 harness。只在 Playwright 测里访问，prod 不引用。
+        // 体积 <2KB，并入 dist 不影响发布；release.mjs 也不依赖它存在
+        bodyViewerHarness: resolve(__dirname, 'src/devtools/body-viewer-harness.html')
       }
     }
   }
