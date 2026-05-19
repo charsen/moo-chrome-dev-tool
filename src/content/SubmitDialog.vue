@@ -174,13 +174,35 @@
           <pre class="moo-preview">{{ preview }}</pre>
         </div>
       </div>
+      <!-- 失败横幅：成功视图期间隐藏；toast 是一次性的，这里持久指示让用户清楚状态 -->
+      <div v-if="!successInfo && failureInfo" class="moo-submit-fail" role="alert">
+        <div class="moo-submit-fail-head">
+          <span class="moo-submit-fail-icon" aria-hidden="true">⚠</span>
+          <span class="moo-submit-fail-title">提交失败</span>
+          <button
+            class="moo-submit-fail-dismiss"
+            type="button"
+            aria-label="关闭失败提示"
+            @click="failureInfo = null"
+          >×</button>
+        </div>
+        <div class="moo-submit-fail-msg">{{ failureInfo.message }}</div>
+        <div v-if="failureInfo.cannotAutoRetry" class="moo-submit-fail-hint">
+          这条带录像，body 太大没法进自动重试队列。<b>关闭此窗口后，只能去 DevTools → Moo → 历史 找到这条记录手动「重新提交」</b>。
+        </div>
+        <div class="moo-submit-fail-actions">
+          <button class="moo-btn primary" :disabled="submitting" @click="onSubmit">
+            {{ submitting ? '重试中…' : '重试' }}
+          </button>
+        </div>
+      </div>
       <footer v-if="!successInfo" class="moo-dialog-foot">
         <button class="moo-btn" @click="emit('cancel')">取消 <span class="kbd-hint">Esc</span></button>
         <button class="moo-btn ghost" :disabled="!canPreview || previewing" @click="onPreview">
           {{ previewing ? '预览中…' : '预览请求体' }}
         </button>
         <button class="moo-btn primary" :disabled="!canSubmit || submitting" @click="onSubmit">
-          {{ submitting ? '提交中…' : '提交' }} <span class="kbd-hint">⌘↵</span>
+          {{ submitting ? '提交中…' : (failureInfo ? '重试' : '提交') }} <span class="kbd-hint">⌘↵</span>
         </button>
       </footer>
     </div>
@@ -277,6 +299,11 @@ const titleInput = ref<HTMLInputElement | null>(null)
 const successInfo = ref<{ message: string; remoteId?: string } | null>(null)
 const SUCCESS_VIEW_MS = 1500
 let successTimer: number | undefined
+
+/** 提交失败后的内嵌持久横幅。toast 一闪而过，这里给用户「点击重试 / 知道为什么没成」
+ *  的稳定锚点。cannotAutoRetry=true 时是「带录像且 body 超 1MB / multipart」这类
+ *  background 没法入重试队列的场景，要明示用户「关闭窗口后只能去 历史 tab 重提」。 */
+const failureInfo = ref<{ message: string; cannotAutoRetry: boolean } | null>(null)
 
 const windowMs = ref(30000)
 const urlFilter = ref('')
@@ -487,6 +514,8 @@ async function onPreview() {
 async function onSubmit() {
   if (!canSubmit.value || submitting.value || successInfo.value) return
   submitting.value = true
+  // 进入新一次提交：先清掉上次的失败横幅，避免重试中还看到旧错误文案
+  failureInfo.value = null
   try {
     const ctx = buildContext()
     const req: SubmitBugReq = {
@@ -517,11 +546,18 @@ async function onSubmit() {
         emit('submitted', true, message)
       }, SUCCESS_VIEW_MS)
     } else {
-      // 失败：dialog 不关，外层弹 toast 显示错误原因，用户可改后再提交
+      // 失败：dialog 不关，弹 toast 同时显示持久横幅。带录像 + 没入重试队列 → 标记
+      // cannotAutoRetry，提示用户关窗后只能去 历史 Tab。判断依据是 background 返回的
+      // queued 字段（multipart / body>1MB 时为 false/undefined）
+      const cannotAutoRetry = !!req.video && !res.queued
+      failureInfo.value = { message, cannotAutoRetry }
       emit('submitted', false, message)
     }
   } catch (err) {
-    emit('submitted', false, `提交异常: ${(err as Error).message}`)
+    const message = `提交异常: ${(err as Error).message}`
+    // req 在 try 内 block-scoped；catch 里用 props.video 等价
+    failureInfo.value = { message, cannotAutoRetry: !!props.video }
+    emit('submitted', false, message)
   } finally {
     submitting.value = false
   }

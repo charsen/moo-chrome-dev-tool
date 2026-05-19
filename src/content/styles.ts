@@ -1016,6 +1016,66 @@ export const SHADOW_CSS = `
   color: var(--c-text-dim);
 }
 
+/* 提交失败的内嵌持久横幅：toast 是一闪而过的通知，这里给用户「点击重试 / 知道为什么没成」
+   的稳定锚点。带录像的提交（cannotAutoRetry）多一行提示用户去 历史 Tab 重提。 */
+.moo-submit-fail {
+  margin: 0 16px 12px;
+  padding: 10px 12px;
+  background: var(--c-danger-soft);
+  border: 1px solid var(--c-danger);
+  border-radius: var(--r-md);
+  animation: moo-success-in .15s cubic-bezier(.4, 0, .2, 1);
+}
+.moo-submit-fail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.moo-submit-fail-icon {
+  font-size: 14px;
+  color: var(--c-danger);
+}
+.moo-submit-fail-title {
+  flex: 1;
+  font-weight: 600;
+  color: var(--c-danger-fg);
+  font-size: 13px;
+}
+.moo-submit-fail-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--c-danger-fg);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  opacity: .6;
+  transition: opacity .12s;
+}
+.moo-submit-fail-dismiss:hover { opacity: 1; }
+.moo-submit-fail-msg {
+  font-size: 12px;
+  color: var(--c-text);
+  white-space: pre-line;
+  line-height: 1.55;
+  margin-bottom: 4px;
+}
+.moo-submit-fail-hint {
+  font-size: 11px;
+  color: var(--c-text-muted);
+  line-height: 1.55;
+  padding-top: 6px;
+  margin-top: 6px;
+  border-top: 1px dashed var(--c-danger);
+}
+.moo-submit-fail-hint b { color: var(--c-danger-fg); font-weight: 600; }
+.moo-submit-fail-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
 /* 折叠附件组（请求 / 错误 / 元素）——基于原生 <details> 实现，
    a11y 和键盘交互（Enter/Space 展开）由浏览器内置 */
 .moo-attach {
