@@ -4,6 +4,34 @@
 
 ## v0.1.12
 
+### Shadow DOM token 走 tokens.css 单一来源
+
+`src/content/styles.ts` 顶上原本硬编码一套 `--c-*` 跟 `tokens.css` 的 `--moo-c-*` 平行存在，已经偷偷 drift 两处（`--c-warn-fg` 一深一浅、`--sh-lg` 阴影 .12 vs .18）。
+
+改造：vite `?raw` 把 `tokens.css` 当字符串导入 → 正则抓顶层 `:root {...}` 块嵌进 `.moo-root` → 144 处旧 `var(--c-*)` 用法通过 `--c-brand: var(--moo-c-brand)` 一族别名转新名，零业务改动。dark `@media` 块不抓——content 叠在任意宿主页上跟着系统切深色会跟主题打架，故意保持浅色。两处历史 drift 显式 override + 注释解释（shadow 叠在宿主页上需要更狠对比度）。代价：content script bundle 80→96 KB（tokens.css 全文嵌入），可接受。
+
+### History 卡顿优化（不上虚拟列表库）
+
+30 条 entry + 每条带 base64 缩略图，滚动时图片解码集中爆发卡。改造方法：CSS `content-visibility: auto` + `contain-intrinsic-size: 0 80px` 让浏览器跳过视口外行的 layout/paint/image-decode；open 行不约束高度（detail 区域高度变化大）。`<img>` 顺手加 `loading=lazy` + `decoding=async`。比上 virtual-list 库简单 10 倍，零 JS。
+
+### Playwright E2E + CI 接入
+
+之前测试只到 vitest 单测层；这版补 Playwright，**真起 chromium、真加载 dist 当 extension、真跑 SW**：
+
+- `tests-e2e/popup-recent.spec.ts`（3 case）/ `badge.spec.ts`（4 case）/ `body-viewer.spec.ts`（6 case），13 case 14s 跑完
+- BodyViewer 平时挂 DevTools panel 里测不到，做了独立 `body-viewer-harness.html` 给 Playwright 直接挂
+- CI `.github/workflows/ci.yml` 新增并行 `e2e` job，`pnpm exec playwright install --with-deps chromium` 装好后 `pnpm test:e2e`，失败上传 trace artifact 保 7 天
+
+⚠️ 仓库主在 gitee，workflow 仅在 mirror 到 github 副本时生效；CI 是为以后准备的基础设施
+
+### `useAutoSave` 补 10 个单测
+
+之前只靠 Settings / Environment 间接验证。补单测覆盖：inflight 计数防 saving↔saved 来回闪 / `savedDisplayMs` 衰减 / `flush()` 跳防抖 / error 路径 / debounceMs:0 走 doSave。Node 环境 + Vue lifecycle hack：`vi.mock('vue')` 把 `onBeforeUnmount` 换 no-op、`vi.stubGlobal('window', ...)` 转发 setTimeout、`flushMicrotasks` helper 处理 fake timer 不 flush microtask 的坑。测试总数 126 → 136。
+
+### 失败横幅去重复重试按钮
+
+横幅里塞了「重试」按钮，跟 footer 那个「重试 ⌘↵」视觉冗余——用户反馈截图直接指出来的。改：横幅纯信息态（⚠ + 原因 + 录像额外提示），操作一律走 footer。删 `.moo-submit-fail-actions` CSS。
+
 ### 附带元素「清空」按钮加两步确认
 
 挑元素是有成本的工作（每个 DOM 节点要在页面里找到再点），整批一键清空丢光得不偿失。给「清空」按钮加两步确认：第一次点 → 按钮变红 + 文字「再点一下确认清空」+ 1s 节奏微弱脉动；3 秒内再点 → 真清；3 秒过期 → 自动复位。元素只有 1 个时直接清，不浪费 friction。单个 × 删除维持原状不加（重选一个成本低）。
