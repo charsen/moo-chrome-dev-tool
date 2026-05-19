@@ -17,7 +17,7 @@
         :class="['row', { open: openId === e.id }]"
       >
         <div class="row-head" @click="toggle(e.id)">
-          <img v-if="e.image" :src="e.image" class="thumb" />
+          <img v-if="e.image" :src="e.image" class="thumb" loading="lazy" decoding="async" />
           <div v-else-if="e.hasVideo" class="thumb thumb-video" :title="`${e.videoDuration ?? 0}s 录像`">
             <span class="thumb-icon">🎥</span>
             <span v-if="e.videoDuration" class="thumb-dur">{{ formatDur(e.videoDuration) }}</span>
@@ -355,7 +355,14 @@ async function resubmit(e: BugHistoryEntry) {
   margin-bottom: 4px;
   border: 1px solid transparent;
   transition: border-color var(--moo-motion-fast), background-color var(--moo-motion-fast);
+  /* 视口外跳过渲染/图片解码：30 条 base64 截图缩略图同时解码会卡，content-visibility
+     让浏览器只对当前可见的行做 layout/paint/image-decode。contain-intrinsic-size 给
+     一个粗略高度占位（接近 collapsed 行实测 80px），避免滚动条乱跳；open 行不约束
+     高度（detail 区域高度变化大，让 auto 自己量）。 */
+  content-visibility: auto;
+  contain-intrinsic-size: 0 80px;
 }
+.row.open { contain-intrinsic-size: auto; }
 .row:hover { background: var(--moo-c-bg-soft); }
 .row.open {
   background: var(--moo-c-bg-soft);
