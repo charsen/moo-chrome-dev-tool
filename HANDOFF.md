@@ -151,7 +151,14 @@ v0.1.12 已发完，前批所有候选事项均已落地或判定不做。当前
 
 **待办（用户报或维护性）**：
 
-- **🐛 unpacked 扩展 content script 在用户 Chrome 不注入**（2026-05-19 排查发现）：扩展 enabled、站点访问 `ON_ALL_SITES`、`<all_urls>` matches、`fetch(chrome-extension://EXTID/icons/icon-16.png)` 返回 200——扩展明确活着，但 `app.example.com / app2.example.com / example.com` 三个测试页面**都没注入** content script（无 shadow host，`window.__mooInjected` 为 false，page console 无 error）。programmatic `reloadBtn.click()` 无效（user-gesture 限制）。怀疑是 Chrome 进程的某种 broken state，需要手动「移除 + 重新加载 unpacked」或重启 Chrome 才能恢复。下次复现时先 SW console 看错误，必要时写到「隐藏的第 6 个」坑里
+- **🐛 unpacked 扩展 content script 在用户 Chrome 不注入**（2026-05-19 通过 MCP 排查到一半）：
+  - **已确认**：扩展 enabled + 站点访问 `ON_ALL_SITES` + manifest `<all_urls>` matches；`fetch(chrome-extension://EXTID/icons/icon-16.png)` 返回 200（扩展资源可达）；`chrome://extensions/?errors=EXTID` **错误页空**（chrome 没 try-and-fail，是没 try）
+  - **已确认排除**：site access / dist 文件缺失 / content script 自身 throw / SW 死了
+  - **测试矩阵**：app.example.com / app2.example.com / example.com / localhost:5173（全新 tab）**全部无注入**——无 shadow host，`window.__mooInjected` false，page console 无 error
+  - **MCP 限制**：programmatic `reloadBtn.click()` 无效（user-gesture 限制）；`new_page chrome-extension://EXTID/src/popup/index.html` 也 list 不出
+  - **当前判断**：Chrome 进程内的 content_scripts 注册子系统**对这个扩展失效**——可能 Chrome profile 状态损坏 / 内存里 cache 了老 manifest（这扩展用了 `world: "MAIN"` 字段，早期 Chrome 不支持，可能遗留兼容性问题）/ MV3 行为变了
+  - **修复 ladder**（按成本升序）：① 重启 Chrome（30 秒）② chrome://extensions 移除 + 重新加载 unpacked（2 分钟，强制重注册绕 cache）③ chrome://settings/reset 重置扩展（核选项）
+  - **下次接班的事**：用户回报问题后定位时**先**走 ladder ①②（90% 应解决）。如果仍不行才往下查：SW console 看 register 时是否 throw / Chrome 版本是否最近升级 / 是否能复现在干净 profile。可写成「隐藏的第 6 个」坑加进 HANDOFF
 - **content 世界 toast / dialog 抽象**：当前 `<MooCloseBtn>` 是共享组件但 CSS 在两个世界各自定义，组件本身没问题；如果之后要做 content 世界的 toast / dialog 抽象，可以再起一个 `src/content/components/` 目录
 
 **v0.1.12 收尾里全做完的事**（参考用，commit 标好了）：
