@@ -363,12 +363,14 @@ onBeforeUnmount(() => {
   color: var(--moo-c-text);
 }
 
-/* 工具栏 */
+/* 工具栏：窄宽下允许 wrap，避免 kind-filters + filter + select + 3 个 icon-btn
+   挤成一行后把 filter 压成 30px 不能用 */
 .toolbar {
   flex: none;
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
   padding: 10px 14px;
   border-bottom: 1px solid var(--moo-c-border);
   background: var(--moo-c-bg);
@@ -421,7 +423,7 @@ onBeforeUnmount(() => {
 .kind-chip.active .kind-count { color: var(--moo-c-text-muted); }
 
 .toolbar .filter {
-  flex: 1;
+  flex: 1 1 180px; /* 给个 180px basis：wrap 后单独占行时不会缩成 40px；同行时仍能伸缩 */
   height: 28px;
   padding: 0 10px;
   border: 1px solid var(--moo-c-border);
@@ -431,6 +433,7 @@ onBeforeUnmount(() => {
   font-size: var(--moo-fs-sm);
   color: var(--moo-c-text);
   min-width: 0;
+  box-sizing: border-box; /* wrap 单行 100% basis 时防 padding/border 超出父宽 */
   transition: border-color var(--moo-motion-fast), box-shadow var(--moo-motion-fast);
 }
 .toolbar .filter:focus {
@@ -549,6 +552,7 @@ onBeforeUnmount(() => {
 .row-head .dur.dur--xslow { color: var(--moo-c-danger-fg); font-weight: 600; }
 .row-head .url {
   flex: 1;
+  min-width: 0; /* 不加这条 URL 永不截断，会把 .dur + .time 挤出大分辨率可视区 */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -610,6 +614,7 @@ onBeforeUnmount(() => {
   font-family: inherit;
   background: var(--moo-c-bg);
   color: var(--moo-c-text);
+  box-sizing: border-box; /* 否则 width:100% + padding/border 总宽 100% + 18px 在 row-detail 里会撑出横向滚动 */
   transition: border-color var(--moo-motion-fast);
 }
 .body-search:focus {

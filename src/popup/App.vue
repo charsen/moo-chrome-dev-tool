@@ -505,6 +505,7 @@ onMounted(async () => {
 }
 .rh-title {
   flex: 1;
+  min-width: 0; /* flex 子项 min-width: auto 默认会让标题不截断 */
   font-size: var(--moo-fs-sm);
   font-weight: 500;
   color: var(--moo-c-text);
@@ -540,6 +541,7 @@ onMounted(async () => {
 .rh-row:hover { background: var(--moo-c-bg-elev); border-radius: var(--moo-r-sm); }
 .rh-row-title {
   flex: 1;
+  min-width: 0;
   color: var(--moo-c-text);
   overflow: hidden;
   text-overflow: ellipsis;

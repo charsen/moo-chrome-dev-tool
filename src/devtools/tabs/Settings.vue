@@ -525,7 +525,8 @@ const TagInput = defineComponent({
   font-weight: 600;
   flex: none;
 }
-.proj-picker { width: 240px; }
+.proj-picker { width: 240px; max-width: 100%; }
+/* max-width 100%：窄宽（≤ 260px 整 page-body）下固定 240 会撑出横向滚动 */
 
 /* 子分区头部：加左侧竖条 accent，比纯文字 uppercase 更显眼 */
 .moo-card__bd .sub {
@@ -624,6 +625,7 @@ const TagInput = defineComponent({
   border-radius: var(--moo-r-md);
   background: var(--moo-c-bg);
   width: 100%;
+  box-sizing: border-box; /* row-ctrl 在 kv-row 模式下 width:100%；padding/border 没 box-sizing 会让 taginput 比 row-ctrl 宽 10px 触发横向滚动 */
   min-height: 28px;
   align-items: center;
 }

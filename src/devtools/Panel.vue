@@ -165,9 +165,14 @@ onBeforeUnmount(() => {
   max-width: clamp(60px, 18vw, 160px);
 }
 
-/* 窄宽下 tabs 横向滚动而不是撑爆容器（之前 ≤ 400px 整个 head 会触发横向滚动）*/
+/* 窄宽下 tabs 横向滚动而不是撑爆容器（之前 ≤ 400px 整个 head 会触发横向滚动）
+   设计取舍：4 个 tab 左聚集 + 右大片空白看起来像"没完成"。但加 justify-content:
+   center 会让 tab 在大宽度下离 brand 太远，视觉关联断掉；加 right slot 占位需要
+   引入版本号/connection 状态等新元素超出本 PR 范围。当前左聚集是 GitHub / Chrome
+   DevTools 原生标签的惯例（参考 Network / Elements panel），保留。 */
 .tabs {
   flex: 1;
+  min-width: 0; /* flex item 默认 min-width: auto，tab 文字宽度之和大于父宽时会撑爆 head 触发横向滚动条；加这条让 overflow-x:auto 真正生效 */
   display: flex;
   align-items: stretch;
   padding: 0 8px;
@@ -227,5 +232,15 @@ onBeforeUnmount(() => {
   display: flex;
   background: var(--moo-c-bg-soft);
 }
-.content > * { flex: 1; min-height: 0; }
+/* 设计取舍：DevTools panel 在 4K 屏 dock-bottom 时可能宽达 2500px+，让 Tab
+   内容 100% 填满会让 Overview / History 的行数据像横向尺子一样拉得很开。
+   Settings 已经在自己 .page-body 里设了 max-width: 760px + 居中。
+   Overview / History 是「时间线」性质，长 URL 多列对齐受益于宽空间，反而
+   居中收窄会损失信息密度。Environment 是侧栏 + 详情，侧栏固定 220 / 详情吃
+   剩余，本身就有 sidebar 锚点不至于「广场感」。
+   结论：在 Panel 这层不强加 max-width，让各 Tab 各自决定（Settings 已加）。 */
+.content > * { flex: 1; min-width: 0; min-height: 0; }
+/* 给 .content 直接子加 min-width: 0：默认 flex item min-width: auto 会让
+   内部宽度爆出去（Overview 里 .toolbar 的 long .filter input 在某些场景会
+   把整个 Tab 推宽），加这条让 Tab 容器永远尊重父宽。 */
 </style>

@@ -593,6 +593,7 @@ function truncate(s: string, n: number): string {
   font-size: var(--moo-fs-xs);
   font-family: inherit;
   color: var(--moo-c-text);
+  box-sizing: border-box; /* sidebar 固定 220px；width:100% + padding/border 没 box-sizing 会撑到 ~238px 触发 sidebar 横向滚动 */
   transition: border-color var(--moo-motion-fast), box-shadow var(--moo-motion-fast);
 }
 .project-search input:focus {
@@ -666,7 +667,7 @@ function truncate(s: string, n: number): string {
   background: var(--moo-c-text-faint);
   box-shadow: none;
 }
-.name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .count { color: var(--moo-c-text-dim); font-size: var(--moo-fs-xs); font-family: var(--moo-ff-mono); }
 .project-item.active .count { color: var(--moo-c-brand); }
 /* 0 服务器的项目：用警示色提示用户这条配置不完整，hover 看 title */
@@ -706,12 +707,14 @@ function truncate(s: string, n: number): string {
   justify-content: center;
 }
 
-/* 表单行 */
+/* 表单行：窄宽下允许 wrap，避免 label + input + radio + delete 挤在一行把
+   input 压缩成 40px；wrap 后 label 单独一行 + input 占整行更易用 */
 .row {
   display: flex;
   align-items: center;
   gap: 10px;
   margin: 10px 0;
+  flex-wrap: wrap;
 }
 .row label {
   font-size: var(--moo-fs-xs);
@@ -781,7 +784,8 @@ function truncate(s: string, n: number): string {
 .template-row-head {
   align-items: center;
 }
-.template-row-head label { flex: 1; }
+.template-row-head label { flex: 1; min-width: 0; }
+/* min-width: 0：长 label 文本不撑爆 row，让 "大尺寸编辑" 按钮永远在视区内 */
 
 /* 多行文本 */
 .patterns, .template {

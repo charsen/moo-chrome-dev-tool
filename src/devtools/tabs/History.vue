@@ -308,18 +308,19 @@ async function resubmit(e: BugHistoryEntry) {
   color: var(--moo-c-text);
 }
 
-/* 工具栏 */
+/* 工具栏：窄宽下允许 wrap，跟 Overview 一致 */
 .toolbar {
   flex: none;
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
   padding: 10px 14px;
   border-bottom: 1px solid var(--moo-c-border);
   background: var(--moo-c-bg);
 }
 .toolbar .filter {
-  flex: 1;
+  flex: 1 1 180px; /* wrap 后单独占行不会缩成 40px；同行时仍能伸缩 */
   height: 28px;
   padding: 0 10px;
   border: 1px solid var(--moo-c-border);
@@ -329,6 +330,7 @@ async function resubmit(e: BugHistoryEntry) {
   font-size: var(--moo-fs-sm);
   color: var(--moo-c-text);
   min-width: 0;
+  box-sizing: border-box;
   transition: border-color var(--moo-motion-fast), box-shadow var(--moo-motion-fast);
 }
 .toolbar .filter:focus {
@@ -369,6 +371,7 @@ async function resubmit(e: BugHistoryEntry) {
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-wrap: wrap; /* 窄宽下 actions（select + 2 button）会把 info 挤到无法读；允许换行让 actions 落到下一行 */
   padding: 10px 12px;
   cursor: pointer;
 }
@@ -405,7 +408,9 @@ async function resubmit(e: BugHistoryEntry) {
   color: var(--moo-c-text-dim);
   font-family: var(--moo-ff-mono);
 }
-.info { flex: 1; min-width: 0; }
+.info { flex: 1 1 200px; min-width: 0; }
+/* basis 200px：row-head 现在 wrap，给 info 一个最小 basis 让它在同行能站稳，
+   宽度不够时直接换行（让 actions 自然下沉），而不是被压成 60px 看不清标题 */
 .title-line {
   display: flex;
   gap: 6px;
@@ -546,6 +551,7 @@ async function resubmit(e: BugHistoryEntry) {
 .sub-list li .s.err { background: var(--moo-c-danger-soft);  color: var(--moo-c-danger-fg); }
 .sub-list li .u {
   flex: 1;
+  min-width: 0; /* flex 子项 min-width: auto 默认值会让 url 不截断、挤掉同行其它元素 */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

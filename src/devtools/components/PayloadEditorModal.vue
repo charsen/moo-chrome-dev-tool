@@ -148,10 +148,27 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
 .payload-bd {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 240px;
+  /* minmax(0, 1fr)：grid item 默认 min-width: auto 会让编辑器内长行撑爆 cell；
+     用 minmax(0, 1fr) 强制 cell 尊重 grid track 宽度，等价于 flex 的 min-width: 0 */
+  grid-template-columns: minmax(0, 1fr) 240px;
   gap: 12px;
   padding: 12px 16px;
   min-height: 0;
+}
+/* 极窄场景（panel docked right < 460px 时 modal 自身宽度也会跟着缩）：
+   1fr + 240px 放不下，改单列让 vars 列退到下方 */
+@media (max-width: 520px) {
+  .payload-bd {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .payload-vars {
+    border-left: none;
+    border-top: 1px solid var(--moo-c-divider);
+    padding-left: 0;
+    padding-top: 8px;
+    max-height: 140px;
+  }
 }
 .payload-editor {
   display: flex;
@@ -172,6 +189,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
   color: var(--moo-c-text);
   resize: none;
   outline: none;
+  box-sizing: border-box; /* textarea 默认 content-box；width:100% + 14px padding + 1px border 会撑出 grid cell ~30px 触发横向滚动 */
   transition: border-color .12s, box-shadow .12s;
 }
 .payload-textarea:focus {
@@ -224,6 +242,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
   cursor: pointer;
   font-family: inherit;
   text-align: left;
+  box-sizing: border-box; /* aside 固定 240px；button width:100% + padding/border 没 box-sizing 会撑出 18px 触发 aside 横向滚动 */
   transition: background .12s, border-color .12s;
 }
 .var-btn:hover {
