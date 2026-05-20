@@ -233,13 +233,14 @@ html {
 .moo-btn--danger-solid {
   background: var(--moo-c-danger);
   border-color: var(--moo-c-danger);
-  color: #fff;
+  color: var(--moo-c-brand-fg);
 }
 .moo-btn--danger-solid:hover:not(:disabled) {
   background: var(--moo-c-danger-fg);
   border-color: var(--moo-c-danger-fg);
 }
 .moo-btn--danger-solid:focus-visible {
+  /* danger-600 (#dc2626) 字面值 focus ring：跟 --moo-c-danger 强绑定，cssvar 嵌 rgba 没法写 */
   box-shadow: 0 0 0 3px rgba(220, 38, 38, .25);
   border-color: var(--moo-c-danger);
 }
@@ -438,7 +439,9 @@ textarea.moo-field {
   width: 36px;
   height: 20px;
   border-radius: var(--moo-r-pill);
-  background: #cbd5e1;          /* slate-300：关闭态轨道 */
+  /* 关闭态轨道色：slate-300/-400 字面值。是「物理 toggle 轨道」语义，跟主题反相会让深色模式
+     下"关闭态"变浅灰不易读——这里故意保持浅灰，开启态才用 brand 主题色对比 */
+  background: #cbd5e1;
   border: 1px solid transparent;
   cursor: pointer;
   padding: 0;
@@ -449,6 +452,7 @@ textarea.moo-field {
   outline: none;
   box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
 }
+/* thumb 圆点：必须独立于主题保持纯白 + 深色微影。关闭态在浅灰轨道、开启态在 brand 实心，都需要白色识别度 */
 .moo-switch-thumb {
   position: absolute;
   top: 2px;
@@ -470,6 +474,7 @@ textarea.moo-field {
   top: 16px;
   left: 50%;
   transform: translateX(-50%);
+  /* toast 暗底亮字始终保持高对比度：跟主题无关，硬编码 slate-900 + 纯白 */
   background: rgba(15, 23, 42, .94);
   color: #fff;
   padding: 9px 16px;

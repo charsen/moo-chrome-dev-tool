@@ -161,6 +161,8 @@ const selectedIdx = ref<number>(-1)
 let actionDragged = false
 
 // 视觉常量（基于原图分辨率）
+// 颜色是「画笔色」语义（绘制到 canvas 像素，写进 PNG 数据），跟 UI 主题完全无关
+// → 故意硬编码：截图标注红 = iOS 系统红 #ff3b30；色板里 4 色固定，色弱用户也能在缩略图里靠形状区分
 const DEFAULT_COLOR = '#ff3b30'
 const DEFAULT_LINE_WIDTH = 12
 const textFontPx = 48
@@ -169,6 +171,7 @@ const pointerSize = 80 // 虚拟指针图形高度（px）
 const mosaicBlock = 14 // 马赛克像素块大小（按原图坐标）
 
 // 色板：每色配一个 label 用作 a11y title
+// 4 色为「画笔色」字面值，绘制到 PNG 像素里，不走 token（截图作为不可变制品携带这些颜色）
 const COLORS: { value: string; label: string }[] = [
   { value: '#ff3b30', label: '红' },
   { value: '#fbbf24', label: '黄' },
@@ -600,7 +603,9 @@ function drawSelectionBox(ctx: CanvasRenderingContext2D, it: Item) {
   ctx.save()
   ctx.setLineDash([10, 8])
   ctx.lineWidth = 3
-  ctx.strokeStyle = '#3b82f6' // 蓝色，区别于标注本身的红
+  // canvas 像素色，跟主题无关。蓝色刻意区别于标注本身的画笔红/黄/蓝/黑（即使标注本来就是蓝，
+  // 虚线 dash 仍能从实线里挑出来）；只画在屏幕，不进 finish 后的 PNG（finish 用 drawEl 重画一次）
+  ctx.strokeStyle = '#3b82f6'
   ctx.strokeRect(bb.x - pad, bb.y - pad, bb.w + pad * 2, bb.h + pad * 2)
   ctx.restore()
 }
@@ -711,7 +716,8 @@ function drawPointer(ctx: CanvasRenderingContext2D, it: PointerItem) {
   ctx.save()
   ctx.translate(it.x, it.y)
   ctx.scale(s, s)
-  // 白色外圈描边 + 黑色填充，叠加红色高光
+  // 虚拟鼠标指针：经典「白描边 + 黑填充 + 红色 tip 高亮」配色，跟主题无关
+  // 全部是 canvas 像素色，写进最终 PNG，固定字面值
   ctx.beginPath()
   // pts 是函数顶部声明的字面量常量数组，所有元素都是 [number, number]；
   // noUncheckedIndexedAccess 不分析这一点，加 ! 让 TS 闭嘴。
@@ -738,6 +744,7 @@ function drawText(ctx: CanvasRenderingContext2D, it: TextItem) {
   ctx.font = textFont
   ctx.textBaseline = 'top'
   ctx.lineWidth = 6
+  // 文字描边白色：硬编码 canvas 像素值，让画笔色无论选哪个都能在截图上读得清
   ctx.strokeStyle = '#fff'
   ctx.strokeText(it.text, it.x, it.y)
   ctx.fillStyle = it.color ?? DEFAULT_COLOR

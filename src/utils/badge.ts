@@ -7,7 +7,9 @@ import type { BugHistoryEntry } from '@/types/history'
 // 完整列表；toolbar badge 只服务"近期需要我处理"的语义。
 
 const FAILURE_WINDOW_MS = 24 * 60 * 60 * 1000
-const BADGE_COLOR = '#dc2626' // tailwind red-600，色弱也清晰
+// tailwind red-600，色弱也清晰。chrome.action.setBadgeBackgroundColor API 只接受 hex 字符串/ColorArray，
+// 无法注入 CSS var()；也不在任何 CSSOM 上下文里——故意硬编码（这里跟 --moo-c-danger 同色）
+const BADGE_COLOR = '#dc2626'
 
 /**
  * 把 history 折算成 badge 文本并写到扩展图标。

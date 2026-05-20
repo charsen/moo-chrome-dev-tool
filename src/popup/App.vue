@@ -337,7 +337,7 @@ onMounted(async () => {
   flex: none;
   font-size: 8px;
   font-weight: 800;
-  color: #fff;
+  color: var(--moo-c-brand-fg);
   line-height: 1;
   box-sizing: border-box;
 }
@@ -440,7 +440,7 @@ onMounted(async () => {
 .onboard-cta {
   margin-top: 12px;
   background: var(--moo-c-brand);
-  color: #fff;
+  color: var(--moo-c-brand-fg);
   border: none;
   padding: 6px 14px;
   border-radius: var(--moo-r-md);
@@ -602,6 +602,8 @@ onMounted(async () => {
 }
 .popup-switch:disabled { opacity: .5; cursor: not-allowed; }
 .popup-switch.is-on { background: var(--moo-c-success); }
+/* thumb 圆点：跟 tokens.css 的 .moo-switch-thumb 同款，必须独立于主题保持纯白
+   关闭态在浅灰轨道上 / 开启态在 indigo 实心上，都需要白色识别度 */
 .popup-switch-thumb {
   position: absolute;
   top: 2px;

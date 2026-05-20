@@ -30,6 +30,35 @@ export const SHADOW_CSS = `
   /* === Shadow 独占：tokens.css 没有的 token === */
   --c-mark: #ef4444;   /* annotator 标注红，主世界不用 */
 
+  /* === 玻璃面板 token（ball / menu / picker / dialog 玻璃风） ===
+     反相设计：浅页用「深玻璃 + 浅文字」，深页媒体查询里翻成「浅玻璃 + 深文字」
+     不进 tokens.css —— 是 shadow 世界专属，且 content 不跟随 prefers-color-scheme
+     用 media query 切（避免和宿主页主题冲突），所以集中在这里好维护 */
+  --g-bg-deep:        rgba(30, 41, 59, .94);    /* slate-800 透 6% */
+  --g-border-deep:    rgba(15, 23, 42, .5);
+  --g-bg-light:       rgba(241, 245, 249, .96); /* slate-100 透 4% */
+  --g-border-light:   rgba(148, 163, 184, .35);
+
+  /* 玻璃面板三档阴影：默认 / hover / dragging，深页/浅页一一对应 */
+  --g-sh-deep:        0 1px 0 rgba(255, 255, 255, .08) inset,
+                      0 2px 6px rgba(0, 0, 0, .35),
+                      0 10px 28px rgba(0, 0, 0, .45);
+  --g-sh-deep-hover:  0 1px 0 rgba(255, 255, 255, .12) inset,
+                      0 3px 8px rgba(0, 0, 0, .45),
+                      0 14px 36px rgba(0, 0, 0, .55);
+  --g-sh-deep-drag:   0 1px 0 rgba(255, 255, 255, .14) inset,
+                      0 4px 12px rgba(0, 0, 0, .55),
+                      0 18px 44px rgba(0, 0, 0, .65);
+  --g-sh-light:       0 1px 0 rgba(255, 255, 255, .8) inset,
+                      0 2px 6px rgba(15, 23, 42, .12),
+                      0 10px 28px rgba(15, 23, 42, .28);
+  --g-sh-light-hover: 0 1px 0 rgba(255, 255, 255, .8) inset,
+                      0 3px 8px rgba(15, 23, 42, .16),
+                      0 14px 36px rgba(15, 23, 42, .34);
+  --g-sh-light-drag:  0 1px 0 rgba(255, 255, 255, .8) inset,
+                      0 4px 12px rgba(15, 23, 42, .22),
+                      0 18px 44px rgba(15, 23, 42, .42);
+
   /* === Drift override：shadow 跟 tokens.css 不一致的两处，故意保留 ===
      都是因为 shadow 叠在任意宿主页上，对比度需要比 popup/devtools 这种自有
      chrome 的环境再狠一档。改 tokens.css 时这两个值不会被带跑。 */
@@ -85,58 +114,36 @@ export const SHADOW_CSS = `
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  background: rgba(30, 41, 59, .94);       /* slate-800 */
-  border: 1px solid rgba(15, 23, 42, .5);
+  background: var(--g-bg-deep);
+  border: 1px solid var(--g-border-deep);
   border-radius: 28px;
   /* 双层阴影：内嵌微亮顶边 + 远距离暗投影 */
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, .08) inset,
-    0 2px 6px rgba(0, 0, 0, .35),
-    0 10px 28px rgba(0, 0, 0, .45);
+  box-shadow: var(--g-sh-deep);
   backdrop-filter: blur(8px);
   user-select: none;
   touch-action: none;
   transition: box-shadow .15s, transform .15s;
 }
 .moo-ball-row:hover {
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, .12) inset,
-    0 3px 8px rgba(0, 0, 0, .45),
-    0 14px 36px rgba(0, 0, 0, .55);
+  box-shadow: var(--g-sh-deep-hover);
   transform: translateY(-1px);
 }
 .moo-ball-row.dragging {
   cursor: grabbing;
   transition: none;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, .14) inset,
-    0 4px 12px rgba(0, 0, 0, .55),
-    0 18px 44px rgba(0, 0, 0, .65);
+  box-shadow: var(--g-sh-deep-drag);
 }
 .moo-ball-row.hidden { display: none; }
 
 /* === 深色页 → 浅色 ball（保持之前的视觉） === */
 @media (prefers-color-scheme: dark) {
   .moo-ball-row {
-    background: rgba(241, 245, 249, .96);
-    border-color: rgba(148, 163, 184, .35);
-    box-shadow:
-      0 1px 0 rgba(255, 255, 255, .8) inset,
-      0 2px 6px rgba(15, 23, 42, .12),
-      0 10px 28px rgba(15, 23, 42, .28);
+    background: var(--g-bg-light);
+    border-color: var(--g-border-light);
+    box-shadow: var(--g-sh-light);
   }
-  .moo-ball-row:hover {
-    box-shadow:
-      0 1px 0 rgba(255, 255, 255, .8) inset,
-      0 3px 8px rgba(15, 23, 42, .16),
-      0 14px 36px rgba(15, 23, 42, .34);
-  }
-  .moo-ball-row.dragging {
-    box-shadow:
-      0 1px 0 rgba(255, 255, 255, .8) inset,
-      0 4px 12px rgba(15, 23, 42, .22),
-      0 18px 44px rgba(15, 23, 42, .42);
-  }
+  .moo-ball-row:hover { box-shadow: var(--g-sh-light-hover); }
+  .moo-ball-row.dragging { box-shadow: var(--g-sh-light-drag); }
 }
 
 .moo-ball-btn {
@@ -157,7 +164,7 @@ export const SHADOW_CSS = `
 }
 .moo-ball-btn:hover {
   background: var(--c-brand);
-  color: #ffffff;
+  color: var(--moo-c-brand-fg);
 }
 @media (prefers-color-scheme: dark) {
   .moo-ball-btn { color: var(--c-text-muted); }
@@ -166,6 +173,8 @@ export const SHADOW_CSS = `
 .moo-ball-btn svg.ic { width: 15px; height: 15px; display: block; }
 .moo-ball-btn .ic { font-size: 13px; line-height: 1; }
 .moo-ball-btn--logo {
+  /* 品牌色 indigo 600→500 渐变（hover 时 700→600）。
+     不走 --moo-c-brand：linear-gradient 不能用单 token 表达；硬编码是「品牌身份」的字面值 */
   background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
   box-shadow: 0 0 0 2px rgba(255, 255, 255, .25) inset;
   cursor: grab;
@@ -201,6 +210,7 @@ export const SHADOW_CSS = `
   }
 }
 /* hover 时 button 整体变 indigo，kbd-tag 必须跟着切浅色，不然在 indigo 上是橄榄黄 */
+/* 这里 rgba(255,255,255,*) 是「在 indigo 实心上的浅色叠加层」，跟主题无关，硬编码 */
 .moo-ball-btn--with-kbd:hover .kbd-tag {
   color: rgba(255, 255, 255, .95);
   background: rgba(255, 255, 255, .22);
@@ -219,13 +229,10 @@ export const SHADOW_CSS = `
   bottom: 100%;
   right: 0;
   margin-bottom: 8px;
-  background: rgba(30, 41, 59, .94);
-  border: 1px solid rgba(15, 23, 42, .5);
+  background: var(--g-bg-deep);
+  border: 1px solid var(--g-border-deep);
   border-radius: 14px;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, .08) inset,
-    0 2px 6px rgba(0, 0, 0, .35),
-    0 10px 28px rgba(0, 0, 0, .45);
+  box-shadow: var(--g-sh-deep);
   backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
@@ -237,12 +244,9 @@ export const SHADOW_CSS = `
 }
 @media (prefers-color-scheme: dark) {
   .moo-ball-menu {
-    background: rgba(241, 245, 249, .96);
-    border-color: rgba(148, 163, 184, .35);
-    box-shadow:
-      0 1px 0 rgba(255, 255, 255, .8) inset,
-      0 2px 6px rgba(15, 23, 42, .12),
-      0 10px 28px rgba(15, 23, 42, .28);
+    background: var(--g-bg-light);
+    border-color: var(--g-border-light);
+    box-shadow: var(--g-sh-light);
   }
 }
 @keyframes moo-menu-in {
@@ -250,7 +254,8 @@ export const SHADOW_CSS = `
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* picker 内的项目按钮：默认深 ball 下用 slate-700 卡片；深色页里翻回白底 */
+/* picker 内的项目按钮：默认深 ball 下用 slate-700 卡片；深色页里翻回白底
+   颜色都是「在玻璃面板上的微透叠加」语义，跟主世界主题无关，保留 rgba 字面值 */
 .moo-ball-action {
   display: flex;
   align-items: center;
@@ -270,20 +275,20 @@ export const SHADOW_CSS = `
   width: 100%;
 }
 .moo-ball-action:hover {
-  background: rgba(99, 102, 241, .25);
-  color: #fff;
+  background: rgba(99, 102, 241, .25);  /* indigo-500 透 25% —— 品牌色 hover 暗示 */
+  color: var(--moo-c-brand-fg);
   box-shadow: 0 2px 5px rgba(0, 0, 0, .35);
 }
 @media (prefers-color-scheme: dark) {
   .moo-ball-action {
-    background: #ffffff;
+    background: var(--moo-c-bg);  /* 深色页里 ball 翻浅色，卡片用纯 bg 白 */
     color: var(--c-text);
     box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
   }
   .moo-ball-action:hover {
-    background: var(--c-brand-soft, #eef2ff);
+    background: var(--c-brand-soft);
     color: var(--c-brand);
-    box-shadow: 0 2px 5px rgba(79, 70, 229, .2);
+    box-shadow: 0 2px 5px rgba(79, 70, 229, .2);  /* 品牌色 indigo-600 投影，跟 brand 渐变同色系 */
   }
 }
 .moo-ball-action:active { transform: scale(.98); }
@@ -371,6 +376,7 @@ export const SHADOW_CSS = `
   position: fixed;
   inset: 0;
   z-index: 2147483640;
+  /* 自定义 scrim：比 --moo-c-scrim 的 .5 再深一点，annotator 满屏标注要更强压住宿主页 */
   background: rgba(15, 23, 42, .65);
   backdrop-filter: blur(2px);
   display: flex;
@@ -409,6 +415,7 @@ export const SHADOW_CSS = `
   font-family: inherit;
   font-weight: 700;
   color: var(--c-mark);
+  /* 半透白：盖在截图（任意主题）上要可读，不能跟随 --moo-c-bg —— 否则深色页里输入框跟标注红撞 */
   background: rgba(255, 255, 255, .96);
   border: 2px dashed var(--c-mark);
   border-radius: var(--r-sm);
@@ -506,7 +513,7 @@ export const SHADOW_CSS = `
 .moo-toolbar button:hover { background: var(--c-bg-soft); }
 .moo-toolbar button.primary {
   background: var(--c-brand);
-  color: #fff;
+  color: var(--moo-c-brand-fg);
   border-color: var(--c-brand);
 }
 .moo-toolbar button.primary:hover { background: var(--c-brand-hover); border-color: var(--c-brand-hover); }
@@ -527,15 +534,16 @@ export const SHADOW_CSS = `
 .moo-toolbar button.tool:hover { background: var(--c-bg-elev); color: var(--c-text); }
 .moo-toolbar button.tool.active {
   background: var(--c-mark);
-  color: #fff;
-  /* 强化选中态：内嵌阴影 + 外环，让"当前在哪个工具"一眼可读 */
+  color: #fff;  /* 红底白字：标注红是字面值，--c-mark 上必须用白文字 */
+  /* 强化选中态：内嵌阴影 + 外环，让"当前在哪个工具"一眼可读
+     rgba 值是 --c-mark (#ef4444) 的高光/暗角字面表达，跟主题无关 */
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, .35),
     inset 0 -2px 0 rgba(0, 0, 0, .18),
     0 0 0 2px rgba(239, 68, 68, .22);
 }
 .moo-toolbar button.tool.active:hover {
-  background: #dc2626;
+  background: var(--c-danger);  /* hover 再深一档，从 mark(#ef4444) 到 danger(#dc2626) */
   color: #fff;
 }
 
@@ -545,6 +553,7 @@ export const SHADOW_CSS = `
   height: 22px;
   padding: 0;
   border-radius: 50%;
+  /* swatch 在任意颜色色块外加白边，必须硬编码白色（不能跟主题 bg 走） */
   border: 2px solid rgba(255, 255, 255, .85);
   box-shadow: 0 0 0 1px var(--c-border);
   transition: transform .12s, box-shadow .12s;
@@ -553,7 +562,7 @@ export const SHADOW_CSS = `
 .moo-toolbar button.swatch.active {
   box-shadow:
     0 0 0 1px var(--c-text),
-    0 0 0 4px rgba(15, 23, 42, .12);
+    0 0 0 4px rgba(15, 23, 42, .12);  /* 焦点外环：scrim 同色调淡化版 */
 }
 
 /* 线宽按钮：方形按钮内嵌一个圆点表示线宽 */
@@ -580,7 +589,7 @@ export const SHADOW_CSS = `
   position: fixed;
   inset: 0;
   z-index: 2147483646;
-  background: rgba(15, 23, 42, .55);
+  background: var(--moo-c-scrim);
   backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
@@ -616,7 +625,7 @@ export const SHADOW_CSS = `
 .moo-cancel-guard-actions .moo-btn.primary.danger-confirm {
   background: var(--c-danger);
   border-color: var(--c-danger);
-  color: #fff;
+  color: var(--moo-c-brand-fg);
 }
 .moo-cancel-guard-actions .moo-btn.primary.danger-confirm:hover {
   background: var(--c-danger-fg);
@@ -628,13 +637,14 @@ export const SHADOW_CSS = `
 .moo-btn.is-confirming {
   background: var(--c-danger);
   border-color: var(--c-danger);
-  color: #fff;
+  color: var(--moo-c-brand-fg);
   animation: moo-confirm-pulse 1s ease-in-out infinite;
 }
 .moo-btn.is-confirming:hover {
   background: var(--c-danger-fg);
   border-color: var(--c-danger-fg);
 }
+/* 脉动光环：danger-600 (#dc2626) 字面值，跟 .moo-c-danger 强绑定，没法 var()（@keyframes 里改不了）*/
 @keyframes moo-confirm-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, .4); }
   50%      { box-shadow: 0 0 0 4px rgba(220, 38, 38, .15); }
@@ -646,7 +656,7 @@ export const SHADOW_CSS = `
 .moo-dialog-mask {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, .55);
+  background: var(--moo-c-scrim);
   backdrop-filter: blur(2px);
   z-index: 2147483645;
   display: flex;
@@ -732,7 +742,7 @@ export const SHADOW_CSS = `
 .moo-form-row textarea:focus {
   outline: none;
   border-color: var(--c-brand);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, .15);
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
 }
 .moo-form-row input::placeholder,
 .moo-form-row textarea::placeholder { color: var(--c-text-dim); }
@@ -763,10 +773,10 @@ export const SHADOW_CSS = `
   font-size: 11px;
   line-height: 1.5;
   padding: 7px 10px;
-  border: 1px solid var(--c-warn-soft, #fef3c7);
-  background: var(--c-warn-soft, #fef3c7);
+  border: 1px solid var(--c-warn-soft);
+  background: var(--c-warn-soft);
   border-radius: var(--r-md);
-  color: var(--c-warn-fg, #b45309);
+  color: var(--c-warn-fg);
 }
 .server-warn b { color: var(--c-text); font-weight: 600; }
 .moo-preview {
@@ -806,7 +816,7 @@ export const SHADOW_CSS = `
 }
 .moo-btn.primary {
   background: var(--c-brand);
-  color: #fff;
+  color: var(--moo-c-brand-fg);
   border-color: var(--c-brand);
 }
 .moo-btn.primary:hover:not(:disabled) { background: var(--c-brand-hover); border-color: var(--c-brand-hover); }
@@ -968,6 +978,7 @@ export const SHADOW_CSS = `
   align-items: center;
   justify-content: center;
   gap: 8px;
+  /* 比 --moo-c-scrim 略深：缩略图 hover overlay 要明确遮住缩略图本身才能凸显按钮 */
   background: rgba(15, 23, 42, .66);
   opacity: 0;
   transition: opacity .15s;
@@ -978,6 +989,7 @@ export const SHADOW_CSS = `
   opacity: 1;
 }
 .moo-thumb-action {
+  /* 缩略图 hover 浮卡：盖在任意截图上要可读，必须半透白底（不能跟主世界 bg） */
   background: rgba(255, 255, 255, .96);
   border: 1px solid rgba(15, 23, 42, .1);
   color: var(--c-text);
@@ -989,6 +1001,7 @@ export const SHADOW_CSS = `
   cursor: pointer;
   transition: background .12s, transform .12s;
 }
+/* hover 把半透白加深到全白，跟正常按钮的「bg-soft」语义不同：这里是浮在截图上的玻璃卡 */
 .moo-thumb-action:hover { background: #fff; transform: translateY(-1px); }
 .moo-thumb-action:active { transform: translateY(0); }
 
@@ -1015,6 +1028,7 @@ export const SHADOW_CSS = `
   border-radius: 3px;
   line-height: 1.4;
 }
+/* primary 按钮（indigo 实心）上的 kbd 标签：必须用白色叠加层，跟主题无关 */
 .moo-btn.primary .kbd-hint {
   background: rgba(255, 255, 255, .22);
   color: rgba(255, 255, 255, .9);
@@ -1039,11 +1053,12 @@ export const SHADOW_CSS = `
   height: 56px;
   border-radius: 50%;
   background: var(--c-success);
-  color: #fff;
+  color: var(--moo-c-brand-fg);
   font-size: 32px;
   line-height: 56px;
   margin-bottom: 14px;
-  box-shadow: 0 0 0 6px rgba(22, 163, 74, .14);
+  /* 复用 tokens.css 的 --moo-c-success-halo（同色调 .14 透明度的柔光） */
+  box-shadow: 0 0 0 6px var(--moo-c-success-halo);
   animation: moo-success-pop .35s cubic-bezier(.34, 1.56, .64, 1);
 }
 @keyframes moo-success-pop {
@@ -1186,6 +1201,7 @@ export const SHADOW_CSS = `
   top: 24px;
   left: 50%;
   transform: translateX(-50%);
+  /* toast 暗底始终保持高对比度：跟主题无关，必须独立硬编码 slate-900 */
   background: rgba(15, 23, 42, .94);
   color: #fff;
   padding: 11px 18px;
@@ -1227,6 +1243,8 @@ export const SHADOW_CSS = `
 .picker-hover {
   position: fixed;
   border: 2px solid var(--c-brand);
+  /* 品牌色 indigo-600 (#4f46e5) 软填充 + 全屏 box-shadow 反相 scrim
+     box-shadow spread 法做反相 scrim 的标准技巧；rgba 跟 --moo-c-brand / --moo-c-scrim 系出同源 */
   background: rgba(79, 70, 229, .08);
   box-shadow: 0 0 0 9999px rgba(15, 23, 42, .35);
   pointer-events: none;
@@ -1239,7 +1257,7 @@ export const SHADOW_CSS = `
   left: 50%;
   transform: translateX(-50%);
   background: var(--c-brand);
-  color: #fff;
+  color: var(--moo-c-brand-fg);
   padding: 8px 14px;
   border-radius: var(--r-md);
   font-size: 12px;
@@ -1258,6 +1276,7 @@ export const SHADOW_CSS = `
 .picker-tip-sel {
   padding-left: 8px;
   margin-left: 4px;
+  /* 分隔线在 indigo 实心上：必须用白叠加，跟主题无关 */
   border-left: 1px solid rgba(255, 255, 255, .35);
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 11px;
@@ -1292,6 +1311,7 @@ export const SHADOW_CSS = `
 .moo-video-preview {
   width: 100%;
   max-height: 280px;
+  /* 视频 letterbox 背景必须是纯黑：跟主题无关，是视频播放器约定 */
   background: #000;
   display: block;
 }
@@ -1307,6 +1327,7 @@ export const SHADOW_CSS = `
   align-items: center;
   gap: 12px;
   padding: 8px 12px 8px 14px;
+  /* 录制浮条暗底：保持高对比度，跟主题无关，硬编码 slate-900 */
   background: rgba(15, 23, 42, .95);
   color: #fff;
   border-radius: var(--r-pill, 999px);
@@ -1319,6 +1340,7 @@ export const SHADOW_CSS = `
   height: 10px;
   border-radius: 50%;
   background: var(--c-danger);
+  /* danger-600 halo：颜色绑定 --c-danger 字面值，没法 var() 进 rgba */
   box-shadow: 0 0 0 4px rgba(220, 38, 38, .25);
   animation: rec-pulse 1.2s ease-in-out infinite;
 }
@@ -1332,6 +1354,7 @@ export const SHADOW_CSS = `
   min-width: 78px;
   text-align: center;
 }
+/* rec-bar 内部按钮：在 slate-900 暗底上的白色叠加按钮，跟主题无关 */
 .moo-rec-bar .moo-btn {
   background: rgba(255, 255, 255, .12);
   border-color: rgba(255, 255, 255, .25);

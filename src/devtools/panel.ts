@@ -22,6 +22,8 @@ function showError(label: string, detail: string) {
   if (!box) {
     box = document.createElement('div')
     box.id = '__moo_err__'
+    // 兜底错误条：必须独立于任何样式系统——它要在 tokens.css 加载失败 / Vue 挂载失败
+    // 这种最坏情况下也能渲染。inline cssText 字面 hex，跟主题无关
     box.style.cssText =
       'position:fixed;left:0;right:0;bottom:0;max-height:50vh;overflow:auto;' +
       'background:#fee2e2;color:#991b1b;font:12px ui-monospace,Menlo,monospace;' +
@@ -48,6 +50,8 @@ window.addEventListener('unhandledrejection', (e) => {
 if (typeof chrome === 'undefined' || typeof chrome.devtools === 'undefined') {
   const el = document.getElementById('app')
   if (el) {
+    // 兜底说明页：非 DevTools 上下文（用户直接访问 panel.html），裸 DOM 没挂 Vue 也没用 tokens.css class
+    // → inline 字面色（gray-700），跟主题无关
     el.style.cssText = 'font:14px ui-sans-serif,system-ui;padding:32px;max-width:560px;margin:0 auto;color:#374151;line-height:1.6;'
     el.textContent = '此页面需要通过 DevTools 打开。请打开任意网页 → 调出开发者工具（F12 / ⌥⌘I）→ 切到「Moo」面板使用。'
   }
