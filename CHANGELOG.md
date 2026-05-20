@@ -12,6 +12,8 @@
 
 代价：首次按 ⌘⇧B 截图 → Annotator 弹出多 50-100ms（CRX 本地拉 chunk 无跨域）。多 tab 用户内存占用直降。manifest.json `web_accessible_resources` 加 `assets/*.js + *.css`（`use_dynamic_url: true` 防 chunk URL 被宿主页缓存）。
 
+**配套兜底**（发版前 review 找出来的 P0 修复）：`defineAsyncComponent` 加 `onError`——chunk 加载失败（场景：扩展 reload 后老 tab 仍持有旧 chunk hash 引用 / SW 重启 race / 离线）时自动 retry 1 次，仍败 → toast「扩展刚重载，请刷新当前页面（⌘R / F5）」+ state 退回 idle。**没这个兜底用户截图会静默卡死**——悬浮球已 hidden，无任何 UI 提示，必须刷页面才能恢复。SubmitDialog 的 ElementPicker 同款。
+
 ### Service Worker retry queue race 修 + 9 个新单测
 
 `flushRetryQueue` 没 inflight 锁，并发场景（SW spin-up `onStartup` + 底部 IIFE + `onHistoryChanged` 同时触发）下两个 flush 都读到同一份队列、各自 fetch、最后 `set(remaining)` 互相覆盖——**成功的重试可能被覆盖回原状**。SW 30s 闲置回收+频繁唤醒，触发概率不低。
@@ -78,6 +80,8 @@ Annotator 主画布 toolbar 是 `role="toolbar"` 不是 dialog，**不加 trap**
 - Step 6/7（HANDOFF 同步 / 上上版归档 / 最终 commit）按 release-captain 约定**不代写**——是判断题，跑完打印「下一步」清单 + 提醒重置 token
 
 下次发版：`pnpm release` 看 dry-run → `export GITEE_TOKEN=xxx && pnpm release --publish` 一条命令搞定。
+
+**dry-run 后续 P1 修**：发版前 review 发现「dry-run」之前真跑 `pnpm build` + 真写 `release/*.zip` + `*.sha256`——名不副实代价高 + 污染 working tree。改完 dry-run 纯打印「会做啥」清单（含 build 命令、预期 zip 文件名、sha256 算法），耗时几十秒 → **0.18s**。同时加 git tag 已存在检查：dry-run 启动后立刻 `git tag -l v$VERSION` 看是否非空，非空 warn「⚠️ tag 已存在 → 先 bump package.json + manifest.json 再跑」——避免忘 bump 直接 `--publish` 撞 tag 已存在的 fail。
 
 ### 工程基础设施
 
