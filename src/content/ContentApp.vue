@@ -50,6 +50,7 @@ import type { Project } from '@/types/config'
 import { MSG, type CaptureScreenshotRes, type MatchProjectRes } from '@/types/messages'
 import { onConfigChanged } from '@/storage/config'
 import { safeSendMessage } from '@/utils/messaging'
+import { useToast } from '@/composables/useToast'
 import { useRequests } from './useRequests'
 import { useErrors } from './useErrors'
 
@@ -63,9 +64,12 @@ const project = ref<Project | null>(null)
 const rawImage = ref('')
 const annotatedImage = ref('')
 const recordedVideo = ref<RecordingResult | null>(null)
-const toast = ref('')
-const toastKind = ref<'success' | 'error' | 'info' | ''>('')
-let toastTimer: number | undefined
+// 这处 kind 多一个 '' 空态——模板里直接把 toastKind 当 class 写（不带前缀），
+// hide 时需要把 kind 重置成 '' 清掉残留 class
+const { toast, toastKind, showToast: showToastRaw } = useToast<'success' | 'error' | 'info' | ''>({
+  initialKind: '',
+  resetKindOnHide: ''
+})
 
 const recorder = useRecorder({ maxSeconds: 30 })
 const recordElapsed = computed(() => recorder.elapsed.value)
@@ -248,7 +252,6 @@ async function adoptRemoteRecording(): Promise<void> {
 }
 
 onBeforeUnmount(() => {
-  if (toastTimer) clearTimeout(toastTimer)
   window.removeEventListener('message', onUrlSignalMessage)
   window.removeEventListener('popstate', onUrlMaybeChanged)
   window.removeEventListener('hashchange', onUrlMaybeChanged)
@@ -376,14 +379,7 @@ function reset() {
 }
 
 function showToast(msg: string, kind: 'success' | 'error' | 'info') {
-  toast.value = msg
-  toastKind.value = kind
-  if (toastTimer) clearTimeout(toastTimer)
   // 失败 toast 显示更久，方便读完错误原因
-  const duration = kind === 'error' ? 6000 : 2800
-  toastTimer = window.setTimeout(() => {
-    toast.value = ''
-    toastKind.value = ''
-  }, duration)
+  showToastRaw(msg, kind, kind === 'error' ? 6000 : 2800)
 }
 </script>

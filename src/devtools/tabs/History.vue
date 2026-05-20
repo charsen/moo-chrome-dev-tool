@@ -100,6 +100,7 @@ import type { BugHistoryEntry } from '@/types/history'
 import { formatSubmitResult } from '@/utils/submitMessage'
 import { safeSendMessage, MessagingError } from '@/utils/messaging'
 import type { Project } from '@/types/config'
+import { useToast } from '@/composables/useToast'
 import { confirmDialog } from '../components/confirm'
 
 const list = ref<BugHistoryEntry[]>([])
@@ -121,14 +122,10 @@ const busyId = ref('')
 const projects = ref<Project[]>([])
 const resubmitTo = ref<Record<string, string>>({})
 
-const toast = ref('')
-const toastKind = ref<'success' | 'error' | 'info'>('info')
-let toastTimer: number | undefined
+const { toast, toastKind, showToast: showToastRaw } = useToast()
+// 包一层保留原有 error=5000 / 其他=2600 的 duration 策略
 function showToast(msg: string, kind: 'success' | 'error' | 'info' = 'info') {
-  toast.value = msg
-  toastKind.value = kind
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = window.setTimeout(() => (toast.value = ''), kind === 'error' ? 5000 : 2600)
+  showToastRaw(msg, kind, kind === 'error' ? 5000 : 2600)
 }
 
 function remoteStatusLabel(s: string): string {
@@ -181,7 +178,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   dispose?.()
-  if (toastTimer) { clearTimeout(toastTimer); toastTimer = undefined }
   if (filterDebounce) { clearTimeout(filterDebounce); filterDebounce = undefined }
 })
 

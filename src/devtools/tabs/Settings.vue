@@ -157,13 +157,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch, type PropType } from 'vue'
+import { computed, defineComponent, h, onMounted, ref, watch, type PropType } from 'vue'
 import type { Project } from '@/types/config'
 import { listHistory, clearHistory } from '@/storage/history'
 import { MSG } from '@/types/messages'
 import { safeSendMessage } from '@/utils/messaging'
 import { useConfig } from '@/composables/useConfig'
 import { useAutoSave } from '@/composables/useAutoSave'
+import { useToast } from '@/composables/useToast'
 import { confirmDialog } from '../components/confirm'
 
 const HISTORY_MAX = 30
@@ -218,14 +219,10 @@ watch(
   { deep: false }
 )
 
-const toast = ref('')
-const toastKind = ref<'success' | 'error' | 'info'>('info')
-let toastTimer: number | undefined
+const { toast, toastKind, showToast: showToastRaw } = useToast()
+// 包一层保留原有 error=5000 / 其他=2600 的 duration 策略
 function showToast(msg: string, kind: 'success' | 'error' | 'info' = 'info') {
-  toast.value = msg
-  toastKind.value = kind
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = window.setTimeout(() => (toast.value = ''), kind === 'error' ? 5000 : 2600)
+  showToastRaw(msg, kind, kind === 'error' ? 5000 : 2600)
 }
 
 // 跟 Environment 一致走 useAutoSave；这里编辑路径都是显式 commit（toggle / blur 后），
@@ -236,10 +233,6 @@ const { saveState, scheduleSave: save } = useAutoSave({
   debounceMs: 0,
   save: writeConfig,
   onError: (e) => { showToast(`保存失败：${e.message}`, 'error') }
-})
-
-onBeforeUnmount(() => {
-  if (toastTimer) { clearTimeout(toastTimer); toastTimer = undefined }
 })
 
 // 缓冲条数行内校验：input 时显示错误，blur/change 时 clamp 并保存。

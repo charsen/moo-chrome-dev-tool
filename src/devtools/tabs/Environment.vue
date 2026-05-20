@@ -207,9 +207,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useConfig } from '@/composables/useConfig'
 import { useAutoSave } from '@/composables/useAutoSave'
+import { useToast } from '@/composables/useToast'
 import {
   createDefaultProject,
   createDefaultServer,
@@ -253,14 +254,10 @@ function onTemplateSave(value: string) {
 // === 自动保存：draft 任何深层变化触发 800ms 防抖，再提交到 config 并落盘 ===
 // 沿用了原有 draft 层是为了在用户高频输入（如 URL 模板）期间避免每次 keystroke
 // 都触发 onConfigChanged → 内容脚本重新匹配的"在键入中已被部分应用"问题。
-const toast = ref('')
-const toastKind = ref<'success' | 'error' | 'info'>('info')
-let toastTimer: number | undefined
+const { toast, toastKind, showToast: showToastRaw } = useToast()
+// 包一层保留原有 error=5000 / 其他=2600 的 duration 策略
 function showToast(msg: string, kind: 'success' | 'error' | 'info' = 'info') {
-  toast.value = msg
-  toastKind.value = kind
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = window.setTimeout(() => (toast.value = ''), kind === 'error' ? 5000 : 2600)
+  showToastRaw(msg, kind, kind === 'error' ? 5000 : 2600)
 }
 
 // 防抖 + saveState 状态机统一走 useAutoSave；本 tab 关心的只剩 draft → config 同步逻辑
@@ -324,11 +321,6 @@ watch(
 function retrySave() {
   void flushSave()
 }
-
-// toastTimer 是本 tab 自己的，不归 useAutoSave 管，单独清
-onBeforeUnmount(() => {
-  if (toastTimer) { clearTimeout(toastTimer); toastTimer = undefined }
-})
 
 function addProject() {
   const p = createDefaultProject(`项目 ${draft.value.projects.length + 1}`)
