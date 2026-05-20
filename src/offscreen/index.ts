@@ -30,12 +30,12 @@
  * 现在所有状态切换都过 transition() 强制 invariant，违反就显式 reject。
  */
 
+import { canTransition, type State } from './stateMachine'
+
 interface StartMsg { target: 'offscreen'; type: 'START'; streamId: string }
 interface StopMsg { target: 'offscreen'; type: 'STOP' }
 interface CancelMsg { target: 'offscreen'; type: 'CANCEL' }
 type Msg = StartMsg | StopMsg | CancelMsg
-
-type State = 'idle' | 'starting' | 'recording' | 'stopping'
 
 interface StopResult { ok: boolean; dataUrl?: string; bytes?: number; mime?: string; error?: string }
 
@@ -45,9 +45,14 @@ let chunks: Blob[] = []
 let stream: MediaStream | null = null
 let stopResolver: ((r: StopResult) => void) | null = null
 
+/**
+ * 包装 canTransition：合法就提交 module-level state、返回 true；非法返回 false 不改 state。
+ * 保留原签名（from 支持单值或数组）。
+ */
 function transition(from: State | State[], to: State): boolean {
-  const allowed = Array.isArray(from) ? from.includes(state) : state === from
-  if (!allowed) return false
+  const candidates = Array.isArray(from) ? from : [from]
+  if (!candidates.includes(state)) return false
+  if (!canTransition(state, to)) return false
   state = to
   return true
 }
