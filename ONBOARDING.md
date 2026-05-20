@@ -10,11 +10,12 @@ Work Type Breakdown:
   Plan Design    ████░░░░░░░░░░░░░░░░  20%
 
 Top Skills & Commands:
-  /compact  ████████████████████  3x/month
-  /exit     ███████░░░░░░░░░░░░░  1x/month
+  /compact          ████████████████████  3x/month
+  /team-onboarding  ███████░░░░░░░░░░░░░  1x/month
+  /exit             ███████░░░░░░░░░░░░░  1x/month
 
 Top MCP Servers:
-  chrome-devtools  ████████████████████  138 calls
+  chrome-devtools  ████████████████████  145 calls
   playwright       ░░░░░░░░░░░░░░░░░░░░  1 call
 
 ## Your Setup Checklist
