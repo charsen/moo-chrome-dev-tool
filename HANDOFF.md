@@ -12,52 +12,7 @@ v0.1.12 **已发**（2026-05-19，gitee tag `v0.1.12` + Release 含 zip + sha256
 
 ## 这两周做了什么
 
-按版本时间线：
-
-**v0.1.7（Batch 3）** — UX 收尾：focus ring 改 token、暗色 brand + 状态点 halo、文案再去黑话动词统一、z-index/窄宽溢出/popup a11y、模板防御性兜底。
-
-**v0.1.8（Batch 4-5-6）** — 安全 + 数据健壮性大扫除：
-- normalize/import 边界硬化，applyAuthHeaders 大小写敏感修，sanitizeHeaders 拦 CRLF
-- parseRemoteId 字符集校验，renderTemplate JSON-escape
-- storageKeys 白名单 + Unicode 同形字符防御
-- ElementPicker 抹 password、dataUrlToBlob guard、sender.id 校验
-- 卡顿优化 4 项、消息协议契约 4 项、JSON.parse null 防御、XHR url 非 string 防崩
-- pickTokenHeaders defense-in-depth、ElementPicker mousemove 改 rAF coalesce
-- release/打包安全收口
-
-**v0.1.9（Batch 7-8）** — 工程基础设施 + 录屏底盘：
-- **CI**：GitHub Actions 跑 `type-check + test + build`（`.github/workflows/ci.yml`）
-- **Pre-commit**：simple-git-hooks 跑 `pnpm type-check && pnpm test`
-- **单测**：vitest + 100+ case，覆盖 clone/redact/submitMessage/history/normalizeProject/parseRemoteId/template（`test/*.test.ts`）
-- **类型严**：开 `noUncheckedIndexedAccess`，修 108 处
-- **录屏重构**：`src/offscreen/` 状态机重构修了多个 race；rec-bar 任意 tab 都能显示；视频预览改 atob 绕宿主 CSP
-- **权限窄化**：`tabCapture` 改 optional permission（按需 request）
-- 撤掉 `console.error` monkey-patch（之前会污染扩展错误页）
-- Settings.vue 移除 `(Switch as any).props` 反 pattern
-- messages.ts 强类型 dispatch
-
-**v0.1.10** — 一堆边缘 case 补完 + 换 logo：
-- 录屏中切 tab 悬浮球不消失（`refreshProject` fallback 保留旧 matches）
-- 录屏边缘 case 全覆盖（Chrome 停止共享条、同 tab navigation 恢复）
-- 悬浮球 onMounted 也 clamp，不再被推到视口外；clamp 用对了尺寸常量
-- 录像视频预览黑屏修（dataUrl 超 Chrome 上限，改用 blob URL）
-- useRequests 用 `DEFAULT_REDACT` 兜底，修早期请求未脱敏漏洞
-- logo 换成 f44 黑鹰头 + 黄色 reticle 眼（这一版稳了，别再换）
-
-**v0.1.11（BREAKING）** — webhook 化纠偏 + scaffold 配套：
-- 删 `applyAuthHeaders` 函数及全部调用；fetch 不再注 `Authorization` / `X-Scaffold-Token` 任何 header
-- 默认 Payload 模板顶部加 `"token": "{{token}}"`（用户在模板里直接渲染）
-- `buildRequestBody` 不再吃 `project` 参数，纯粹根据 server.headers + 渲染后的 body 出请求
-- 状态回查也走 POST + body token：路径 `/status-public` 还在，但 method 改 POST，URL 完全不沾 token
-- 删 `BugHistoryEntry.remoteHeaders` 字段（type + storage normalize）；老 entry 落盘的字段会被静默丢
-- 删 `utils/remoteHeaders.ts` 的 `pickPropagatedHeaders`（保留 `parseRemoteId`）
-- 配套 scaffold 后端改：`authenticateWithReason` 改读 `$req->json('token')`；路由 `/status-public` GET → POST；webhook 接口拆出独立 group 不沾用户 `$middleware`（修 `['web']` 配置撞 419 CSRF 的坑）；rate limiter 注册时机修对（之前用 `app->resolving(Router)` 永远不 fire，请求 500）
-- `docs/SERVER_INTEGRATION.md` 整段重写为 webhook 风格，Node 骨架例子全换
-- 文档侧 9 个文件同步：scaffold `CLAUDE.md` / `09-accounts.md` / `12-security.md` / `07-todo-inbox.md`；ext `Environment.vue` UI 提示、`config.ts` token 字段注释
-
-**升级现网部署的事项**（口头跟同事说）：
-1. 后端必须配套升到本次 scaffold commit，`composer update` + `php artisan optimize:clear`
-2. 配自定义后端（非 scaffold）的同事：参照新版 `docs/SERVER_INTEGRATION.md` 把鉴权改成从 body 读 token
+> 历史版本（v0.1.7 → v0.1.11）的"这两周做了什么"已归档至 [docs/handoff-archive/v0.1.x.md](docs/handoff-archive/v0.1.x.md)。
 
 **v0.1.12（持续累积，未 release，纯 UX 增量）**：
 
@@ -156,6 +111,7 @@ v0.1.12 已发完，前批所有候选事项均已落地或判定不做。当前
   - **已确认排除**：site access / dist 文件缺失 / content script 自身 throw / SW 死了
   - **测试矩阵**：app.example.com / app2.example.com / example.com / localhost:5173（全新 tab）**全部无注入**——无 shadow host，`window.__mooInjected` false，page console 无 error
   - **MCP 限制**：programmatic `reloadBtn.click()` 无效（user-gesture 限制）；`new_page chrome-extension://EXTID/src/popup/index.html` 也 list 不出
+  - **2026-05-20 复测一次**（Chrome 148）：app.example.com 上 `window.__mooInjected` 仍 `false`、shadowHost 0、`[class*="moo-"]` 0；`new_page chrome-extension://EXTID/src/popup/index.html` 静默失败 list 不出；`navigate_page` 把现有 tab 导到 `chrome-extension://EXTID/manifest.json` 也让 tab 从 list 消失。**MCP 路径彻底走死**，必须等用户回桌前手动走 ladder ①②
   - **当前判断**：Chrome 进程内的 content_scripts 注册子系统**对这个扩展失效**——可能 Chrome profile 状态损坏 / 内存里 cache 了老 manifest（这扩展用了 `world: "MAIN"` 字段，早期 Chrome 不支持，可能遗留兼容性问题）/ MV3 行为变了
   - **修复 ladder**（按成本升序）：① 重启 Chrome（30 秒）② chrome://extensions 移除 + 重新加载 unpacked（2 分钟，强制重注册绕 cache）③ chrome://settings/reset 重置扩展（核选项）
   - **下次接班的事**：用户回报问题后定位时**先**走 ladder ①②（90% 应解决）。如果仍不行才往下查：SW console 看 register 时是否 throw / Chrome 版本是否最近升级 / 是否能复现在干净 profile。可写成「隐藏的第 6 个」坑加进 HANDOFF

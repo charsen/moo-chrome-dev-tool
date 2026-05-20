@@ -55,6 +55,8 @@ git push gitee master --tags
 # 6. 同步 HANDOFF.md
 # 「一句话现状」第一段更新到新版本；
 # 「这两周做了什么」加 vX.Y.Z 段；
+# **把上上版的「这两周做了什么」段移到 docs/handoff-archive/v0.1.x.md**
+#   （HANDOFF 主文件只保留当前未发 + 最近 1 个发版；归档文件按大版本族分，目前是 v0.1.x.md）；
 # 如果跳了 checklist，把「发版决策小记」也更新；
 # 划掉已完成的 todo。
 

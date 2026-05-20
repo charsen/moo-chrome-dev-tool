@@ -149,3 +149,50 @@ popup 底部加一段 history 摘要：
 - 服务端集成文档 `docs/SERVER_INTEGRATION.md` 整段重写为 webhook 风格
 - UI 提示文案（环境 Tab 项目 token 字段下方）同步改写
 - 单测 105 case 全过
+
+## v0.1.10
+
+### 一堆边缘 case 补完 + 换 logo
+
+- 录屏中切 tab 悬浮球不消失：`refreshProject` fallback 保留旧 matches，避免短暂"没匹配项目"导致悬浮球闪掉
+- 录屏边缘 case 全覆盖：Chrome 自带的"停止共享"条点击、同 tab navigation 后恢复录制状态
+- 悬浮球 `onMounted` 也走 clamp，不再被推到视口外；clamp 算尺寸用对了常量（之前用错值会越界）
+- 录像视频预览黑屏修：dataUrl 超 Chrome 上限改用 blob URL
+- `useRequests` 用 `DEFAULT_REDACT` 兜底，修早期请求未脱敏漏洞（用户配置脱敏规则之前就抓到的那段空窗期）
+- logo 换成 f44 黑鹰头 + 黄色 reticle 眼。这版定稿，**不要再换**
+
+## v0.1.9
+
+### 工程基础设施 + 录屏底盘重构
+
+- **CI**：GitHub Actions 跑 `type-check + test + build`（`.github/workflows/ci.yml`）
+- **Pre-commit**：simple-git-hooks 跑 `pnpm type-check && pnpm test`，commit 前自动 gate
+- **单测**：vitest + 100+ case，覆盖 clone / redact / submitMessage / history / normalizeProject / parseRemoteId / template（`test/*.test.ts`）
+- **类型严**：开 `noUncheckedIndexedAccess`，修 108 处
+- **录屏重构**：`src/offscreen/` 状态机重构修了多个 race；rec-bar 任意 tab 都能显示；视频预览改 atob 绕宿主 CSP
+- **权限窄化**：`tabCapture` 改 optional permission，首次录屏才 `chrome.permissions.request()` 弹窗
+- 撤掉 background 里的 `console.error` monkey-patch（之前会污染扩展错误页，所有插件错误都被吃掉/重写）
+- `Settings.vue` 移除 `(Switch as any).props` 反 pattern
+- `messages.ts` 强类型 dispatch，新增 message 要把所有 handler 补齐才能过编译
+
+## v0.1.8
+
+### 安全 + 数据健壮性大扫除
+
+- normalize / import 边界硬化，`applyAuthHeaders` 大小写敏感修，`sanitizeHeaders` 拦 CRLF 注入
+- `parseRemoteId` 字符集校验，`renderTemplate` JSON-escape
+- `storageKeys` 白名单 + Unicode 同形字符防御
+- `ElementPicker` 抹 password、`dataUrlToBlob` guard、`sender.id` 校验
+- 卡顿优化 4 项、消息协议契约 4 项、`JSON.parse` null 防御、XHR url 非 string 防崩
+- `pickTokenHeaders` defense-in-depth、`ElementPicker` mousemove 改 rAF coalesce
+- release / 打包安全收口
+
+## v0.1.7
+
+### UX 收尾（Batch 3）
+
+- focus ring 改 token
+- 暗色 brand + 状态点 halo 修
+- 文案再去黑话动词统一
+- z-index / 窄宽溢出 / popup a11y
+- 模板防御性兜底
