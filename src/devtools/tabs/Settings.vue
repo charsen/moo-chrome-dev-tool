@@ -162,6 +162,10 @@ import type { Project } from '@/types/config'
 import { listHistory, clearHistory } from '@/storage/history'
 import { MSG } from '@/types/messages'
 import { safeSendMessage } from '@/utils/messaging'
+// retryQueue 是纯函数模块（只读 chrome.storage.local），devtools 上下文可用，
+// 直接 import 比走 sendMessage(RETRY_QUEUE_*) 少一次 SW 唤醒 + 一轮 IPC。
+// Storage key 完全封在模块里，UI 不再知道叫 'mooRetryQueue'。
+import { getQueueLength, clearQueue as clearRetryQueue } from '@/background/retryQueue'
 import { useConfig } from '@/composables/useConfig'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useToast } from '@/composables/useToast'
@@ -185,8 +189,7 @@ const active = computed<Project | undefined>(() =>
 async function refreshStats() {
   const hist = await listHistory()
   historyCount.value = hist.length
-  const r = await chrome.storage.local.get('mooRetryQueue')
-  queueCount.value = Array.isArray(r.mooRetryQueue) ? r.mooRetryQueue.length : 0
+  queueCount.value = await getQueueLength()
 }
 
 onMounted(async () => {
@@ -323,7 +326,7 @@ async function clearQueue() {
   if (!ok) return
   busy.value = 'clearQueue'
   try {
-    await chrome.storage.local.set({ mooRetryQueue: [] })
+    await clearRetryQueue()
     await refreshStats()
     showToast(`已丢弃 ${n} 条`, 'success')
   } catch (e) {

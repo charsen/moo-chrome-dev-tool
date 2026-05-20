@@ -12,11 +12,10 @@ import { addHistoryEntry, listHistory, onHistoryChanged, updateHistoryEntry } fr
 import { renderTemplate } from '@/utils/template'
 import { parseRemoteId } from '@/utils/remoteHeaders'
 import { updateActionBadge } from '@/utils/badge'
-import { enqueueRetry, flushRetryQueue, type QueuedRequest } from '@/background/retryQueue'
+import { enqueueRetry, flushRetryQueue, getQueueLength } from '@/background/retryQueue'
 import type { BugServer, MooConfig, Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
 
-const RETRY_QUEUE_KEY = 'mooRetryQueue'
 const RETRY_ALARM = 'mooRetry'
 
 /** 当前录屏中的 tab 与开始时刻。content script 重挂时通过 QUERY_RECORDING_STATE
@@ -56,10 +55,9 @@ chrome.alarms?.onAlarm.addListener((alarm) => {
 // 用户在浏览器中途的失败 submit 要干等 alarm 周期（5min）才会重试。
 ;(async () => {
   try {
-    const r = await chrome.storage.local.get(RETRY_QUEUE_KEY)
-    const list = (r[RETRY_QUEUE_KEY] as QueuedRequest[]) ?? []
-    if (list.length > 0) {
-      console.log('[Moo] SW boot: 立即 flush', list.length, '条重试队列')
+    const n = await getQueueLength()
+    if (n > 0) {
+      console.log('[Moo] SW boot: 立即 flush', n, '条重试队列')
       await flushRetryQueue()
     }
   } catch (e) {

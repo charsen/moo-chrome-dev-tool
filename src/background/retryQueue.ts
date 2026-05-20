@@ -122,6 +122,33 @@ async function doFlush(): Promise<number> {
   return processed
 }
 
+/**
+ * 当前队列长度（只 peek，不修改）。
+ *
+ * 给 UI（Settings 存储面板）和 SW boot IIFE 用：让外部不必知道 storage key 也
+ * 不必自行解析数组。storage 读失败按"空队列"返回 0——这是只读统计调用，
+ * 不应该把 storage 异常往上抛打断 UI 渲染。
+ */
+export async function getQueueLength(): Promise<number> {
+  try {
+    const r = await globalThis.chrome.storage.local.get(RETRY_QUEUE_KEY)
+    const list = r[RETRY_QUEUE_KEY] as QueuedRequest[] | undefined
+    return Array.isArray(list) ? list.length : 0
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * 清空队列。idempotent：已空也安全（直接写空数组覆盖）。
+ *
+ * 写空数组而不是 remove(key)：保持 storage shape 跟 enqueue 路径一致，
+ * 避免 onChanged listener 看到 newValue: undefined 时分支判断更麻烦。
+ */
+export async function clearQueue(): Promise<void> {
+  await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: [] })
+}
+
 // 测试用：重置 inflight 锁（生产代码不要 import）
 export function __resetForTest(): void {
   flushPromise = null
