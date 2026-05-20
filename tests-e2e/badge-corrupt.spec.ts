@@ -67,9 +67,13 @@ test('A3.3 · badge entry 缺失 result 字段（老格式 / 损坏）不崩', a
   })
   await waitForBadge()
   const badge = await readBadgeText(sw)
-  // 实测：badge 把 corrupt entry 也算作失败（缺 result 字段 = falsy .ok = 计入）。
-  // 这是真行为，不是 bug——但**潜在改进点**：corrupt entry 应该 silent 跳过，
-  // 不算 badge 计数。**已记录到 docs/COVERAGE_MATRIX.md 的 P2 待办**。
-  // 本断言只验证「不崩」+ badge 是合法 string（'0' 到 '3' 之间）
-  expect(badge, 'badge 值非合理范围 — 可能算法崩').toMatch(/^[0-3]$|^99\+$|^$/)
+  // **当前真实行为**：corrupt entry 走 listHistory → normalizeHistoryEntry，
+  // 后者把缺失的 result.ok 强制 bool(undefined)=false，所以 corrupt entry **被显式标为失败**
+  // 进而被 badge 计入。3 个 entry 全计入 → badge = '3'。
+  // **这是 normalize 语义决策，不是 badge 的 bug**：
+  // 「来源缺关键字段的 entry 默认当失败处理」属合理保守姿态——告诉用户有数据可能不完整、要看一眼。
+  // 如果要改成「缺字段 silent 跳过」，应该改 src/storage/history.ts 的 normalizeHistoryEntry，
+  // 但那会传染到 popup statusOf / History 状态 chip 等多处，**需要架构师拍板**。
+  // 本 spec 只锁住「不崩」+ 当前行为 = '3'。
+  expect(badge, 'badge 没崩 + corrupt entry 经 normalize 后按失败计入（当前语义）').toBe('3')
 })

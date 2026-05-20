@@ -124,7 +124,7 @@
 
 ### P2（可有可无，不影响发版）
 - ~150 case 各种 edge state
-- **新增**：A3.3 测试时发现 badge 把 corrupt entry（缺 `result` 字段 / `result: {}`）当作失败计数。`updateActionBadge` 用 `!e.result?.ok` 判定，undefined → falsy → 计入。**潜在改进**：corrupt entry 应 silent 跳过，不污染计数。改法：badge.ts 加 type guard 跳过缺关键字段的 entry。**优先级 P2**：不影响发版，但 storage 升级时遗留老格式 entry 会让 badge 数虚高
+- **更正前查明**：A3.3 第一次以为 badge 把 corrupt entry 当失败是 badge.ts 的 bug，加 isExplicitFailure type guard 想修。实测发现修了没用——`src/storage/history.ts:42` 的 `normalizeHistoryEntry` 早就把缺失 `result.ok` 强制 `bool(undefined)=false`，corrupt entry 走 listHistory 后**已经被显式标为失败**。badge.ts 用啥判定都是 counted。**真改法在 normalize 层**：决策「缺字段 entry 当失败 vs silent 跳过」会传染到 popup statusOf / History 状态 chip 多处，**P2 等架构师拍板**。badge.ts 改动已 revert，A3.3 锁当前行为 = '3'
 
 ### ❌ skip + 理由
 - popup × 任何 < 320 viewport：Chrome 不会按比 popup 设计宽度小的开
