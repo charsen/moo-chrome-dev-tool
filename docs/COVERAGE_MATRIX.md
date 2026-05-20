@@ -2,7 +2,7 @@
 
 > 2026-05-20 启动。**目的**：枚举所有可测维度的交叉，找出真值缺口。**不堆 fake spec**。
 >
-> 已有覆盖：vitest 单测 161 + Playwright E2E 34 = **195 case**。
+> 已有覆盖：vitest 单测 161 + Playwright E2E **59** = **220 case**（含本批 panel-harness + 11 case 解锁）。
 >
 > 本文档**活档**：每次新加 spec 或发现新维度都来更新对应单元格。
 
@@ -42,11 +42,11 @@
 | Surface \ Width | 320 | 360 | 400 | 480 | 600 | 768 | 1024 | 1280 | 1366 | 1440 | 1600 | 1920 | 2560 | 3840 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | popup | ❌设计宽 | R1 ✓ | ⏳ | ❌过 popup 宽 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Panel | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
-| Overview | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
-| Environment | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
-| History | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
-| Settings | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| Panel | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ✓PH | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ✓PH |
+| Overview | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ✓PH | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| Environment | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ✓PH | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| History | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ✓PH | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| Settings | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ✓PH | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
 | BodyViewer | R3 ✓ | ⏳ | R3 ✓ | ⏳ | ⏳ | R3 ✓ | ⏳ | R3 ✓ | ⏳ | ⏳ | ⏳ | R3 ✓ | ⏳ | R3 ✓ |
 | PayloadEditorModal | ❌需 Env 上下文 | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
 | ConfirmModal | ❌依赖父 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -57,11 +57,13 @@
 | ElementPicker | ❌同上 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | RecBar | ❌同上 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-**A × B 单元格 = 17 × 14 = 238。已 ✓ = 7。⏳ = 90。❌ = 141。**
+**A × B 单元格 = 17 × 14 = 238。已 ✓ = 14（含 7 PH = panel-harness 解锁）。⏳ = 83。❌ = 141。**
 
 ❌「需 host 页注入」可以通过给 ContentApp 等加 harness 解决，但是 M 工程量。**列在 todo 不强加。**
 
 ❌「过 popup 宽」类是物理上不可能。
+
+**PH = panel-harness 解锁**：commit `fba64eb` 建 `src/devtools/panel-harness.{html,ts}`，mock chrome.devtools.* + chrome.tabs.sendMessage，让 Panel.vue + 4 Tab 能 standalone 跑。本批已锁 4 Tab × empty/populated 渲染 + Overview wide 长 URL 截断 + Panel × 768/3840 响应式 = 11 case。**后续 P0/P1 case 都可以在 harness 之上写**——4 Tab × dark mode / 4 Tab × interaction (CRUD, toggle, click row) / Overview 慢请求染色 / Environment CRUD 等 ~30+ case 等候。
 
 ---
 
