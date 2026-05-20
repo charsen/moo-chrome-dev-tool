@@ -1,13 +1,13 @@
 <template>
   <ElementPicker v-if="picking" @pick="onElementPicked" @cancel="picking = false" />
 
-  <div v-show="!picking" class="moo-dialog-mask" @click.self="onMaskClick">
-    <div ref="dialogEl" class="moo-dialog" role="dialog" aria-modal="true" aria-labelledby="moo-submit-title" tabindex="-1">
-      <header class="moo-dialog-head">
-        <h3 id="moo-submit-title">提交 Bug — {{ project.name }}</h3>
-        <MooCloseBtn @click="emit('cancel')" />
-      </header>
-
+  <MooDialog
+    v-show="!picking"
+    :title="`提交 Bug — ${project.name}`"
+    labelled-by="moo-submit-title"
+    initial-focus="container"
+    @close="onMaskClick"
+  >
       <!-- 提交成功内嵌反馈：取代 toast 一闪而过的反馈方式 -->
       <div v-if="successInfo" class="moo-submit-success">
         <div class="moo-success-icon" aria-hidden="true">✓</div>
@@ -205,8 +205,7 @@
           {{ submitting ? '提交中…' : (failureInfo ? '重试' : '提交') }} <span class="kbd-hint">⌘↵</span>
         </button>
       </footer>
-    </div>
-  </div>
+  </MooDialog>
 </template>
 
 <script setup lang="ts">
@@ -223,7 +222,7 @@ import { safeSendMessage } from '@/utils/messaging'
 // 真正的 defineAsyncComponent 放在 setup 内（onError 需要闭包 picking + emit）。
 import type { PickedElement } from './ElementPicker.vue'
 import MooCloseBtn from '@/components/MooCloseBtn.vue'
-import { useFocusTrap } from '@/composables/useFocusTrap'
+import MooDialog from './components/MooDialog.vue'
 import type { RecordingResult } from './useRecorder'
 
 const props = defineProps<{
@@ -303,13 +302,8 @@ const serverId = ref(props.project.defaultServerId || props.project.servers[0]?.
 const preview = ref('')
 const submitting = ref(false)
 const titleInput = ref<HTMLInputElement | null>(null)
-const dialogEl = ref<HTMLDivElement>()
-
-// 焦点陷阱：Tab/Shift+Tab 在 dialog 内循环，避免键盘用户走到宿主页。
-// initialFocus: 'container' —— 不让 trap 抢初始焦点；下面 onMounted 仍负责把焦点
-// 给到标题输入框（dialog 本身 tabindex="-1" 只是给 trap 兜底）。
-// 不传 onEscape：组件自己的 onKeydown 已经处理 Esc → emit('cancel')，重复 emit 会触发两次。
-useFocusTrap(dialogEl, { initialFocus: 'container' })
+// 焦点陷阱 + Esc 收口到 MooDialog；本组件 onMounted 仍负责把焦点给到标题输入框（MooDialog initialFocus='container'
+// 让 trap 不抢初始焦点）。Esc 路径见 MooDialog 的 @close → onMaskClick。
 
 /** 提交成功后的内嵌反馈视图。设值即覆盖 body/footer 展示 ✓ 卡片。 */
 const successInfo = ref<{ message: string; remoteId?: string } | null>(null)
@@ -641,15 +635,10 @@ function onRecapture() {
   emit('recapture')
 }
 
-// 键盘快捷键：Esc 取消，⌘/Ctrl+Enter 提交
+// 键盘快捷键：⌘/Ctrl+Enter 提交（Esc 走 MooDialog → onMaskClick 路径）
 function onKeydown(e: KeyboardEvent) {
   if (picking.value) return // 选元素状态由 ElementPicker 自己接管
   if (successInfo.value) return // 成功视图期间快捷键全部禁用，等待自动关闭
-  if (e.key === 'Escape') {
-    e.stopPropagation()
-    emit('cancel')
-    return
-  }
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
     e.preventDefault()
     void onSubmit()
