@@ -457,8 +457,12 @@ export const SHADOW_CSS = `
   display: flex;
   align-items: center;
   gap: 6px;
+  /* 窄屏（< 720px viewport，DevTools 开着的笔电也常踩到）让工具/色板/线宽按钮自然换行，
+     否则整行溢出 .moo-toolbar 的 max-width: calc(100vw - 32px)，视觉上像被挤变形 */
+  flex-wrap: wrap;
+  row-gap: 6px;
+  justify-content: center;
 }
-.toolbar-row.tools-row { justify-content: center; }
 .toolbar-row.action-row {
   border-top: 1px solid var(--c-divider);
   padding-top: 6px;
@@ -470,9 +474,18 @@ export const SHADOW_CSS = `
   align-items: center;
   gap: 6px;
   flex: 0 0 auto;
+  flex-wrap: wrap;
+  row-gap: 6px;
+  justify-content: flex-end;
 }
 .moo-toolbar--stacked .tool span {
   margin-left: 4px;
+}
+/* 窄屏（< 720px）藏掉工具按钮的中文标签只留 icon，配合 toolbar-row 的 flex-wrap
+   能让整条工具栏在小笔电 / DevTools 半屏场景里仍单行容纳 */
+@media (max-width: 720px) {
+  .moo-toolbar--stacked .tool span { display: none; }
+  .moo-toolbar--stacked .tool { padding: 0 8px; }
 }
 .moo-toolbar button {
   display: inline-flex;
