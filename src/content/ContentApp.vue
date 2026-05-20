@@ -34,6 +34,7 @@
       @submitted="onSubmitted"
       @reannotate="onReannotate"
       @recapture="onRecapture"
+      @async-load-failed="(msg: string) => showToast(msg, 'error')"
     />
     <div v-if="toast" :class="['moo-toast', toastKind]">{{ toast }}</div>
   </div>
@@ -42,12 +43,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import FloatingBall from './FloatingBall.vue'
-// Annotator / SubmitDialog 仅在「截图标注 / 提交」流程才渲染（state=annotating|submitting），
-// 90% 浏览页面用不到。改成 defineAsyncComponent 让 vite 拆独立 chunk，
-// 首注入 content script 从 ~99KB 降到 <60KB；用户首次按 ⌘⇧B 时本地 chunk 加载 ~50-100ms 内可接受。
-// 这俩组件靠 ContentApp 模板的 v-if 控制挂载——v-if=false 时根本不会触发 import()，"不渲染不加载"语义自然成立。
-const Annotator = defineAsyncComponent(() => import('./Annotator.vue'))
-const SubmitDialog = defineAsyncComponent(() => import('./SubmitDialog.vue'))
 import { maskPasswordInputs } from './passwordMask'
 import { useRecorder, type RecordingResult } from './useRecorder'
 import type { Project } from '@/types/config'
@@ -386,4 +381,36 @@ function showToast(msg: string, kind: 'success' | 'error' | 'info') {
   // 失败 toast 显示更久，方便读完错误原因
   showToastRaw(msg, kind, kind === 'error' ? 6000 : 2800)
 }
+
+// Annotator / SubmitDialog 仅在「截图标注 / 提交」流程才渲染（state=annotating|submitting），
+// 90% 浏览页面用不到。defineAsyncComponent 拆独立 chunk：首注入 content script
+// 从 ~99KB 降到 <60KB；首次按 ⌘⇧B 时本地 chunk 加载 ~50-100ms 内可接受。
+//
+// onError 兜底：扩展刚被重载（chrome://extensions 点 🔄 / 装新版）后，老 tab 里的
+// content script 还在跑，但 chrome-extension://EXTID/assets/<old-hash>.js 已 404。
+// 不接 onError 的话 import() reject 后 Annotator 永不挂载，悬浮球此刻又是 hidden，
+// 用户什么都看不到（截图卡死）。重试一次防偶发网络抖动，再失败就 toast 让用户刷新页。
+// 必须在 setup 里调（不能放模块顶层），否则闭包不到 state / showToast。
+// 不加 loadingComponent —— 用户按截图键是同步动作，秒开是常态，加 loading 反而 UI 闪烁。
+function makeAsyncWithFallback(
+  loader: () => Promise<unknown>,
+  what: string
+) {
+  return defineAsyncComponent({
+    loader: loader as () => Promise<typeof import('./Annotator.vue')>,
+    timeout: 10000,
+    onError(err, retry, fail, attempts) {
+      if (attempts <= 1) {
+        retry()
+        return
+      }
+      console.error(`[moo] async load failed: ${what}`, err)
+      fail()
+      showToast('扩展刚重载，请刷新当前页面（⌘R / F5）', 'error')
+      state.value = 'idle'
+    }
+  })
+}
+const Annotator = makeAsyncWithFallback(() => import('./Annotator.vue'), 'Annotator')
+const SubmitDialog = makeAsyncWithFallback(() => import('./SubmitDialog.vue'), 'SubmitDialog')
 </script>

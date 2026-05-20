@@ -220,7 +220,7 @@ import { safeSendMessage } from '@/utils/messaging'
 // ElementPicker 只在用户点"选元素"按钮（picking=true）才挂载，默认根本不渲染。
 // 异步拆 chunk 后 SubmitDialog 自身体积也跟着瘦——picker 只用全屏 overlay 那一下。
 // PickedElement 类型仍按 type-only 静态导入，避免编译时依赖触发 chunk 合并。
-const ElementPicker = defineAsyncComponent(() => import('./ElementPicker.vue'))
+// 真正的 defineAsyncComponent 放在 setup 内（onError 需要闭包 picking + emit）。
 import type { PickedElement } from './ElementPicker.vue'
 import MooCloseBtn from '@/components/MooCloseBtn.vue'
 import { useFocusTrap } from '@/composables/useFocusTrap'
@@ -240,6 +240,9 @@ const emit = defineEmits<{
   (e: 'reannotate'): void
   /** 丢弃当前截图，重新触发屏幕捕获（ContentApp 负责切状态） */
   (e: 'recapture'): void
+  /** 异步子组件（ElementPicker）chunk 加载失败：扩展重载后老 hash 文件 404。
+   *  自己没 toast，让 ContentApp 提示用户刷页。 */
+  (e: 'async-load-failed', message: string): void
 }>()
 
 const title = ref('')
@@ -327,6 +330,24 @@ const selectedErrIds = ref<Set<string>>(new Set())
 // element picker
 const picking = ref(false)
 const pickedElements = ref<PickedElement[]>([])
+
+// onError 兜底：扩展刚被重载后，老 tab 里的 ElementPicker chunk URL 已 404。
+// 不接 onError 的话 picking 卡 true，全屏 overlay 又没渲染，用户看着 SubmitDialog
+// 「隐藏不动」摸不着头脑。重试一次防偶发，再失败把 picking 退回 + 让 ContentApp 弹 toast。
+const ElementPicker = defineAsyncComponent({
+  loader: () => import('./ElementPicker.vue'),
+  timeout: 10000,
+  onError(err, retry, fail, attempts) {
+    if (attempts <= 1) {
+      retry()
+      return
+    }
+    console.error('[moo] async load failed: ElementPicker', err)
+    fail()
+    picking.value = false
+    emit('async-load-failed', '扩展刚重载，请刷新当前页面（⌘R / F5）')
+  }
+})
 
 // 「清空」附带元素时的两步确认：第一次点 → 按钮文字变「再点一下确认清空」，3 秒内
 // 再点才真清；3 秒后自动复位。挑元素是有成本的工作（要在页面里找回每一个 DOM 节点
