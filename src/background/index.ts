@@ -12,6 +12,7 @@ import { addHistoryEntry, listHistory, onHistoryChanged, updateHistoryEntry } fr
 import { renderTemplate } from '@/utils/template'
 import { parseRemoteId } from '@/utils/remoteHeaders'
 import { updateActionBadge } from '@/utils/badge'
+import { enqueueRetry, flushRetryQueue, type QueuedRequest } from '@/background/retryQueue'
 import type { BugServer, MooConfig, Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
 
@@ -352,12 +353,12 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
     if (!resp.ok && resp.status >= 500) {
       // 5xx → 尝试进重试队列；超 1MB（带视频）或 multipart 都不入队
       // 必须按 enqueue 真实结果设 queued，否则 toast 撒谎"已加入重试"
-      result.queued = await enqueueRetry(req, server.endpoint, server.method, headers, body)
+      result.queued = await enqueueRetry(server.endpoint, server.method, headers, body)
     }
   } catch (err) {
     // 网络错误 → 同上
     result = { ok: false, error: (err as Error).message }
-    result.queued = await enqueueRetry(req, server.endpoint, server.method, headers, body)
+    result.queued = await enqueueRetry(server.endpoint, server.method, headers, body)
   }
 
   const entry: BugHistoryEntry = {
@@ -599,90 +600,6 @@ function sanitizeHeaders(h: Record<string, string>): Record<string, string> {
     out[k] = /[^\x20-\x7E]/.test(v) ? encodeURIComponent(v) : v
   }
   return out
-}
-
-// ============================================================
-// 重试队列
-// ============================================================
-
-interface QueuedRequest {
-  enqueuedAt: number
-  attempts: number
-  endpoint: string
-  method: string
-  headers: Record<string, string>
-  /** 只支持 JSON 字符串体重试。multipart 含二进制图片不易序列化，故不入队。 */
-  bodyString: string
-}
-
-/** 单条 body 上限 1MB —— chrome.storage.local 全键合计 10MB，
- *  视频 base64 dataURL 单条就能 17MB+，整个队列直接爆配额。
- *  超限的 payload 自然不进队列，避免 set() 抛 QUOTA_BYTES 让整次提交失败。 */
-const RETRY_MAX_BODY_BYTES = 1_000_000
-
-/** @returns 是否真的入队（用于 caller 决定 toast 文案要不要提"已加入重试") */
-async function enqueueRetry(
-  _req: SubmitBugReq,
-  endpoint: string,
-  method: string,
-  headers: Record<string, string>,
-  body: BodyInit
-): Promise<boolean> {
-  if (typeof body !== 'string') return false // multipart 不重试
-  if (body.length > RETRY_MAX_BODY_BYTES) return false // 太大不入队
-  const queued: QueuedRequest = {
-    enqueuedAt: Date.now(),
-    attempts: 0,
-    endpoint,
-    method,
-    headers,
-    bodyString: body
-  }
-  try {
-    const r = await chrome.storage.local.get(RETRY_QUEUE_KEY)
-    const list = (r[RETRY_QUEUE_KEY] as QueuedRequest[]) ?? []
-    list.push(queued)
-    while (list.length > 50) list.shift()
-    // 整体仍可能因为多条累计超配额而抛错
-    await chrome.storage.local.set({ [RETRY_QUEUE_KEY]: list })
-    return true
-  } catch (e) {
-    console.warn('[Moo] enqueueRetry storage set failed', (e as Error).message)
-    return false
-  }
-}
-
-async function flushRetryQueue(): Promise<number> {
-  const r = await chrome.storage.local.get(RETRY_QUEUE_KEY)
-  const list = (r[RETRY_QUEUE_KEY] as QueuedRequest[]) ?? []
-  if (list.length === 0) return 0
-  const remaining: QueuedRequest[] = []
-  let processed = 0
-  for (const q of list) {
-    if (q.attempts >= 5) continue // 放弃
-    try {
-      const resp = await fetch(q.endpoint, {
-        method: q.method,
-        headers: q.headers,
-        body: q.bodyString
-      })
-      if (resp.ok) {
-        processed++
-        continue
-      }
-      if (resp.status >= 400 && resp.status < 500) {
-        // 4xx 是不会通过重试解决的，丢弃
-        continue
-      }
-      q.attempts++
-      remaining.push(q)
-    } catch {
-      q.attempts++
-      remaining.push(q)
-    }
-  }
-  await chrome.storage.local.set({ [RETRY_QUEUE_KEY]: remaining })
-  return processed
 }
 
 // ============================================================
