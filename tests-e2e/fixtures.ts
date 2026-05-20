@@ -77,3 +77,22 @@ export async function readBadgeText(sw: Worker): Promise<string> {
     return await chrome.action.getBadgeText({})
   })
 }
+
+/**
+ * 轮询 badge text 直到匹配 expected 或超时——比固定 sleep 稳得多。
+ *
+ * 用于 seedStorage → onHistoryChanged → updateActionBadge 的异步链验证。
+ * 之前用 `await sleep(800)` 偶发 flaky（SW 时序 race），改成 50ms 轮询 + 3s 上限。
+ *
+ * 返回的是「停止轮询那一刻读到的 badge」——可能匹配也可能不匹配，由调用方 expect 决定。
+ */
+export async function waitForBadgeText(sw: Worker, expected: string, timeoutMs = 3000): Promise<string> {
+  const start = Date.now()
+  let cur = ''
+  while (Date.now() - start < timeoutMs) {
+    cur = await readBadgeText(sw)
+    if (cur === expected) return cur
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  return cur
+}
