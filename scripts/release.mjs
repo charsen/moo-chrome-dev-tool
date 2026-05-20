@@ -1,17 +1,20 @@
-// 发版打包：跑 build → 把 dist/ 打成 release/moo-chrome-dev-tool-<version>.zip。
-// 不动 git——tag / push 由人主导，避免脚本误推。
+// 发版打包 + 可选发布。
 //
-// 用法:
-//   pnpm release
+// 模式：
+//   pnpm release                          → dry-run：build + zip + sha256 + 打印「会做啥」清单
+//   pnpm release --publish                → 真发：tag + push + Gitee create-release + 上传 zip/sha256
+//   pnpm release --skip-build             → 跳 vite build（已经 build 过想直接打包）
+//   pnpm release --publish --skip-build   → 跳 build 直接发
 //
-// 输出:
-//   release/moo-chrome-dev-tool-<version>.zip   ← 整包，给别人下载后解压加载
-//   release/moo-chrome-dev-tool-<version>.sha256
-//
-// 版本号取 package.json 的 version。同步到 manifest.json（避免两边漂移）。
+// 设计原则：
+// - 默认 dry-run，防误推
+// - tag/push/Gitee API 都搬进来，下次换人换 AI 不靠记忆贴 bash
+// - Gitee POST 不重试：可能已成功，重试会拿到 400「该标签已存在发行版」
+// - GITEE_TOKEN 只从 env 读，绝不写盘、不打 log、不进 commit
+// - HANDOFF.md / CHANGELOG 收尾留给用户手动判断，脚本只打提示
 
 import { execSync } from 'node:child_process'
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, rmSync, createWriteStream } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, rmSync, openAsBlob } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
@@ -19,6 +22,13 @@ import { createHash } from 'node:crypto'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
 
+// ---------- 参数解析 ----------
+const argv = process.argv.slice(2)
+const publish = argv.includes('--publish')
+const skipBuild = argv.includes('--skip-build')
+const dryRun = !publish // 默认 dry-run
+
+// ---------- 版本号：package.json + manifest.json 双读校验一致 ----------
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
 const version = pkg.version
 if (!version) {
@@ -26,14 +36,43 @@ if (!version) {
   process.exit(1)
 }
 
-// 工作区干净再放行。脏树（未提交改动）打包出来的 zip 跟 git tag 对不上 ——
-// 装的人复现不出来，我们也没法回溯。允许 MOO_RELEASE_FORCE=1 临时绕过（紧急热修）。
+const manifestPath = resolve(root, 'manifest.json')
+const manifestRaw = readFileSync(manifestPath, 'utf8')
+const mfMatch = manifestRaw.match(/"version"\s*:\s*"([^"]+)"/)
+const manifestVersion = mfMatch ? mfMatch[1] : null
+if (manifestVersion && manifestVersion !== version) {
+  // 不再像旧脚本那样静默改写 —— 发版前两边必须显式一致，避免脚本帮人吞掉错误
+  console.error(`版本号不一致：package.json=${version}  manifest.json=${manifestVersion}`)
+  console.error('请手动对齐后重跑（两个文件都应当是新版号）。')
+  process.exit(1)
+}
+
+// ---------- owner/repo：从 git remote 解析，不硬编码 ----------
+function parseRepo() {
+  let url = ''
+  try {
+    url = execSync('git remote get-url origin', { cwd: root, encoding: 'utf8' }).trim()
+  } catch {
+    console.error('无法 git remote get-url origin —— 不在 git 仓库 / 无 remote')
+    process.exit(1)
+  }
+  // 支持 https://gitee.com/owner/repo(.git) 和 git@gitee.com:owner/repo(.git)
+  const m = url.match(/[/:]([^/:]+)\/([^/]+?)(?:\.git)?$/)
+  if (!m) {
+    console.error(`origin 解析失败：${url}`)
+    process.exit(1)
+  }
+  return { owner: m[1], repo: m[2] }
+}
+const { owner, repo } = parseRepo()
+
+// ---------- 工作区干净检查（dry-run 也要查，否则 zip 跟未来真发对不上）----------
 if (!process.env.MOO_RELEASE_FORCE) {
   let dirty = ''
   try {
     dirty = execSync('git status --porcelain', { cwd: root, encoding: 'utf8' })
   } catch {
-    // 不在 git 仓库 / git 不可用 —— 不做强制要求
+    // 不在 git 仓库 —— 跳过
   }
   if (dirty.trim()) {
     console.error('工作区有未提交的改动，先 commit 再 release（避免 zip 和 git tag 不一致）：')
@@ -43,29 +82,37 @@ if (!process.env.MOO_RELEASE_FORCE) {
   }
 }
 
-// 同步 manifest 版本号：只动 version 字段，不用 JSON.parse+stringify 整个重写
-// （会让原来紧凑的 array 全部展开成多行，commit diff 噪音很大）
-const manifestPath = resolve(root, 'manifest.json')
-const manifestRaw = readFileSync(manifestPath, 'utf8')
-const m = manifestRaw.match(/"version"\s*:\s*"([^"]+)"/)
-if (m && m[1] !== version) {
-  console.log(`同步 manifest.json: ${m[1]} → ${version}`)
-  writeFileSync(manifestPath, manifestRaw.replace(m[0], `"version": "${version}"`))
+// ---------- --publish 模式 token 预检（fail-fast，省得 build 完才发现）----------
+const token = process.env.GITEE_TOKEN || ''
+if (publish && !token) {
+  console.error('--publish 模式需要 Gitee token，请先：')
+  console.error('  export GITEE_TOKEN=<你的 gitee 私人令牌>')
+  console.error('用完去 gitee「私人令牌」页重置 token。')
+  process.exit(1)
 }
 
-// 清空旧 dist 后重建，避免上次构建残留进 zip
+console.log(`版本：v${version}  仓库：${owner}/${repo}  模式：${publish ? 'PUBLISH（真发）' : 'DRY-RUN（默认）'}`)
+console.log('')
+
+// ---------- build ----------
 const distDir = resolve(root, 'dist')
-if (existsSync(distDir)) {
-  console.log('清理旧 dist/')
-  rmSync(distDir, { recursive: true, force: true })
+if (!skipBuild) {
+  if (existsSync(distDir)) {
+    console.log('清理旧 dist/')
+    rmSync(distDir, { recursive: true, force: true })
+  }
+  console.log('运行 vite build…')
+  execSync('pnpm build', { cwd: root, stdio: 'inherit' })
+} else {
+  console.log('--skip-build：跳过 vite build，直接打包现有 dist/')
+  if (!existsSync(distDir)) {
+    console.error('dist/ 不存在，没法 --skip-build')
+    process.exit(1)
+  }
 }
-console.log('运行 vite build…')
-execSync('pnpm build', { cwd: root, stdio: 'inherit' })
 
-// 冒烟检查：发版前确认 dist 里所有"运行必须文件"都在。
+// ---------- 冒烟检查：dist 必需文件齐 ----------
 // 起因：v0.1.1 因为 panel.html 没在 vite input 里、build 没产出，朋友装完打开 DevTools 一片空白。
-// manifest 入口（popup / devtools_page / service_worker）+ devtools.ts 动态注册的 panel.html
-// 三类都列出来；任何一个缺，直接退出别打包。
 const required = [
   'manifest.json',
   'service-worker-loader.js',
@@ -81,7 +128,7 @@ if (missing.length > 0) {
   process.exit(1)
 }
 
-// 输出目录
+// ---------- 打包 + sha256 ----------
 const releaseDir = resolve(root, 'release')
 mkdirSync(releaseDir, { recursive: true })
 
@@ -89,21 +136,212 @@ const zipName = `moo-chrome-dev-tool-${version}.zip`
 const zipPath = resolve(releaseDir, zipName)
 if (existsSync(zipPath)) rmSync(zipPath)
 
-// 用系统 zip 命令打包（macOS / Linux 自带，跨平台依赖少）
-// -r 递归、-X 不存 macOS 扩展属性、-q 安静
 console.log(`打包 → release/${zipName}`)
 execSync(`zip -r -X -q "${zipPath}" .`, { cwd: distDir })
 
 const stat = statSync(zipPath)
 const hash = createHash('sha256').update(readFileSync(zipPath)).digest('hex')
-writeFileSync(resolve(releaseDir, `${zipName}.sha256`), `${hash}  ${zipName}\n`)
+
+// sha256 文件保留两个：旧的 .sha256（兼容已发存档）+ 新的 .sha256.txt（attach_files 上传给 Gitee）
+// 内容 = `${sha256}  ${filename}\n`，shasum -c 兼容格式
+const sha256Body = `${hash}  ${zipName}\n`
+writeFileSync(resolve(releaseDir, `${zipName}.sha256`), sha256Body)
+const sha256TxtPath = resolve(releaseDir, `${zipName}.sha256.txt`)
+writeFileSync(sha256TxtPath, sha256Body)
 
 console.log('')
 console.log(`✓ ${zipName}  ${(stat.size / 1024).toFixed(1)} KB`)
 console.log(`  sha256: ${hash}`)
 console.log('')
-console.log('下一步（手工）：')
-console.log(`  git add -A && git commit -m "chore: release v${version}"`)
-console.log(`  git tag -a v${version} -m "release v${version}"`)
-console.log(`  git push && git push --tags`)
-console.log(`  → 上传 ${zipName} 到 Gitee 发行版页面`)
+
+// ---------- CHANGELOG 抽当前版本段（给 Gitee release body 用）----------
+function extractChangelogSection(v) {
+  const changelogPath = resolve(root, 'CHANGELOG.md')
+  if (!existsSync(changelogPath)) return ''
+  const raw = readFileSync(changelogPath, 'utf8')
+  // 抓 `## vX.Y.Z` 到下一个 `## v` 或文档末尾之间。
+  // 注意：不用 `m` flag —— 否则 `$` 会匹配每行尾，非贪婪 `*?` 立刻 0 长度命中第一行末尾。
+  // 用 `\n## v` 锚定段首，文档末尾用 `$` 配 RegExp 默认行为（= 字符串结尾）。
+  const re = new RegExp(`\\n## v${v.replace(/\./g, '\\.')}\\s*\\n([\\s\\S]*?)(?=\\n## v|$)`)
+  const m = raw.match(re)
+  return m ? m[1].trim() : ''
+}
+const changelogSection = extractChangelogSection(version)
+if (!changelogSection) {
+  console.warn(`⚠ CHANGELOG.md 没找到 ## v${version} 段，release body 会是空的`)
+}
+
+// ---------- Step 4 + 5：tag / push / Gitee API ----------
+// 全部封装在函数里，dry-run 只打印「会做啥」，--publish 真执行
+const tagName = `v${version}`
+const tagMessage = `${tagName} 发版
+
+主要变更：见 CHANGELOG.md 当前版本段
+
+完整 changelog: CHANGELOG.md`
+
+const releaseBody = changelogSection || `v${version} 发版`
+const releaseTitle = `v${version}`
+
+if (dryRun) {
+  console.log('━━━ DRY-RUN 会做的事 ━━━')
+  console.log('')
+  console.log('Step 4 — git tag + push:')
+  console.log(`  git tag -a ${tagName} -m "<多行 message，见下>"`)
+  console.log(`  git push origin master --tags`)
+  console.log('  tag message:')
+  console.log(tagMessage.split('\n').map((l) => '    ' + l).join('\n'))
+  console.log('')
+  console.log('Step 5 — Gitee Release API:')
+  console.log(`  POST https://gitee.com/api/v5/repos/${owner}/${repo}/releases`)
+  console.log(`    tag_name: ${tagName}`)
+  console.log(`    name: ${releaseTitle}`)
+  console.log(`    body: <CHANGELOG ## v${version} 段，${releaseBody.length} 字>`)
+  console.log(`    target_commitish: master`)
+  console.log(`  POST .../releases/{id}/attach_files (multipart)`)
+  console.log(`    file: release/${zipName}`)
+  console.log(`    file: release/${zipName}.sha256.txt`)
+  console.log('')
+  console.log(`token: ${token ? '已读到 GITEE_TOKEN（' + token.length + ' 字符，已 mask）' : '未设（真发时需 export GITEE_TOKEN=...）'}`)
+  console.log('')
+  console.log('要真发，重跑：pnpm release --publish')
+  printNextSteps()
+  process.exit(0)
+}
+
+// ---------- 真发：Step 4 ----------
+console.log('━━━ Step 4: git tag + push ━━━')
+// 检查 tag 是否已存在（本地），存在就跳过创建免重复
+let tagExists = false
+try {
+  execSync(`git rev-parse ${tagName}`, { cwd: root, stdio: 'pipe' })
+  tagExists = true
+} catch {
+  // 不存在
+}
+if (tagExists) {
+  console.log(`tag ${tagName} 已存在（本地），跳过 git tag -a`)
+} else {
+  console.log(`创建 annotated tag ${tagName}`)
+  // tag message 走 -F -（从 stdin 读），避免多行 message 在不同 shell 下 escape 不一致
+  execSync(`git tag -a ${tagName} -F -`, { cwd: root, input: tagMessage })
+}
+console.log('推送 master + tags …')
+execSync('git push origin master --tags', { cwd: root, stdio: 'inherit' })
+console.log('')
+
+// ---------- 真发：Step 5 ----------
+console.log('━━━ Step 5: Gitee create-release + attach_files ━━━')
+
+const apiBase = `https://gitee.com/api/v5/repos/${owner}/${repo}`
+
+/**
+ * 创建 release。已知陷阱：响应可能 JSON parse fail（body 带控制字符）。
+ * 不重试 POST —— 可能已成功，重 POST 会 400「该标签已存在发行版」。
+ * parse 失败时立即调 list_releases 验证；存在拿 id 继续，不存在再 fail。
+ */
+async function createOrFindRelease() {
+  console.log(`POST /releases  (tag=${tagName})`)
+  const res = await fetch(`${apiBase}/releases`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+    body: JSON.stringify({
+      access_token: token,
+      tag_name: tagName,
+      name: releaseTitle,
+      body: releaseBody,
+      prerelease: false,
+      target_commitish: 'master'
+    })
+  })
+  const text = await res.text()
+  if (res.ok) {
+    try {
+      const j = JSON.parse(text)
+      console.log(`✓ release 创建成功，id=${j.id}`)
+      return j.id
+    } catch (e) {
+      console.warn(`⚠ 响应 JSON parse 失败（${e.message}），但 HTTP ${res.status} —— 可能已创建，走 list_releases 核实`)
+      return await findReleaseIdByTag()
+    }
+  }
+  // 非 2xx：先看 list_releases，可能上一次部分成功
+  console.warn(`⚠ POST 非 2xx：${res.status}  body: ${text.slice(0, 200)}`)
+  console.warn('  走 list_releases 核实是否已存在')
+  const id = await findReleaseIdByTag()
+  if (id) return id
+  console.error('create-release 失败且 list 里也没找到，中止。')
+  process.exit(1)
+}
+
+async function findReleaseIdByTag() {
+  // Gitee list_releases 分页，per_page 最大 100；这版本就在最新一页里，不分页
+  const url = `${apiBase}/releases?access_token=${encodeURIComponent(token)}&page=1&per_page=20&direction=desc`
+  const res = await fetch(url)
+  if (!res.ok) {
+    console.error(`list_releases HTTP ${res.status}`)
+    return null
+  }
+  const list = await res.json()
+  const hit = Array.isArray(list) ? list.find((r) => r.tag_name === tagName) : null
+  if (hit) {
+    console.log(`✓ list 里找到了，id=${hit.id}`)
+    return hit.id
+  }
+  return null
+}
+
+async function attachFile(releaseId, filePath) {
+  const fileName = filePath.split('/').pop()
+  console.log(`POST /releases/${releaseId}/attach_files  (${fileName})`)
+  const blob = await openAsBlob(filePath)
+  const form = new FormData()
+  form.append('access_token', token)
+  form.append('file', blob, fileName)
+  const res = await fetch(`${apiBase}/releases/${releaseId}/attach_files`, {
+    method: 'POST',
+    body: form
+  })
+  const text = await res.text()
+  if (!res.ok) {
+    console.error(`⚠ attach ${fileName} 失败：HTTP ${res.status}  ${text.slice(0, 200)}`)
+    console.error('  attach_files 不会因为一个失败回滚另一个 —— 请去 gitee release 页面手动补传')
+    return false
+  }
+  try {
+    const j = JSON.parse(text)
+    console.log(`  ✓ ${fileName}  ${j.browser_download_url || '(无下载链接字段)'}`)
+  } catch {
+    console.log(`  ✓ ${fileName}  (响应非 JSON 但 HTTP 200)`)
+  }
+  return true
+}
+
+const releaseId = await createOrFindRelease()
+await attachFile(releaseId, zipPath)
+await attachFile(releaseId, sha256TxtPath)
+
+console.log('')
+console.log('✓ Gitee release 发布完成')
+printNextSteps()
+
+// ---------- Step 6 + 7 提示（不代写，留给用户）----------
+function printNextSteps() {
+  console.log('')
+  console.log('━━━ 下一步（人工判断，脚本不代写）━━━')
+  console.log('')
+  console.log('Step 6 — 同步 HANDOFF.md:')
+  console.log('  - 「一句话现状」第一段更新到新版号')
+  console.log(`  - 「这两周做了什么」加 v${version} 段`)
+  console.log('  - **把上上版的「这两周做了什么」段移到 docs/handoff-archive/v0.1.x.md**')
+  console.log('    （HANDOFF 主文件只保留当前未发 + 最近 1 个发版）')
+  console.log('  - 如果跳了 RELEASE_TEST_CHECKLIST，把「发版决策小记」也更新')
+  console.log('  - 划掉已完成的 todo')
+  console.log('')
+  console.log('Step 7 — 最后 commit:')
+  console.log('  git add CHANGELOG.md HANDOFF.md docs/handoff-archive/')
+  console.log(`  git commit -m "docs(handoff): v${version} 已发版 + ..."`)
+  console.log('  git push origin master')
+  console.log('')
+  console.log('完事别忘了去 gitee「私人令牌」页重置 GITEE_TOKEN。')
+}
