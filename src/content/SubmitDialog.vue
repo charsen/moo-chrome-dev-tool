@@ -210,14 +210,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Project } from '@/types/config'
 import type { CapturedRequest } from '@/types/requests'
 import type { ConsoleError } from '@/types/errors'
 import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes } from '@/types/messages'
 import { formatSubmitResult } from '@/utils/submitMessage'
 import { safeSendMessage } from '@/utils/messaging'
-import ElementPicker, { type PickedElement } from './ElementPicker.vue'
+// ElementPicker 只在用户点"选元素"按钮（picking=true）才挂载，默认根本不渲染。
+// 异步拆 chunk 后 SubmitDialog 自身体积也跟着瘦——picker 只用全屏 overlay 那一下。
+// PickedElement 类型仍按 type-only 静态导入，避免编译时依赖触发 chunk 合并。
+const ElementPicker = defineAsyncComponent(() => import('./ElementPicker.vue'))
+import type { PickedElement } from './ElementPicker.vue'
 import MooCloseBtn from '@/components/MooCloseBtn.vue'
 import type { RecordingResult } from './useRecorder'
 

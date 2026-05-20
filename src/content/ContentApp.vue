@@ -40,10 +40,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import FloatingBall from './FloatingBall.vue'
-import Annotator from './Annotator.vue'
-import SubmitDialog from './SubmitDialog.vue'
+// Annotator / SubmitDialog 仅在「截图标注 / 提交」流程才渲染（state=annotating|submitting），
+// 90% 浏览页面用不到。改成 defineAsyncComponent 让 vite 拆独立 chunk，
+// 首注入 content script 从 ~99KB 降到 <60KB；用户首次按 ⌘⇧B 时本地 chunk 加载 ~50-100ms 内可接受。
+// 这俩组件靠 ContentApp 模板的 v-if 控制挂载——v-if=false 时根本不会触发 import()，"不渲染不加载"语义自然成立。
+const Annotator = defineAsyncComponent(() => import('./Annotator.vue'))
+const SubmitDialog = defineAsyncComponent(() => import('./SubmitDialog.vue'))
 import { maskPasswordInputs } from './passwordMask'
 import { useRecorder, type RecordingResult } from './useRecorder'
 import type { Project } from '@/types/config'
