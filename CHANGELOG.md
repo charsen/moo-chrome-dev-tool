@@ -2,6 +2,54 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.1.14
+
+待重试队列可见性 + content 世界 dialog 壳子抽象。**无 BREAKING**——后端无需配套升级。
+
+### Settings「待重试列表」可见性
+
+之前「重试队列」一行只有 `N 条` + [立即重试] + [清空]，**用户看不见这 N 条是哪些 bug / 上次为什么失败 / 第几次重试**。后端挂半天用户回头想知道「我那个 bug 到底发出去没」目前完全没信号；5 次后被静默丢弃也无提示。
+
+新加可折叠明细列表。默认收起、空队列时 chevron 禁用、展开后每条按 request 视角显示（**不重复 History 的 bug 视角**）：
+
+- `method` chip（POST / PUT / DELETE 各色）
+- `endpoint` truncate（hover title 看全）
+- `relativeTime(enqueuedAt)`（刚刚 / N 分钟前 / N 小时前 / N 天前 / 月-日，抽 `src/utils/relativeTime.ts`——之前 popup 也有一份本地拷贝，本次收口走单一来源）
+- `第 X/5 次`（`X >= 4` 时红字 + ⚠「下次失败将被丢弃」横幅）
+- `上次：{lastError}`（5xx 的 statusText / 网络层 error.message；statusText 空兜底「HTTP {code}」）
+- 单条「×」删除按钮（按 `enqueuedAt` 时间戳定位，避免 UI/storage 时差误删邻居）
+
+**retryQueue 数据层配套加 3 字段 + 2 接口**：
+
+- `QueuedRequest.lastStatus?` / `lastError?`：`doFlush` 每次失败时落盘，给 UI 显示用
+- `getQueueItems(): Promise<QueuedRequest[]>`：暴露完整列表
+- `removeQueueItem(enqueuedAt: number): Promise<boolean>`：按时间戳删单条
+- `RETRY_MAX_ATTEMPTS` 改 export，UI 走单一来源（之前是 internal const）
+
+**老数据兼容**：v0.1.13 留下的队列条目没有 `lastError` 字段，flush 一次后自动补齐；单测覆盖。
+
+### content 世界 dialog 壳子抽象（MooDialog + MooAlert）
+
+`SubmitDialog` 的 mask + container + role=dialog + focus-trap + ESC + mask 关，跟 `Annotator` cancel-guard 那套 mask + card + role=alertdialog + focus-trap + ESC + mask 关，**结构高度重复**。抽两个壳：
+
+- `src/content/components/MooDialog.vue`：常规 dialog。props: `title` / `labelledBy` / `maskClosable` / `initialFocus`。slots: `head`（默认 title + MooCloseBtn）/ default（body）。@close 钩子由 ESC + mask click 触发，consumer 决定真关动作
+- `src/content/components/MooAlert.vue`：alertdialog 二次确认。props: `title` / `message` / `confirmText` / `cancelText` / `danger`（默认 true）。@confirm + @cancel 双向 emit
+- 两个组件**不引入新 CSS**——延用 MooCloseBtn 模式：内容世界 shadow DOM stylesheet（`src/content/styles.ts`）已经覆盖 `.moo-dialog*` / `.moo-cancel-guard*`，组件只出标准 markup
+
+**SubmitDialog**：mask + dialog 外壳 + header 全部塞进 `<MooDialog>`，本地 `useFocusTrap` 调用收口（initialFocus='container' 保持原行为）；onKeydown 的 Esc 分支移除（MooDialog 统一接管），保留 ⌘/Ctrl+Enter 提交快捷键。`onMaskClick` 仍由 SubmitDialog 自己控（成功视图期间禁止关闭的逻辑）。
+
+**Annotator** cancel-guard 整块换成 `<MooAlert>`，移除本地 `useFocusTrap` 调用 + `cancelGuardEl` ref。
+
+### E2E 80 case（v0.1.13 是 77 → +3）
+
+- panel-settings G5：展开重试队列 chevron → 列表渲染 N 条 + method/endpoint/attempts/lastError 文案
+- panel-settings G6：单条「×」删除 → mooRetryQueue 减 1 + 列表条数减 1
+- panel-settings G7：队列为空时 chevron 禁用 + 无明细列表
+
+单测 170 case（v0.1.13 是 161 → +9）：retryQueue 加 5xx/网络错 lastError 写入 / statusText 空兜底 / 老数据兼容 / getQueueItems / removeQueueItem 找到 + 找不到 / storage 异常返空。
+
+**MooDialog / MooAlert 不补单测**：项目惯例 Vue 组件走 E2E + 手摸（SubmitDialog / Annotator 当前也无单测），加 happy-dom + @vue/test-utils 是测试架构变动超出本版范围。两个壳子的行为收口到发版 checklist 手摸。
+
 ## v0.1.13
 
 体验加速 + 响应式扫修 + 护栏加厚 + 收口债务清理。**无 BREAKING**——任何后端接收侧无需配套升级。
