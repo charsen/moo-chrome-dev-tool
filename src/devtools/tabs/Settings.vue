@@ -120,6 +120,18 @@
           </Row>
           <Row label="重试队列" desc="提交失败的 bug 暂存在这里；扩展每 5 分钟自动重试一次">
             <div class="row-stats">
+              <button
+                type="button"
+                class="queue-chev"
+                :class="{ 'is-open': queueExpanded }"
+                :disabled="queueCount === 0"
+                :aria-expanded="queueExpanded ? 'true' : 'false'"
+                :aria-controls="queueCount > 0 ? 'queue-detail-list' : undefined"
+                :aria-label="queueExpanded ? '收起队列明细' : '展开队列明细'"
+                @click="queueExpanded = !queueExpanded"
+              >
+                <span class="queue-chev-icon" aria-hidden="true">▸</span>
+              </button>
               <span class="stat">{{ queueCount }} 条</span>
               <button class="moo-btn moo-btn--sm" :disabled="busy === 'flush'" @click="flushQueue">
                 {{ busy === 'flush' ? '重试中…' : '立即重试' }}
@@ -129,6 +141,45 @@
               </button>
             </div>
           </Row>
+          <!-- 队列明细：默认收起；展开后按 request 视角列每条（不重复 History 的 bug 视角）。
+               5/5 次的条目下次 flush 就被丢弃，给个 ⚠ 提醒用户在还没丢前手动删 / 检查 endpoint。 -->
+          <div
+            v-if="queueExpanded && queueItems.length"
+            id="queue-detail-list"
+            class="queue-detail-list"
+            role="list"
+          >
+            <div
+              v-for="q in queueItems"
+              :key="q.enqueuedAt"
+              class="queue-detail-item"
+              role="listitem"
+            >
+              <div class="qdi-line">
+                <span :class="['qdi-method', q.method.toLowerCase()]">{{ q.method }}</span>
+                <span class="qdi-endpoint" :title="q.endpoint">{{ q.endpoint }}</span>
+                <span class="qdi-ago">{{ relativeTime(q.enqueuedAt) }}</span>
+                <button
+                  type="button"
+                  class="qdi-rm"
+                  :disabled="busy === 'rmOne'"
+                  :aria-label="`从队列移除：${q.method} ${q.endpoint}`"
+                  @click="removeQueueOne(q.enqueuedAt)"
+                >×</button>
+              </div>
+              <div class="qdi-line qdi-meta">
+                <span
+                  class="qdi-attempts"
+                  :class="{ 'is-last': q.attempts >= RETRY_MAX_ATTEMPTS - 1 }"
+                >第 {{ q.attempts }}/{{ RETRY_MAX_ATTEMPTS }} 次</span>
+                <span v-if="q.attempts >= RETRY_MAX_ATTEMPTS - 1" class="qdi-warn" title="下次仍失败会被丢弃">
+                  ⚠ 下次失败将被丢弃
+                </span>
+                <span v-if="q.lastError" class="qdi-error">上次：{{ q.lastError }}</span>
+                <span v-else class="qdi-error qdi-error--pending">等待重试</span>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -165,10 +216,18 @@ import { safeSendMessage } from '@/utils/messaging'
 // retryQueue 是纯函数模块（只读 chrome.storage.local），devtools 上下文可用，
 // 直接 import 比走 sendMessage(RETRY_QUEUE_*) 少一次 SW 唤醒 + 一轮 IPC。
 // Storage key 完全封在模块里，UI 不再知道叫 'mooRetryQueue'。
-import { getQueueLength, clearQueue as clearRetryQueue } from '@/background/retryQueue'
+import {
+  getQueueLength,
+  getQueueItems,
+  clearQueue as clearRetryQueue,
+  removeQueueItem,
+  RETRY_MAX_ATTEMPTS,
+  type QueuedRequest
+} from '@/background/retryQueue'
 import { useConfig } from '@/composables/useConfig'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useToast } from '@/composables/useToast'
+import { relativeTime } from '@/utils/relativeTime'
 import { confirmDialog } from '../components/confirm'
 
 const HISTORY_MAX = 30
@@ -179,7 +238,9 @@ const { config, loaded } = useConfig()
 const activeId = ref('')
 const historyCount = ref(0)
 const queueCount = ref(0)
-const busy = ref<'' | 'history' | 'flush' | 'clearQueue'>('')
+const queueItems = ref<QueuedRequest[]>([])
+const queueExpanded = ref(false)
+const busy = ref<'' | 'history' | 'flush' | 'clearQueue' | 'rmOne'>('')
 const version = chrome.runtime.getManifest().version
 
 const active = computed<Project | undefined>(() =>
@@ -189,7 +250,25 @@ const active = computed<Project | undefined>(() =>
 async function refreshStats() {
   const hist = await listHistory()
   historyCount.value = hist.length
-  queueCount.value = await getQueueLength()
+  // 一次性把 length + items 都读了——读 items 已经含 length，单次 storage.local.get 够。
+  // 队列空了自动收起，避免「展开但没内容」的空态。
+  queueItems.value = await getQueueItems()
+  queueCount.value = queueItems.value.length
+  if (queueCount.value === 0) queueExpanded.value = false
+}
+
+async function removeQueueOne(enqueuedAt: number) {
+  busy.value = 'rmOne'
+  try {
+    const removed = await removeQueueItem(enqueuedAt)
+    await refreshStats()
+    if (removed) showToast('已从队列移除 1 条', 'success')
+    else showToast('这条已经不在队列里了（可能刚被重试掉）', 'info')
+  } catch (e) {
+    showToast(`没能移除：${(e as Error).message}`, 'error')
+  } finally {
+    busy.value = ''
+  }
 }
 
 onMounted(async () => {
@@ -612,6 +691,133 @@ const TagInput = defineComponent({
   min-width: 48px;
   text-align: right;
 }
+
+/* 重试队列：折叠 chevron + 展开后的明细列表 */
+.queue-chev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-sm);
+  background: var(--moo-c-bg);
+  cursor: pointer;
+  transition: background var(--moo-motion-fast), color var(--moo-motion-fast);
+  color: var(--moo-c-text-dim);
+}
+.queue-chev:hover:not(:disabled) {
+  background: var(--moo-c-row-hover);
+  color: var(--moo-c-text);
+}
+.queue-chev:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+.queue-chev-icon {
+  font-size: 10px;
+  line-height: 1;
+  transition: transform var(--moo-motion-fast);
+}
+.queue-chev.is-open .queue-chev-icon { transform: rotate(90deg); }
+
+.queue-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 8px;
+  padding: 8px;
+  border-radius: var(--moo-r-md);
+  background: var(--moo-c-bg-soft);
+  /* 明细列表是「重试队列」row 的延伸，不要画顶 border 跟下一行 row 串成两条线 */
+}
+.queue-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-sm);
+  background: var(--moo-c-bg);
+}
+.qdi-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.qdi-meta {
+  font-size: var(--moo-fs-xs);
+  color: var(--moo-c-text-dim);
+  flex-wrap: wrap;
+}
+/* method chip 跟 SubmitDialog 那边的 .method 视觉同款，但本组件用 h() 渲染不了
+   shared CSS——直接抄一份 token-driven 配色 */
+.qdi-method {
+  flex: none;
+  font-family: var(--moo-ff-mono);
+  font-size: var(--moo-fs-xs);
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--moo-r-sm);
+  background: var(--moo-c-brand-soft);
+  color: var(--moo-c-brand);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.qdi-method.delete { background: var(--moo-c-danger-soft); color: var(--moo-c-danger-fg); }
+.qdi-method.put,
+.qdi-method.patch { background: var(--moo-c-warn-soft); color: var(--moo-c-warn-fg); }
+.qdi-endpoint {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--moo-ff-mono);
+  font-size: var(--moo-fs-xs);
+  color: var(--moo-c-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qdi-ago {
+  flex: none;
+  font-size: var(--moo-fs-xs);
+  color: var(--moo-c-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.qdi-rm {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--moo-r-sm);
+  background: transparent;
+  color: var(--moo-c-text-dim);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: background var(--moo-motion-fast), color var(--moo-motion-fast);
+}
+.qdi-rm:hover:not(:disabled) {
+  background: var(--moo-c-danger-soft);
+  color: var(--moo-c-danger-fg);
+}
+.qdi-rm:disabled { opacity: .4; cursor: not-allowed; }
+
+.qdi-attempts {
+  font-variant-numeric: tabular-nums;
+}
+.qdi-attempts.is-last { color: var(--moo-c-danger-fg); font-weight: 500; }
+.qdi-warn {
+  color: var(--moo-c-danger-fg);
+  font-weight: 500;
+}
+.qdi-error { color: var(--moo-c-text-muted); }
+.qdi-error--pending { font-style: italic; }
 
 /* Switch 样式见 src/styles/tokens.css（.moo-switch / .moo-switch-thumb，挂全局是因为本组件用 h() 渲染） */
 

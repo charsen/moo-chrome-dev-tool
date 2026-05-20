@@ -22,7 +22,7 @@ const RETRY_MAX_BODY_BYTES = 1_000_000
 /** 队列最长 50 条，超出 FIFO 裁旧 */
 const RETRY_MAX_QUEUE_LEN = 50
 /** 单条最多重试 5 次，超过丢弃（持续 5xx 一般是服务端永久故障） */
-const RETRY_MAX_ATTEMPTS = 5
+export const RETRY_MAX_ATTEMPTS = 5
 
 export interface QueuedRequest {
   enqueuedAt: number
@@ -32,6 +32,16 @@ export interface QueuedRequest {
   headers: Record<string, string>
   /** 只支持 JSON 字符串体重试。multipart 含二进制图片不易序列化，故不入队。 */
   bodyString: string
+  /**
+   * 上次尝试时的 HTTP 状态码（5xx 才入此字段；网络错时为 undefined）。
+   * 供 UI 显示「上次失败原因」用，方便用户判断是后端在抽风还是 URL 写错。
+   */
+  lastStatus?: number
+  /**
+   * 上次失败原因摘要（status 文本 / 网络错误 message）。
+   * 不存完整 stack —— 队列条目数 × stack 大小可能挤占 storage 配额。
+   */
+  lastError?: string
 }
 
 /**
@@ -112,9 +122,15 @@ async function doFlush(): Promise<number> {
         continue
       }
       q.attempts++
+      q.lastStatus = resp.status
+      // resp.statusText 在 fetch + HTTP/2 下常为空串；空时给个兜底文案
+      q.lastError = resp.statusText || `HTTP ${resp.status}`
       remaining.push(q)
-    } catch {
+    } catch (e) {
       q.attempts++
+      q.lastStatus = undefined
+      // 网络层异常：超时 / 拒接 / DNS 等。message 一般够短，不再截断
+      q.lastError = (e as Error)?.message || '网络错误'
       remaining.push(q)
     }
   }
@@ -136,6 +152,42 @@ export async function getQueueLength(): Promise<number> {
     return Array.isArray(list) ? list.length : 0
   } catch {
     return 0
+  }
+}
+
+/**
+ * 读全部队列条目，给 Settings 列表 UI 展示明细用。
+ * 读失败返回空数组，跟 getQueueLength 一致——只读统计调用不该往上抛。
+ */
+export async function getQueueItems(): Promise<QueuedRequest[]> {
+  try {
+    const r = await globalThis.chrome.storage.local.get(RETRY_QUEUE_KEY)
+    const list = r[RETRY_QUEUE_KEY] as QueuedRequest[] | undefined
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 按 enqueuedAt 时间戳删单条。
+ *
+ * 用 enqueuedAt 而不是数组下标做 key：UI 列表跟 storage 之间会有时差，
+ * 别的 flush / enqueue 会重排 list；用稳定时间戳避免误删邻居。
+ * Date.now() 在 SW 单线程里同毫秒并发概率近 0，足够当唯一 id 用。
+ *
+ * @returns 是否真删到（false = 没找到对应条目）
+ */
+export async function removeQueueItem(enqueuedAt: number): Promise<boolean> {
+  try {
+    const r = await globalThis.chrome.storage.local.get(RETRY_QUEUE_KEY)
+    const list = (r[RETRY_QUEUE_KEY] as QueuedRequest[] | undefined) ?? []
+    const next = list.filter((q) => q.enqueuedAt !== enqueuedAt)
+    if (next.length === list.length) return false
+    await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: next })
+    return true
+  } catch {
+    return false
   }
 }
 

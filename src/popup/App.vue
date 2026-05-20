@@ -145,6 +145,7 @@ import type { Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
 import { loadConfig, urlMatches } from '@/storage/config'
 import { listHistory } from '@/storage/history'
+import { relativeTime } from '@/utils/relativeTime'
 
 const version = ref(chrome.runtime.getManifest().version)
 // 显示尺寸 28px，用 32 比 48 更省字节 + 缩放损失更小（lighthouse image-size-responsive）
@@ -176,15 +177,6 @@ function openTabUrl(url: string) {
   if (!url) return
   void chrome.tabs.create({ url })
   // popup 调用 chrome.tabs.create 后 popup 会自动关掉
-}
-
-function relativeTime(ts: number): string {
-  const diff = Date.now() - ts
-  if (diff < 60_000) return '刚刚'
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
-  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`
-  return new Date(ts).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
 }
 
 interface StatusBadge { label: string; cls: string; title: string }
