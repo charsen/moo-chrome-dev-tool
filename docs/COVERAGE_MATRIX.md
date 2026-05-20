@@ -2,7 +2,7 @@
 
 > 2026-05-20 启动。**目的**：枚举所有可测维度的交叉，找出真值缺口。**不堆 fake spec**。
 >
-> 已有覆盖：vitest 单测 161 + Playwright E2E **59** = **220 case**（含本批 panel-harness + 11 case 解锁）。
+> 已有覆盖：vitest 单测 161 + Playwright E2E **77** = **238 case**（含 panel-harness 解锁的 4 Tab 全部 + Overview detail + Environment CRUD + Settings toggle + 4 Tab dark mode）。
 >
 > 本文档**活档**：每次新加 spec 或发现新维度都来更新对应单元格。
 
@@ -63,7 +63,16 @@
 
 ❌「过 popup 宽」类是物理上不可能。
 
-**PH = panel-harness 解锁**：commit `fba64eb` 建 `src/devtools/panel-harness.{html,ts}`，mock chrome.devtools.* + chrome.tabs.sendMessage，让 Panel.vue + 4 Tab 能 standalone 跑。本批已锁 4 Tab × empty/populated 渲染 + Overview wide 长 URL 截断 + Panel × 768/3840 响应式 = 11 case。**后续 P0/P1 case 都可以在 harness 之上写**——4 Tab × dark mode / 4 Tab × interaction (CRUD, toggle, click row) / Overview 慢请求染色 / Environment CRUD 等 ~30+ case 等候。
+**PH = panel-harness 解锁**：commit `fba64eb` 建 `src/devtools/panel-harness.{html,ts}`，mock chrome.devtools.* + chrome.tabs.sendMessage。在 PH 之上累积 **29 case**：
+- panel-tabs（11）：4 Tab × empty/populated 渲染 + Overview wide 长 URL 截断 + Panel × 768/3840 响应式
+- panel-tabs-dark（4）：4 Tab × dark mode 颜色对比
+- panel-overview-detail（4）：行展开 / 慢请求染色 / stack 染色 / BodyViewer 嵌入
+- panel-environment-crud（6）：新建/删除项目 + 切换 active + 改项目名 + 加删服务器 + useAutoSave 防抖
+- panel-settings-toggle（4）：toggle 双向切换 + 重试队列 + 隔离性
+
+**已知 flake（非引入）**：popup-dark.spec.ts R2 偶发 ERR_FILE_NOT_FOUND（persistent context + MV3 SW 注册时序 race）。两 agent 都独立确认这是 pre-existing flake，单独重跑都 pass。**留待办**：popup-dark page.goto 前可加 SW ready 等待或 retry-on-fail。
+
+**稳化基础设施**：`tests-e2e/fixtures.ts` 加 `waitForBadgeText(sw, expected, timeoutMs=3000)` 50ms 轮询助手，比固定 800ms sleep 稳。badge-corrupt 3 case 已迁移过去，A3.2/A3.3 实测从 800-1500ms 完成时间降到 525-568ms。
 
 ---
 
