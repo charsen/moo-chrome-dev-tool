@@ -4,51 +4,32 @@
 
 ## 一句话现状
 
-v0.1.12 **已发**（2026-05-19，gitee tag `v0.1.12` + Release 含 zip + sha256）。这一版纯 UX 增量 13 条（染色升级 / Alt+Shift+M / JSON viewer / 错误 stack 染色 / popup 最近提交区 / toolbar badge / 按钮系统化 / 暗色硬编码扫尾 / 录屏失败 UX / `<MooCloseBtn>` / `useAutoSave` 范式统一 / 元素清空两步确认 / 失败横幅去重 + Playwright E2E 基础设施 + CI gate / History 卡顿优化 / shadow DOM token 走 tokens.css 单一来源）。v0.1.11 是架构纠偏 **BREAKING**：token 从 header 移到 POST body，扩展退回 webhook 客户端本分。详见 CHANGELOG.md。
+v0.1.13 **已发**（2026-05-20，gitee tag `v0.1.13` + Release id 687587 含 zip 166.1 KB + sha256 `021d2bc6321aa12e2bd6e956964e7543ced227591b8ad54fbcbb22f472f96974`）。**无 BREAKING**——后端无需配套升级。这一版主线：① 体验加速（content 主 chunk -32% 懒加载）② 响应式扫修 25 处（用户报的 4K 大分辨率「界面没展示完整」+ 之前漏的 flex truncate / box-sizing / wrap 系列）③ 护栏加厚（offscreen 状态机 + retry queue race 修 + 8+9 单测）④ 收口债务（useToast / retryQueue facade / humanize / focus trap / shadow token 反扫 49 处）⑤ 工程基础设施（release.mjs 自动化 + panel-harness 解锁 DevTools 4 Tab 自动化 + 4 个项目 subagent + HANDOFF 归档机制）。
 
-**发版决策小记**（2026-05-19）：v0.1.12 跳过了 `docs/RELEASE_TEST_CHECKLIST.md` 人肉走，因为：① 非 BREAKING，没动 submit/网络/数据契约；② 136 单测 + 13 E2E + type-check + build 全绿；③ 这批改动在 dev 已 dogfood 了一周多。下次有 BREAKING 改动**必须**人肉走 checklist，不能因为这次 skip 就成默认。
+**发版决策小记**（2026-05-20）：v0.1.13 **主动跳过 dogfood 等待**——用户「发，你们搞定」明示放弃 dogfood，3 条跳 checklist 标准只满足前 2（① 非 BREAKING ② 161 单测 + 77 E2E + type-check + build 全绿），第 3 条 dogfood ≥ 几天**主动跳过**。理由：本版改动多为响应式 fix / 测试覆盖 / 工程基础设施，**没动 submit / 网络 / 数据契约 / 消息协议 / storage schema**，破窗风险局部。如真有体感回归，hotfix 走 v0.1.14。**下次有 BREAKING 必须 dogfood + 人肉走 checklist**。
 
-往前看，过去两周主线是收口：上 CI、上 pre-commit、补单测、给录屏换底盘、把所有"边界 case 不崩"的功夫都补完。当前没有大特性堆在路上，状态适合稳一段时间或做样式系统化这种欠了很久的事。
+往前看：v0.1.13 把响应式 + 测试覆盖一波打完。E2E 13 → 77（+64 case），单测 136 → 161（+25 case）。当前没有大特性堆在路上，等用户反馈 v0.1.13 体感再说。
 
 ## 这两周做了什么
 
-> 历史版本（v0.1.7 → v0.1.11）的"这两周做了什么"已归档至 [docs/handoff-archive/v0.1.x.md](docs/handoff-archive/v0.1.x.md)。
+> 历史版本（v0.1.7 → v0.1.12）的"这两周做了什么"已归档至 [docs/handoff-archive/v0.1.x.md](docs/handoff-archive/v0.1.x.md)。当前发版（v0.1.13）的明细全在 [CHANGELOG.md](CHANGELOG.md) 顶部，本文档不重复列。
 
-**v0.1.12（持续累积，未 release，纯 UX 增量）**：
+**MV3 限制·永远只能人眼核**：toolbar badge 视觉、`Alt+Shift+M` 真触发、DevTools 面板内嵌渲染、global shortcut、native toolbar、chrome:// 页——这些都 Playwright 也做不了，发版前自己手点 1-2 分钟过一下。**v0.1.13 没人肉走**（用户明示跳过），如果体感有问题 hotfix 走 v0.1.14。
 
-- **请求列表染色升级**：行级失败左色条（4xx 橙、5xx 红）+ 慢请求 duration 染色（≥1s 橙、≥3s 红）。Overview Tab + 提交弹窗两边同步。代码位置：`src/devtools/tabs/Overview.vue` + `src/content/styles.ts` + `src/content/SubmitDialog.vue` 三处共用 `failClass` / `durClass` helper
-- **新增 `Alt+Shift+M` 快捷键**：直接调起 toolbar popup（webhook 时代追加的「轻量控制面板」入口）。manifest commands 注册 + background `chrome.action.openPopup()`。⚠️ Chrome MV3 限制：API 没法直接打开 DevTools 或跳 DevTools 内某面板——快捷键开的是 popup，**不是** DevTools 的 Moo 面板，那个只能 F12 手动开
-- **Overview Tab 错误信息人话化**：之前 `Could not establish connection. Receiving end does not exist.` stock 错误原文直接展示给用户（其实就是「扩展刚重载、宿主页没刷新」）。新版翻成「扩展刚重载过……刷新一下当前页面就好」+ 顺手把另一条 message port closed 也翻了
-- **Popup「F12 → Moo 面板」提示直接显示**：之前要点 `如何打开 DevTools 面板 ▾` 才展开，现在 footer 里直接 inline 一行，删了折叠按钮 + 死掉的 `helpOpen` ref / `.link` CSS
-- **录屏开关保留在 popup**：`tabCapture` 是 optional permission，必须有 user gesture 触发 `chrome.permissions.request()`，popup 是唯一能放这开关的地方。考虑过授权后隐藏，但首次发现性 trade-off 不值，保持现状
-- **NEW · Overview body 区彻底改版（JSON viewer）**：Request/Response Body 段从裸 `<pre>` 升级成 `BodyViewer` 组件（`src/devtools/components/BodyViewer.vue`），三件套：① JSON 自动检测 + 「格式化/原文」toggle；② 语法染色（key/string/number/bool/null 配色，token regex 一次性 escape 出 HTML 走 `v-html`）；③ 大 body 折叠（>3K 字符默认只渲染前 2K，>200K 不尝试 parse）。新工具：`src/utils/jsonHighlight.ts`（15 单测）。复制按钮 + size chip 顺手补上
-- **NEW · 错误 stack 染色**：`src/utils/stackFormat.ts`（6 单测）按行解析 `at fn (file:line:col)` / `at file:line:col` / `fn@file:line:col`，分别给函数名加粗、文件路径中灰、`:line:col` 弱灰。Overview 错误行展开后的 Stack 段套上
-- **NEW · Popup 加「最近提交」区**：底部新 section（`src/popup/App.vue`），第 1 条 prominent 卡 + 第 2-3 条 compact 行。点击都是「在新 tab 打开当时出 bug 那个页面」（`entry.url`，不是 `remoteBase/remoteId`——后者不一定是可访问 web 页）。状态 chip 8 种：失败/重试中/已提交/待处理/处理中/完成/已删/已删除
-- **NEW · Toolbar 图标 badge**：扩展图标右下角红 badge 显示最近 24h 失败提交数。新工具 `src/utils/badge.ts`，触发点 = `submitBug` 后 + SW 启动 + `onHistoryChanged`。>99 显示 `99+`，超 24h 老数据自动衰减
-- **NEW · 按钮样式系统化**：Environment / Overview / History 三个 Tab 各自的 `.btn` / `.danger-btn` / `.icon-btn`（高度 26 / 22px 也不统一）全迁到 tokens.css 的 `.moo-btn` + `.moo-icon-btn`。新增 `.moo-icon-btn` 基类（28×28 SVG 方形）+ `--toggle-on` / `--danger` / `.moo-icon-btn-pulse` 装饰
-- **NEW · 暗色硬编码扫尾**：ConfirmModal / PayloadEditorModal 的 modal scrim、Settings 行 hover（含手写的 light/dark 两套）、History 视频缩略图占位的 4 处 hex 都换 token；新增 `--moo-c-scrim` / `--moo-c-row-hover` / `--moo-c-bg-inverse`（含 dark mode 变体）
-- **NEW · 录屏失败恢复 UX**：SubmitDialog 失败时除了 toast 还在 footer 上方挂持久横幅（含失败原因 + 重试按钮 + 录像专用提示「关窗后只能去 历史 重提」）。判定 cannotAutoRetry = `!!video && !res.queued`（复用 background 的 multipart / >1MB 排除规则信号）
-- **NEW · `<MooCloseBtn>` 组件**：3 处关闭 X 按钮统一封装。`src/components/MooCloseBtn.vue` 不带 scoped CSS，`.moo-close-btn` 类在 tokens.css 和 content/styles.ts 都已定义
-- **NEW · Settings / Environment 自动保存范式统一**：新 composable `src/composables/useAutoSave.ts`（debounce + saveState 状态机 + onError 回调 + onBeforeUnmount 自清 timer）。Environment 800ms 防抖 + draft 中间层；Settings 0 ms 立刻保存。**Settings 顺手改用 `useConfig()`，补上之前直接 `loadConfig`/`saveConfig` 漏的 onConfigChanged 多 tab 同步**（隐藏 bug 修了）
-- **NEW · 附带元素「清空」加两步确认**：第一次点击 → 按钮红色 + 「再点一下确认清空」+ 1s 节奏脉动；3 秒内再点才真清。单个 × 删除不加（重选一个成本低）
-- **NEW · 失败横幅去重复重试按钮**：横幅原本里塞了「重试」按钮，跟 footer 那个「重试 ⌘↵」视觉冗余。横幅改纯信息态（⚠ + 原因 + 录像额外提示），操作一律走 footer。用户反馈直接看出来的（[Image]），改完顺手清了 `.moo-submit-fail-actions` CSS
-- **NEW · useAutoSave 加 10 个单测**：之前只靠 Settings / Environment 间接验证；补单测覆盖 inflight 计数防闪 / savedDisplayMs 衰减 / flush 跳防抖 / error 路径。Node 环境 + Vue lifecycle hack：`vi.mock('vue')` 把 onBeforeUnmount 换 no-op；`vi.stubGlobal('window', ...)` 转发 setTimeout；`flushMicrotasks` helper 处理 fake timer 不 flush microtask 的坑。测试总数 126 → 136
-- **NEW · History 卡顿优化（不上虚拟列表库）**：`.row` 加 `content-visibility: auto` + `contain-intrinsic-size: 0 80px`，浏览器自动跳过视口外行的 layout/paint/image-decode；30 条 base64 缩略图同时解码的卡顿就消失了。open 行不约束高度（detail 高度变化大让 auto 量）。`<img>` 顺手加 `loading=lazy` + `decoding=async`。比上 virtual-list 库简单 10 倍，零 JS 改动
-- **NEW · Shadow DOM token 走 tokens.css 单一来源（vite ?raw 法）**：`src/content/styles.ts` 顶上原本硬编码一整套 `--c-*` token 跟 `--moo-c-*` 平行存在，已经偷偷 drift 两处（`--c-warn-fg` / `--sh-lg`）。改造为：`import tokensCSS from '@/styles/tokens.css?raw'` → 正则抓顶层 `:root {...}` 块嵌进 `.moo-root` → 144 处旧 `var(--c-*)` 用法通过 `--c-brand: var(--moo-c-brand)` 别名转新名。两处 drift 显式 override + 注释解释（shadow 叠在任意宿主页上需要更狠对比度，故意不跟齐）。dark mode 不带进 shadow（`@media` 里嵌套的 `:root` 不抓——content 叠用户网页上跟着系统切深色会冲突）。代价：content script bundle 80→96 KB（tokens.css 全文嵌入），可接受
+## Playwright E2E（v0.1.13 拓展到 77 case）
 
-测试覆盖：v0.1.12 单测 126 全过 + type-check + build 干净。**新增 Playwright E2E**（13 case 全过）覆盖 popup 最近提交区 / badge 真 SW 跑 / BodyViewer 真 Chrome 染色折叠，详见后面「Playwright E2E」段。`docs/RELEASE_TEST_CHECKLIST.md` § v0.1.12 已补到 #15（JSON viewer / 折叠 / stack 染色 / popup 最近提交 / badge 都进了）。
+v0.1.12 立基础设施（13 case），v0.1.13 全面铺开到 **77 case**。**真起 chromium、真加载 dist 当 extension、真跑 SW**。位置：
 
-注：本批 6 个 refactor / feat（按钮 / hex / 失败 UX / MooCloseBtn / useAutoSave / 两步确认）的 RELEASE_TEST_CHECKLIST 场景**还没补**——下一批人发版前要手测：① 三个 Tab 按钮视觉一致 ② 深色模式下 modal scrim / Settings 行 hover / History 视频缩略图都正常 ③ SubmitDialog 故意造一次失败看横幅 ④ Settings 改个 toggle 看是否触发 Environment 同步刷新 ⑤ 多挑几个元素后点「清空」走两步确认
+- `playwright.config.ts` + `tests-e2e/fixtures.ts`（launchPersistentContext + 抓 extensionId + 抓 SW worker + 新增 `waitForBadgeText` 轮询助手 + `openExtensionPage` retry helper）
+- `tests-e2e/popup-*.spec.ts`（popup-recent 3 / popup-dark 1 / popup-overflow 1 / popup-many 1 / popup-status 3 / popup-inject 5 / popup-corrupt 2 = **16 case**）
+- `tests-e2e/badge*.spec.ts`（badge 4 / badge-edges 4 / badge-corrupt 3 = **11 case**）
+- `tests-e2e/body-viewer*.spec.ts`（body-viewer 6 / body-viewer-widths 6 / body-viewer-dark 2 / body-viewer-invalid 4 / body-viewer-search 3 = **21 case**）
+- `tests-e2e/panel-*.spec.ts`（panel-tabs 11 / panel-tabs-dark 4 / panel-overview-detail 4 / panel-environment-crud 6 / panel-settings-toggle 4 = **29 case** —— **panel-harness 解锁**）
+- `src/devtools/body-viewer-harness.{html,ts}` + `src/devtools/panel-harness.{html,ts}`（两个 harness，按 `?case=` / `?tab=&seed=` 切场景）
 
-**MV3 限制·只能人眼核**：toolbar badge 视觉、`Alt+Shift+M` 真触发、DevTools 面板内嵌渲染——这三件事 Playwright 也做不了（global shortcut / native toolbar / chrome:// 页都驱不动），发版前自己手点 1-2 分钟过一下
+跑法：`pnpm test:e2e`（build → 77 case 约 1.1min）
 
-## Playwright E2E（v0.1.12 新增基础设施）
-
-之前测试只到 vitest 单测层；v0.1.12 配套加了 Playwright，**真起 chromium、真加载 dist 当 extension、真跑 SW**。位置：
-
-- `playwright.config.ts` + `tests-e2e/fixtures.ts`（launchPersistentContext + 抓 extensionId + 抓 SW worker）
-- `tests-e2e/popup-recent.spec.ts`（3 case：状态 chip / 8 种枚举 / 空 history）
-- `tests-e2e/badge.spec.ts`（4 case：计数 / 24h 外排除 / >99 显示 / 衰减跟随 history 变化）
+为啥要 harness：BodyViewer / Panel.vue 平时挂 DevTools panel iframe 里，chrome:// 外部驱不动；做独立 harness 页面 mock chrome.devtools.* + chrome.tabs.sendMessage，Playwright 直接开就能 DOM 断言。**panel-harness 解锁** 4 Tab × empty/populated/wide/long 数据态 + dark mode + interaction 全套自动化。
 - `tests-e2e/body-viewer.spec.ts`（6 case：JSON 检测 / toggle / 折叠 / 非 JSON / XSS / search mark）
 - `src/devtools/body-viewer-harness.{html,ts}`：BodyViewer 单独挂的 harness 页面，已并入 vite build 进 dist（<2KB，按 `?case=xxx` 切场景）
 
