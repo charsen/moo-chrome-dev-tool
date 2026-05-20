@@ -54,6 +54,31 @@ Settings / History / Environment / ContentApp 复制了同款 toast/toastKind/to
 
 模块自己定义了 `RETRY_QUEUE_KEY = 'mooRetryQueue'`，但 Settings + background/index 都绕过直接读写这个字面量——4 处散落无编译期保护。补 `getQueueLength()` / `clearQueue()` 两个 facade export，所有调用点收口。`RETRY_QUEUE_KEY` 仍**不 export**，外部完全不知道 storage key 名。
 
+### shadow 世界 dialog focus trap + ESC（a11y）
+
+SubmitDialog + Annotator cancel-guard 都挂了 `role="dialog"`/`aria-modal="true"`，但没做 focus trap 也没 ESC 关闭，键盘用户 Tab 走得出 dialog 到宿主页。抽 `src/composables/useFocusTrap.ts`：
+
+- 关键 helper `getActiveInShadowOrDoc()` 沿 `getRootNode().activeElement` + 嵌套 `shadowRoot.activeElement` 下钻——直接读 `document.activeElement` 在 shadow 内只返宿主 host，还原焦点会错位
+- listener 挂 dialog 容器本身的 keydown 而非 document，**不污染宿主页**
+- Tab/Shift+Tab 在 focusable 列表里循环；ESC 调 onEscape 不强制关（让组件决定）；unmount 恢复 previouslyFocused
+- 应用到 SubmitDialog 主 dialog + Annotator cancel-guard 弹层
+
+Annotator 主画布 toolbar 是 `role="toolbar"` 不是 dialog，**不加 trap**。
+
+### release.mjs 全自动化（默认 --dry-run）
+
+之前 `pnpm release` 只到打 zip + sha256，剩 tag/push/Gitee create-release/attach_files 全靠 release-captain.md 里贴 bash 让人复制。这次全吃进脚本：
+
+- 默认 dry-run：build + zip + sha256 + 打印「会做啥」清单不真推
+- `--publish`：真发；`--skip-build`：复用现有 dist；`MOO_RELEASE_FORCE=1` 旧逃生口保留
+- Gitee 陷阱 1（POST 响应 JSON parse fail）封装：catch 后调 `list_releases` 按 tag 找 id 继续，不重 POST 避 400「该标签已经存在发行版」
+- `GITEE_TOKEN` 全程仅 env 读取，不写盘 / 不进 commit / 不进 log；缺 token 时 `--publish` fail-fast
+- owner/repo 从 `git remote get-url origin` 正则解析（兼容 https/ssh，fork 也能用）
+- `package.json` / `manifest.json` 版本号强校验一致，不一致 fail-fast 而非默默改写
+- Step 6/7（HANDOFF 同步 / 上上版归档 / 最终 commit）按 release-captain 约定**不代写**——是判断题，跑完打印「下一步」清单 + 提醒重置 token
+
+下次发版：`pnpm release` 看 dry-run → `export GITEE_TOKEN=xxx && pnpm release --publish` 一条命令搞定。
+
 ### 工程基础设施
 
 - **4 个项目 subagent** 配置进 `.claude/agents/`：mv3-pro / vue-craft / lab-tester / release-captain，跟着 repo 走，每个 agent 各自带项目已知坑 + 工程约束，调用时不用每次提醒
@@ -63,7 +88,7 @@ Settings / History / Environment / ContentApp 复制了同款 toast/toastKind/to
 
 ### 测试覆盖
 
-145 → **153 单测**（+8 offscreen state machine）；retry queue 单测 +9 已在前批（136 → 145）。Playwright E2E 13/13 全过（含 BodyViewer harness 走 file URL 加载不受新 web_accessible_resources 影响）。
+136 → **161 单测**（+25 跨三批：retry queue 9 / offscreen state machine 8 / useToast composable 8）。Playwright E2E 13/13 全过（含 BodyViewer harness 走 file URL 加载不受新 `web_accessible_resources` 影响）。
 
 ## v0.1.12
 
