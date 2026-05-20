@@ -240,7 +240,9 @@ export const SHADOW_CSS = `
   gap: 2px;
   animation: moo-menu-in .15s cubic-bezier(.4, 0, .2, 1);
   min-width: 200px;
-  max-width: 280px;
+  /* 极窄宿主页（mobile emulator 320px 等）兜底：picker 280px 加 ball 位置容易左溢
+     calc 把 max 缩到 viewport - 32 ；vw 单位 fallback 让旧浏览器不裂 */
+  max-width: min(280px, calc(100vw - 32px));
 }
 @media (prefers-color-scheme: dark) {
   .moo-ball-menu {
@@ -300,6 +302,9 @@ export const SHADOW_CSS = `
 }
 .moo-ball-action .lab {
   flex: 1;
+  /* 长项目名（"Some-Very-Long-Internal-Project-Name"）不加 min-width: 0
+     会把按钮撑超 .moo-ball-menu 的 max-width，ellipsis 也失效 */
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -352,6 +357,8 @@ export const SHADOW_CSS = `
 .moo-ball-active-hd .ic { font-size: 12px; }
 .moo-ball-active-hd .lab {
   flex: 1;
+  /* 同上：flex + ellipsis 标配 min-width: 0 兜底 */
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -788,6 +795,9 @@ export const SHADOW_CSS = `
   font-size: 11px;
   line-height: 1.55;
   white-space: pre-wrap;
+  /* 渲染后的 JSON / base64 截图常含极长无空格 token，pre-wrap 不会断词，
+     虽有 overflow: auto 兜底但用户得横向滚很丑；anywhere 强制按字符断行 */
+  overflow-wrap: anywhere;
   max-height: 240px;
   overflow: auto;
   color: var(--c-text);
@@ -900,6 +910,10 @@ export const SHADOW_CSS = `
 .req-item .status.err  { background: var(--c-danger-soft);  color: var(--c-danger-fg); }
 .req-item .url {
   flex: 1;
+  /* flex 子项默认 min-width: auto = 内容宽度，会让长 URL（含元素列表的 selector
+     "div > div > … > button.xxx"）把整行撑爆方法/状态列丢，ellipsis 也失效。
+     min-width: 0 是 flex + ellipsis 的标配兜底。 */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1133,6 +1147,9 @@ export const SHADOW_CSS = `
   white-space: pre-line;
   line-height: 1.55;
   margin-bottom: 4px;
+  /* 后端错误经常带超长 token / 无空格 URL，pre-line 不会断词，会撑爆 fail banner
+     横向出 dialog；anywhere 是 word-break: break-all 的现代等价但保留单词边界 */
+  overflow-wrap: anywhere;
 }
 .moo-submit-fail-hint {
   font-size: 11px;
@@ -1334,6 +1351,10 @@ export const SHADOW_CSS = `
   box-shadow: var(--sh-lg);
   font-size: 12px;
   font-weight: 500;
+  /* 极窄宿主页（移动端模拟器 / DevTools docked 半屏）兜底：浮条估算宽 245px，
+     超窄 viewport 时让内容横向不溢出可视区；ContentApp.vue 的 recBarStyle 也用
+     245px 做 clamp，这里只是 CSS 层最后一道保险 */
+  max-width: calc(100vw - 16px);
 }
 .rec-dot {
   width: 10px;
