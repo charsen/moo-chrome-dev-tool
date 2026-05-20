@@ -1,14 +1,15 @@
 // 发版打包 + 可选发布。
 //
 // 模式：
-//   pnpm release                          → dry-run：build + zip + sha256 + 打印「会做啥」清单
-//   pnpm release --publish                → 真发：tag + push + Gitee create-release + 上传 zip/sha256
-//   pnpm release --skip-build             → 跳 vite build（已经 build 过想直接打包）
-//   pnpm release --publish --skip-build   → 跳 build 直接发
+//   pnpm release                          → dry-run：纯打印「会做啥」清单（不 build / 不写盘）
+//   pnpm release --publish                → 真发：build + zip + sha256 + tag + push + Gitee create-release + 上传
+//   pnpm release --skip-build             → 仍是 dry-run，只是连「会跑 build」那行都不打印
+//   pnpm release --publish --skip-build   → 真发但跳 vite build（用现有 dist/）
 //
 // 设计原则：
-// - 默认 dry-run，防误推
+// - 默认 dry-run，防误推；dry-run 绝不真 build / 不真写 zip / sha256（之前 P1 bug：名不副实，污染 working tree）
 // - tag/push/Gitee API 都搬进来，下次换人换 AI 不靠记忆贴 bash
+// - dry-run 会预检 git tag v$VERSION 是否已存在 —— 已存在就 warn，提示先 bump 版本号
 // - Gitee POST 不重试：可能已成功，重试会拿到 400「该标签已存在发行版」
 // - GITEE_TOKEN 只从 env 读，绝不写盘、不打 log、不进 commit
 // - HANDOFF.md / CHANGELOG 收尾留给用户手动判断，脚本只打提示
@@ -94,8 +95,105 @@ if (publish && !token) {
 console.log(`版本：v${version}  仓库：${owner}/${repo}  模式：${publish ? 'PUBLISH（真发）' : 'DRY-RUN（默认）'}`)
 console.log('')
 
-// ---------- build ----------
+// ---------- 路径 / 文件名常量（dry-run 也要用来打印「会做啥」）----------
 const distDir = resolve(root, 'dist')
+const releaseDir = resolve(root, 'release')
+const zipName = `moo-chrome-dev-tool-${version}.zip`
+const zipPath = resolve(releaseDir, zipName)
+const sha256TxtPath = resolve(releaseDir, `${zipName}.sha256.txt`)
+
+// ---------- CHANGELOG 抽当前版本段（给 Gitee release body 用 / dry-run 也打印长度）----------
+function extractChangelogSection(v) {
+  const changelogPath = resolve(root, 'CHANGELOG.md')
+  if (!existsSync(changelogPath)) return ''
+  const raw = readFileSync(changelogPath, 'utf8')
+  // 抓 `## vX.Y.Z` 到下一个 `## v` 或文档末尾之间。
+  // 注意：不用 `m` flag —— 否则 `$` 会匹配每行尾，非贪婪 `*?` 立刻 0 长度命中第一行末尾。
+  // 用 `\n## v` 锚定段首，文档末尾用 `$` 配 RegExp 默认行为（= 字符串结尾）。
+  const re = new RegExp(`\\n## v${v.replace(/\./g, '\\.')}\\s*\\n([\\s\\S]*?)(?=\\n## v|$)`)
+  const m = raw.match(re)
+  return m ? m[1].trim() : ''
+}
+const changelogSection = extractChangelogSection(version)
+
+// ---------- Step 4 + 5 共用：tag 名 / message / release 元数据 ----------
+const tagName = `v${version}`
+const tagMessage = `${tagName} 发版
+
+主要变更：见 CHANGELOG.md 当前版本段
+
+完整 changelog: CHANGELOG.md`
+
+const releaseBody = changelogSection || `v${version} 发版`
+const releaseTitle = `v${version}`
+
+// ---------- DRY-RUN 早返回：不 build / 不 zip / 不写 sha256，纯打印 ----------
+// 起因：旧版「dry-run」名不副实 —— 完整跑 vite build、清 dist/、写 zip + sha256，
+// 用户视角「试一下看看」代价远超预期还污染 working tree。
+if (dryRun) {
+  // 1) tag 预检：本地有 v$VERSION 就 warn，免得 --publish 才发现 tag 撞了
+  let tagAlreadyExists = false
+  try {
+    const out = execSync(`git tag -l ${tagName}`, { cwd: root, encoding: 'utf8' }).trim()
+    tagAlreadyExists = out === tagName
+  } catch {
+    // 不在 git 仓库或 git 命令失败 —— 跳过，不阻塞 dry-run
+  }
+  if (tagAlreadyExists) {
+    console.warn(`⚠️  tag ${tagName} 已存在（本地）。直接 --publish 会在 Step 4 撞失败（或 push 失败）。`)
+    console.warn('   先 bump package.json + manifest.json 版本号再跑。')
+    console.warn('')
+  }
+
+  if (!changelogSection) {
+    console.warn(`⚠ CHANGELOG.md 没找到 ## v${version} 段，真发时 release body 会是空的`)
+    console.warn('')
+  }
+
+  console.log('━━━ DRY-RUN 会做的事（不真 build / 不写盘）━━━')
+  console.log('')
+  console.log('Step 3 — build + 打包 + 校验和:')
+  if (skipBuild) {
+    console.log('  （--skip-build：会跳过 vite build，直接用现有 dist/）')
+    if (!existsSync(distDir)) {
+      console.warn('  ⚠ dist/ 当前不存在；--publish --skip-build 会在此 fail')
+    }
+  } else {
+    console.log(`  rm -rf dist/    # 清旧 build`)
+    console.log(`  pnpm build      # 即 vite build`)
+  }
+  console.log('  冒烟检查 dist/ 必需文件齐（manifest / service-worker-loader / popup / devtools / panel / offscreen）')
+  console.log(`  zip -r -X -q release/${zipName} ./    # cwd=dist/`)
+  console.log(`  sha256 算法 = node:crypto createHash('sha256')，写两份：`)
+  console.log(`    release/${zipName}.sha256       # 兼容旧存档`)
+  console.log(`    release/${zipName}.sha256.txt   # 上传给 Gitee`)
+  console.log('')
+  console.log('Step 4 — git tag + push:')
+  console.log(`  git tag -a ${tagName} -F -   # message 走 stdin`)
+  console.log(`  git push origin master --tags`)
+  console.log('  tag message:')
+  console.log(tagMessage.split('\n').map((l) => '    ' + l).join('\n'))
+  console.log('')
+  console.log('Step 5 — Gitee Release API:')
+  console.log(`  POST https://gitee.com/api/v5/repos/${owner}/${repo}/releases`)
+  console.log(`    tag_name: ${tagName}`)
+  console.log(`    name: ${releaseTitle}`)
+  console.log(`    body: <CHANGELOG ## v${version} 段，${releaseBody.length} 字>`)
+  console.log(`    target_commitish: master`)
+  console.log(`  POST .../releases/{id}/attach_files (multipart)`)
+  console.log(`    file: release/${zipName}`)
+  console.log(`    file: release/${zipName}.sha256.txt`)
+  console.log('')
+  console.log(`token: ${token ? '已读到 GITEE_TOKEN（' + token.length + ' 字符，已 mask）' : '未设（真发时需 export GITEE_TOKEN=...）'}`)
+  console.log('')
+  console.log('要真发，重跑：pnpm release --publish')
+  printNextSteps()
+  process.exit(0)
+}
+
+// ---------- 以下都是 --publish 真发分支 ----------
+
+// ---------- build ----------
 if (!skipBuild) {
   if (existsSync(distDir)) {
     console.log('清理旧 dist/')
@@ -129,11 +227,7 @@ if (missing.length > 0) {
 }
 
 // ---------- 打包 + sha256 ----------
-const releaseDir = resolve(root, 'release')
 mkdirSync(releaseDir, { recursive: true })
-
-const zipName = `moo-chrome-dev-tool-${version}.zip`
-const zipPath = resolve(releaseDir, zipName)
 if (existsSync(zipPath)) rmSync(zipPath)
 
 console.log(`打包 → release/${zipName}`)
@@ -146,7 +240,6 @@ const hash = createHash('sha256').update(readFileSync(zipPath)).digest('hex')
 // 内容 = `${sha256}  ${filename}\n`，shasum -c 兼容格式
 const sha256Body = `${hash}  ${zipName}\n`
 writeFileSync(resolve(releaseDir, `${zipName}.sha256`), sha256Body)
-const sha256TxtPath = resolve(releaseDir, `${zipName}.sha256.txt`)
 writeFileSync(sha256TxtPath, sha256Body)
 
 console.log('')
@@ -154,59 +247,8 @@ console.log(`✓ ${zipName}  ${(stat.size / 1024).toFixed(1)} KB`)
 console.log(`  sha256: ${hash}`)
 console.log('')
 
-// ---------- CHANGELOG 抽当前版本段（给 Gitee release body 用）----------
-function extractChangelogSection(v) {
-  const changelogPath = resolve(root, 'CHANGELOG.md')
-  if (!existsSync(changelogPath)) return ''
-  const raw = readFileSync(changelogPath, 'utf8')
-  // 抓 `## vX.Y.Z` 到下一个 `## v` 或文档末尾之间。
-  // 注意：不用 `m` flag —— 否则 `$` 会匹配每行尾，非贪婪 `*?` 立刻 0 长度命中第一行末尾。
-  // 用 `\n## v` 锚定段首，文档末尾用 `$` 配 RegExp 默认行为（= 字符串结尾）。
-  const re = new RegExp(`\\n## v${v.replace(/\./g, '\\.')}\\s*\\n([\\s\\S]*?)(?=\\n## v|$)`)
-  const m = raw.match(re)
-  return m ? m[1].trim() : ''
-}
-const changelogSection = extractChangelogSection(version)
 if (!changelogSection) {
   console.warn(`⚠ CHANGELOG.md 没找到 ## v${version} 段，release body 会是空的`)
-}
-
-// ---------- Step 4 + 5：tag / push / Gitee API ----------
-// 全部封装在函数里，dry-run 只打印「会做啥」，--publish 真执行
-const tagName = `v${version}`
-const tagMessage = `${tagName} 发版
-
-主要变更：见 CHANGELOG.md 当前版本段
-
-完整 changelog: CHANGELOG.md`
-
-const releaseBody = changelogSection || `v${version} 发版`
-const releaseTitle = `v${version}`
-
-if (dryRun) {
-  console.log('━━━ DRY-RUN 会做的事 ━━━')
-  console.log('')
-  console.log('Step 4 — git tag + push:')
-  console.log(`  git tag -a ${tagName} -m "<多行 message，见下>"`)
-  console.log(`  git push origin master --tags`)
-  console.log('  tag message:')
-  console.log(tagMessage.split('\n').map((l) => '    ' + l).join('\n'))
-  console.log('')
-  console.log('Step 5 — Gitee Release API:')
-  console.log(`  POST https://gitee.com/api/v5/repos/${owner}/${repo}/releases`)
-  console.log(`    tag_name: ${tagName}`)
-  console.log(`    name: ${releaseTitle}`)
-  console.log(`    body: <CHANGELOG ## v${version} 段，${releaseBody.length} 字>`)
-  console.log(`    target_commitish: master`)
-  console.log(`  POST .../releases/{id}/attach_files (multipart)`)
-  console.log(`    file: release/${zipName}`)
-  console.log(`    file: release/${zipName}.sha256.txt`)
-  console.log('')
-  console.log(`token: ${token ? '已读到 GITEE_TOKEN（' + token.length + ' 字符，已 mask）' : '未设（真发时需 export GITEE_TOKEN=...）'}`)
-  console.log('')
-  console.log('要真发，重跑：pnpm release --publish')
-  printNextSteps()
-  process.exit(0)
 }
 
 // ---------- 真发：Step 4 ----------
