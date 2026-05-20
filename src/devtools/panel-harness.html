@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Panel Harness</title>
+    <style>
+      /* DevTools panel iframe 真环境是 100vh + 0 margin，把 harness 也对齐这一姿势，
+         省得 Panel.vue 里 .panel { height: 100vh } 在 body 默认 8px margin 下被截掉一行 */
+      html, body { margin: 0; padding: 0; height: 100vh; }
+      body { background: var(--moo-c-bg); font-family: var(--moo-ff-sans); }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./panel-harness.ts"></script>
+  </body>
+</html>

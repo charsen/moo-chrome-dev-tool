@@ -40,7 +40,11 @@ export default defineConfig({
         devtoolsPanel: resolve(__dirname, 'src/devtools/panel.html'),
         // BodyViewer 的 E2E 测试 harness。只在 Playwright 测里访问，prod 不引用。
         // 体积 <2KB，并入 dist 不影响发布；release.mjs 也不依赖它存在
-        bodyViewerHarness: resolve(__dirname, 'src/devtools/body-viewer-harness.html')
+        bodyViewerHarness: resolve(__dirname, 'src/devtools/body-viewer-harness.html'),
+        // Panel.vue + 4 Tab 的 E2E harness。Panel.vue setup 顶层就 sync 读
+        // chrome.devtools.inspectedWindow.tabId，真 DevTools iframe 外没法挂载，
+        // 所以做 harness 页面 mock chrome.devtools.* 让 Playwright 能驱动 4 Tab 渲染断言。
+        panelHarness: resolve(__dirname, 'src/devtools/panel-harness.html')
       }
     }
   }
