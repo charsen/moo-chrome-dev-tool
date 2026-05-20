@@ -1,4 +1,4 @@
-import { test, expect, seedStorage } from './fixtures'
+import { test, expect, seedStorage, openExtensionPage } from './fixtures'
 
 /**
  * R2（10 回合第 2 回）：popup 在 prefers-color-scheme: dark 下完整渲染。
@@ -41,10 +41,12 @@ test('R2 · popup 在 dark mode 下文字 / 卡片背景 / 状态 chip 颜色都
     ]
   })
 
-  const popup = await context.newPage()
+  // 用 openExtensionPage 带 retry 防 ERR_FILE_NOT_FOUND flake（SW 注册时序 race）
+  const popup = await openExtensionPage(context, sw, `chrome-extension://${extensionId}/src/popup/index.html`)
   await popup.emulateMedia({ colorScheme: 'dark' })
   await popup.setViewportSize({ width: 360, height: 600 })
-  await popup.goto(`chrome-extension://${extensionId}/src/popup/index.html`)
+  // emulate 完触发 reload 让 @media 重新求值
+  await popup.reload()
   await popup.waitForSelector('.rh-card', { timeout: 5000 })
 
   // 1) popup body 背景应该是深色（lightness < 50）

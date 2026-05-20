@@ -79,6 +79,40 @@ export async function readBadgeText(sw: Worker): Promise<string> {
 }
 
 /**
+ * 打开 chrome-extension:// 页面带 retry。
+ *
+ * 已知 flake：persistent context + MV3 SW 注册时序 race 偶发触发
+ * `ERR_FILE_NOT_FOUND` —— chrome 文件 URL resolver 在 SW register 完成后
+ * 还需要 ~50-200ms 才能解析扩展资源，第一次 goto 撞上空窗就崩。
+ *
+ * 修复：goto 前先 ping SW（保证 SW 真活着），失败时关掉重试 1 次。
+ * 比 retry-on-fail 整段重跑稳。
+ */
+export async function openExtensionPage(
+  context: BrowserContext,
+  sw: Worker,
+  url: string,
+  tries = 2
+): Promise<import('@playwright/test').Page> {
+  let lastErr: unknown
+  for (let i = 0; i < tries; i++) {
+    const page = await context.newPage()
+    try {
+      // 1 次 ping 确保 SW 真有响应（chrome 把 extension 资源 ready 跟 SW alive 强关联）
+      await sw.evaluate(() => 1)
+      await page.goto(url)
+      return page
+    } catch (e) {
+      lastErr = e
+      await page.close().catch(() => {})
+      // 50ms 让 chrome 把 SW 注册彻底 settle
+      await new Promise((r) => setTimeout(r, 50))
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('openExtensionPage failed')
+}
+
+/**
  * 轮询 badge text 直到匹配 expected 或超时——比固定 sleep 稳得多。
  *
  * 用于 seedStorage → onHistoryChanged → updateActionBadge 的异步链验证。
