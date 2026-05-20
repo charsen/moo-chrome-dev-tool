@@ -116,6 +116,16 @@ v0.1.12 已发完，前批所有候选事项均已落地或判定不做。当前
   - **修复 ladder**（按成本升序）：① 重启 Chrome（30 秒）② chrome://extensions 移除 + 重新加载 unpacked（2 分钟，强制重注册绕 cache）③ chrome://settings/reset 重置扩展（核选项）
   - **下次接班的事**：用户回报问题后定位时**先**走 ladder ①②（90% 应解决）。如果仍不行才往下查：SW console 看 register 时是否 throw / Chrome 版本是否最近升级 / 是否能复现在干净 profile。可写成「隐藏的第 6 个」坑加进 HANDOFF
 - **content 世界 toast / dialog 抽象**：当前 `<MooCloseBtn>` 是共享组件但 CSS 在两个世界各自定义，组件本身没问题；如果之后要做 content 世界的 toast / dialog 抽象，可以再起一个 `src/content/components/` 目录
+- **Settings 加「待重试列表」可见性**（2026-05-20 深度审视提，**需 UX 决策不要 AI 单方拍**）：当前 Settings 只显示 `重试队列：N 条` + 两个按钮，用户看不见这 N 条是哪些 bug / 为什么失败 / 多久重试。retryQueue.ts 已经在每条 `QueuedRequest` 里存 `endpoint / method / enqueuedAt / attempts`，UI 没消费。痛点：① 后端挂半天后用户回头想知道「我那个 bug 到底发出去没」目前完全不可见；② 5 次 attempt 后会被静默丢弃（`RETRY_MAX_ATTEMPTS = 5`），用户根本不会被告知有数据丢失。**做之前要拍**：嵌入 Settings 卡片 / 新 Tab / Modal？跟 History 失败条的视觉重复如何区分？「队列」和「历史」语义边界？
+- **popup / History 各写一份 `remoteStatus → 中文` 映射**（低价值延后）：`popup/App.vue:191 statusOf()` 跟 `devtools/tabs/History.vue:131 remoteStatusLabel()` 是同一份枚举映射，但当前两处文案一致 + 状态枚举稳定，**不主动收口**——除非要做 i18n 或后端加新状态时一并处理
+
+**审视过没看到优化机会的维度**（2026-05-20，下次审视可以跳过这些除非业务变化）：
+
+- **postMessage 安全**：main-world → content 的三重 validator（source / origin / shape）+ `__moo` magic 已经周到，v0.1.11 webhook 化后无字段遗漏
+- **type 漏洞**：`as any` 仅 8 处，全在不可避免的 chrome 实验 API（`chrome.offscreen` / `chrome.tabCapture`）边界，**MV3 typings 自身缺陷**不是项目问题
+- **storage quota**：`history.ts` 的 "逐条 pop 最旧 + allDropped 信号" 教科书级；`retryQueue.ts` 1MB 单条 + 50 队列 + 5 次重试自动丢全部到位
+- **UX loading/empty/error 三态**：4 Tab + popup + SubmitDialog 都有专门文案（含 Settings 「队列 0 条点重试」也有兜底）
+- **长文件**：Annotator(880) / Environment(886) / Settings(691) / Overview(686) / popup(639) 都是责任清晰大块（绘画 / CRUD / 表单 / 时间线 / 状态卡），强拆只会割裂
 
 **v0.1.12 收尾里全做完的事**（参考用，commit 标好了）：
 
