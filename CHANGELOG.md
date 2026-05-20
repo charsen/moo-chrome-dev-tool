@@ -4,7 +4,21 @@
 
 ## v0.1.13
 
-体验加速 + 护栏加厚 + 收口债务清理。**无 BREAKING**——任何后端接收侧无需配套升级。
+体验加速 + 响应式扫修 + 护栏加厚 + 收口债务清理。**无 BREAKING**——任何后端接收侧无需配套升级。
+
+**发版决策小记**：本版 dogfood 期 < 1 天，**用户明示「发，你们搞定」放弃 dogfood 等待**——三条跳 checklist 标准只满足前 2 条（非 BREAKING + 全绿），第 3 条 dogfood ≥ 几天**主动跳过**。如真有体感回归，hotfix 走 v0.1.14。
+
+### 响应式扫修 25 处（大分辨率 + 窄宽场景）
+
+用户报告大分辨率（4K / DevTools docked 1428×1230 DPR 2）下 DevTools 面板「界面没展示完整」。深度审视找到 25 处真 bug：
+
+- **flex truncate 缺 `min-width: 0`**：`Overview.row-head .url` / `Environment .name` / `History .sub-list .u` / popup `.rh-title` / `.rh-row-title` 等共 5 处——长 URL/标题永不截断，反而把同行 dur/time 列**挤出可视区**。`Panel.tabs` / `Panel.content > *` / `Environment.template-row-head label` 同款病
+- **box-sizing 撑爆**：`Overview.body-search` / `Overview.toolbar .filter` / `Environment.project-search input` / `Settings.taginput` / `PayloadEditorModal .payload-textarea/.var-btn`——width: 100% + padding 没 box-sizing 引发横向滚动
+- **PayloadEditorModal grid**：`1fr 240px` 改 `minmax(0,1fr) 240px`（grid item 等价 min-width: 0）
+- **窄宽 wrap**：Overview / Environment / History / Settings 四 Tab 的 toolbar 加 `flex-wrap: wrap`，配合合理 flex-basis
+- **content 世界 7 处**：`.req-item .url` / `.moo-ball-action .lab` / picker `.lab` / `.moo-ball-menu` max-width 改 `min(280px, calc(100vw - 32px))` / `.moo-preview` 加 `overflow-wrap: anywhere` 防长 token 横向滚 / `.moo-submit-fail-msg` 同款 / `.moo-rec-bar` 加 `max-width: calc(100vw - 16px)`
+
+设计取舍（不强加）：大宽度 ≥ 1600px 不加 panel 级 max-width（Settings 已自带 760，其他 Tab 是时间线/sidebar 性质受益于宽）。tab bar 左聚集保留（参考 Chrome DevTools 原生 Network/Elements）。
 
 ### content 主 chunk -32%（懒加载 Annotator / SubmitDialog / ElementPicker）
 
