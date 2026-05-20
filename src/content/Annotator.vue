@@ -33,7 +33,7 @@
     </div>
     <!-- 取消保护：已绘内容时确认丢弃 -->
     <div v-if="cancelGuard" class="moo-cancel-guard" @click.self="dismissCancelGuard">
-      <div class="moo-cancel-guard-card" role="alertdialog" aria-modal="true">
+      <div ref="cancelGuardEl" class="moo-cancel-guard-card" role="alertdialog" aria-modal="true" tabindex="-1">
         <div class="moo-cancel-guard-title">放弃标注？</div>
         <div class="moo-cancel-guard-msg">已有 {{ items.length }} 处标注，丢弃后无法恢复。</div>
         <div class="moo-cancel-guard-actions">
@@ -100,6 +100,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { clone } from '@/utils/clone'
+import { useFocusTrap } from '@/composables/useFocusTrap'
 
 const props = defineProps<{ image: string }>()
 const emit = defineEmits<{
@@ -276,6 +277,9 @@ const TOOL_KEY_MAP: Record<string, Mode> = {
 
 function onKey(e: KeyboardEvent) {
   if (editing.value) return
+  // cancel-guard 打开时把所有键盘交给 trap 处理：避免按 Esc 同时被 trap 关 guard +
+  // 又被这里 cancel() 走"退出 Annotator"分支造成行为冲突
+  if (cancelGuard.value) return
   const mod = e.metaKey || e.ctrlKey
   // 数字键 1-6 切换工具（无修饰键，且不在输入框里）
   const mapped = TOOL_KEY_MAP[e.key]
@@ -844,6 +848,15 @@ function clearAll() {
 }
 
 const cancelGuard = ref(false)
+const cancelGuardEl = ref<HTMLDivElement>()
+
+// 焦点陷阱 + ESC 回调：cancel-guard 是 alertdialog，打开时必须截住 Tab
+// 防止键盘用户走回画布去画图（语义反了）。ESC 等价点"继续编辑"。
+// 注意：watch flush:'post' —— cancelGuard 切 true → DOM 渲出 → ref 绑定 → 触发 activate
+useFocusTrap(cancelGuardEl, {
+  initialFocus: 'first',
+  onEscape: () => { if (cancelGuard.value) dismissCancelGuard() }
+})
 
 function cancel() {
   // 已有标注时弹二次确认避免误退；空画布直接走

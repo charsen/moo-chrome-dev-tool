@@ -2,7 +2,7 @@
   <ElementPicker v-if="picking" @pick="onElementPicked" @cancel="picking = false" />
 
   <div v-show="!picking" class="moo-dialog-mask" @click.self="onMaskClick">
-    <div class="moo-dialog" role="dialog" aria-modal="true" aria-labelledby="moo-submit-title">
+    <div ref="dialogEl" class="moo-dialog" role="dialog" aria-modal="true" aria-labelledby="moo-submit-title" tabindex="-1">
       <header class="moo-dialog-head">
         <h3 id="moo-submit-title">提交 Bug — {{ project.name }}</h3>
         <MooCloseBtn @click="emit('cancel')" />
@@ -223,6 +223,7 @@ import { safeSendMessage } from '@/utils/messaging'
 const ElementPicker = defineAsyncComponent(() => import('./ElementPicker.vue'))
 import type { PickedElement } from './ElementPicker.vue'
 import MooCloseBtn from '@/components/MooCloseBtn.vue'
+import { useFocusTrap } from '@/composables/useFocusTrap'
 import type { RecordingResult } from './useRecorder'
 
 const props = defineProps<{
@@ -299,6 +300,13 @@ const serverId = ref(props.project.defaultServerId || props.project.servers[0]?.
 const preview = ref('')
 const submitting = ref(false)
 const titleInput = ref<HTMLInputElement | null>(null)
+const dialogEl = ref<HTMLDivElement>()
+
+// 焦点陷阱：Tab/Shift+Tab 在 dialog 内循环，避免键盘用户走到宿主页。
+// initialFocus: 'container' —— 不让 trap 抢初始焦点；下面 onMounted 仍负责把焦点
+// 给到标题输入框（dialog 本身 tabindex="-1" 只是给 trap 兜底）。
+// 不传 onEscape：组件自己的 onKeydown 已经处理 Esc → emit('cancel')，重复 emit 会触发两次。
+useFocusTrap(dialogEl, { initialFocus: 'container' })
 
 /** 提交成功后的内嵌反馈视图。设值即覆盖 body/footer 展示 ✓ 卡片。 */
 const successInfo = ref<{ message: string; remoteId?: string } | null>(null)
