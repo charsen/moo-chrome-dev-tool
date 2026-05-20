@@ -2,6 +2,69 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.1.13
+
+体验加速 + 护栏加厚 + 收口债务清理。**无 BREAKING**——任何后端接收侧无需配套升级。
+
+### content 主 chunk -32%（懒加载 Annotator / SubmitDialog / ElementPicker）
+
+注入到每一个 `<all_urls>` tab 的 content script 从 99.56 KB → **69.06 KB（gzip 32.74 → 22.20 KB）**。Annotator(880 行 canvas) / SubmitDialog(637 行) / ElementPicker(223 行) 三个重组件只在用户截图 / 选元素 / 提交那一刻才用到——但之前打死进首注入。改 `defineAsyncComponent(() => import(...))` 后拆三个独立 chunk（14.84 + 14.41 + 3.56 KB），按需加载。
+
+代价：首次按 ⌘⇧B 截图 → Annotator 弹出多 50-100ms（CRX 本地拉 chunk 无跨域）。多 tab 用户内存占用直降。manifest.json `web_accessible_resources` 加 `assets/*.js + *.css`（`use_dynamic_url: true` 防 chunk URL 被宿主页缓存）。
+
+### Service Worker retry queue race 修 + 9 个新单测
+
+`flushRetryQueue` 没 inflight 锁，并发场景（SW spin-up `onStartup` + 底部 IIFE + `onHistoryChanged` 同时触发）下两个 flush 都读到同一份队列、各自 fetch、最后 `set(remaining)` 互相覆盖——**成功的重试可能被覆盖回原状**。SW 30s 闲置回收+频繁唤醒，触发概率不低。
+
+抽 `src/background/retryQueue.ts` + 加模块级 `flushPromise` 锁（`finally` 清，throw 也清避死锁）+ 9 个单测覆盖：并发共享 inflight / 4xx 丢 / 5xx attempts++ / ≥5 丢 / >1MB 不入队 / multipart 不入队 / >50 条 FIFO 裁旧 / QUOTA 降级 / throw 后锁释放。
+
+### offscreen 录屏状态机抽纯函数 + 8 个新单测护栏
+
+录屏链路 Playwright 也驱不动（chrome:// + tabCapture 手势），之前**完全没有自动化护栏**——这块代码改一行 race 就回来。把 `transition(from, to)` 抽到 `src/offscreen/stateMachine.ts` 导出 `canTransition` 纯函数，8 个 case 锁住合法迁移（idle→starting→recording→stopping→idle / cancel 路径 / 跨级非法拒绝 / stopping 单向）。
+
+### shadow DOM token 反扫（49 hex/rgba 命中 → 18 转 / 10 新 / 21 注释）
+
+v0.1.12「暗色硬编码扫尾」只扫了 4 处已知点。这次全 src/ rg 反扫 49 命中：
+
+- **18 处转 token**：玻璃面板 ball/menu / `#fff` → `var(--moo-c-brand-fg)` / scrim / focus ring / success halo / 3 处不必要的 `var(..., fallback)` 兜底
+- **10 个新 glass token**（`--g-bg-deep/-light` + `--g-border-deep/-light` + `--g-sh-deep/-hover/-drag` + `--g-sh-light/-hover/-drag`）加在 `src/content/styles.ts` 的 `.moo-root` 本地，**不进 tokens.css**——shadow 世界专属 + 不跟随 `prefers-color-scheme`（content 叠任意宿主页跟着系统切深色会跟宿主主题打架）
+- **21 处故意硬编码全加/补注释**：Annotator 画笔色 + canvas 像素色 + 品牌 logo 渐变 + chrome.action badge API + passwordMask 宿主页 inline 等
+
+下次再扫到「这个 hex 为啥不走 token」的时候，注释会直接说明 why。
+
+### `useToast` composable 收口 4 处 toast + 修 timer 泄漏
+
+Settings / History / Environment / ContentApp 复制了同款 toast/toastKind/toastTimer/showToast 8 行壳子，且**都没 `onBeforeUnmount` 清 timer**——切 tab 时会泄漏。
+
+抽 `src/composables/useToast.ts`（泛型 kind，默认 3 元 union；ContentApp 传含 `''` 的 4 元 union 兼容空态）+ 自清 timer。4 处使用点替换，视觉/CSS/duration **一行未改**。
+
+### Annotator 小分辨率工具条变形修复
+
+`.toolbar-row` 是 `display: flex` 但没 `flex-wrap`。工具行 6 工具按钮（带中文 label）+ 4 色板 + 3 线宽 ≈ 700px 最小宽度，窄屏（小笔电 / DevTools 半屏 / 高 DPR 缩放）直接撑爆 `.moo-toolbar` 的 `max-width: calc(100vw - 32px)`，被裁切看着像挤变形。
+
+加 `flex-wrap: wrap + row-gap`（含 `.actions-right` 兜超窄屏 < 400px）+ `@media (max-width: 720px)` 藏掉工具按钮中文 label 只留 icon。
+
+### MV3 消息错误"人话化"收口 + 文案 drift 修
+
+`utils/messaging.ts` 的 `friendly` / `classify` 把 "Could not establish connection" 翻成中文，但只服务 `chrome.runtime.sendMessage`；devtools `Overview.vue` 用 `chrome.tabs.sendMessage`，逐字复制了一份——**且文案已经 drift**（messaging.ts 简版 vs Overview 带「⌘R / F5」提示）。
+
+抽 export + Overview 复用，drift 收口到更具操作性的版本。`context-invalidated` 同步补「⌘R / F5」对齐风格。
+
+### `retryQueue` facade 补全（storage key 字面量 4 处收口）
+
+模块自己定义了 `RETRY_QUEUE_KEY = 'mooRetryQueue'`，但 Settings + background/index 都绕过直接读写这个字面量——4 处散落无编译期保护。补 `getQueueLength()` / `clearQueue()` 两个 facade export，所有调用点收口。`RETRY_QUEUE_KEY` 仍**不 export**，外部完全不知道 storage key 名。
+
+### 工程基础设施
+
+- **4 个项目 subagent** 配置进 `.claude/agents/`：mv3-pro / vue-craft / lab-tester / release-captain，跟着 repo 走，每个 agent 各自带项目已知坑 + 工程约束，调用时不用每次提醒
+- **HANDOFF 归档机制**：v0.1.7→v0.1.11 历史段挪到 `docs/handoff-archive/v0.1.x.md`，主文件只留当前未发 + 最近 1 版；release-captain Step 6 加约定下次发版自动归档
+- **CHANGELOG 回补**：v0.1.7 / v0.1.8 / v0.1.9 / v0.1.10 四版历史从 HANDOFF 抠出补进 CHANGELOG（之前 HANDOFF 一旦 archive 历史就丢）
+- **ONBOARDING.md** 团队入门指南补完：Team Tips（8 条规矩）+ Get Started（20 分钟跑通本地 + 报一条假 bug）
+
+### 测试覆盖
+
+145 → **153 单测**（+8 offscreen state machine）；retry queue 单测 +9 已在前批（136 → 145）。Playwright E2E 13/13 全过（含 BodyViewer harness 走 file URL 加载不受新 web_accessible_resources 影响）。
+
 ## v0.1.12
 
 ### Shadow DOM token 走 tokens.css 单一来源
