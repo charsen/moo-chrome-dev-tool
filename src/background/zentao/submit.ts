@@ -19,8 +19,9 @@
  */
 
 import type { Project, ZentaoProjectConfig } from '@/types/config'
+import type { CapturedRequest } from '@/types/requests'
 import type { SubmitBugReq, SubmitBugRes } from '@/types/messages'
-import { toCurlScript } from '@/utils/curlGenerator'
+import { toCurl } from '@/utils/curlGenerator'
 import {
   submitBug as zentaoClientSubmit,
   uploadEditorFile,
@@ -97,18 +98,13 @@ export async function uploadZentaoAttachments(
     await upload('recording', `moo-recording.${ext}`, blob)
   }
 
-  // requests.json + curl.sh
+  // requests.json —— 完整 raw 数据下载链接，给批量分析用。
+  // curl 脚本不再上传：每条请求都已 inline 在 steps 里，重复上传是浪费。
   if (req.requests?.length) {
     await upload(
       'requests',
       'moo-requests.json',
       new Blob([JSON.stringify(req.requests, null, 2)], { type: 'application/json' })
-    )
-    const script = toCurlScript(req.requests, project.redact, { mooVersion: opts.mooVersion })
-    await upload(
-      'curl',
-      'moo-requests.curl.sh',
-      new Blob([script], { type: 'text/x-shellscript' })
     )
   }
 
@@ -140,6 +136,7 @@ export async function uploadZentaoAttachments(
  */
 export function buildZentaoStepsHtml(
   req: SubmitBugReq,
+  project: Project,
   uploaded: UploadedFile[],
   failed: FailedUpload[]
 ): string {
@@ -161,8 +158,7 @@ export function buildZentaoStepsHtml(
     )
   }
 
-  // 录像 + 调试附件（链接形式）
-  const downloadLinks = uploaded.filter(f => f.kind !== 'screenshot' && f.kind !== 'context')
+  // 录像（链接形式 —— sanitizer 剥 <video>，只能给下载链接）
   const recording = uploaded.find(f => f.kind === 'recording')
   if (recording) {
     parts.push('<h3>🎥 录像</h3>')
@@ -172,11 +168,25 @@ export function buildZentaoStepsHtml(
       + `（${formatBytes(recording.bytes)}）</p>`
     )
   }
-  const debugLinks = downloadLinks.filter(f => f.kind !== 'recording')
-  if (debugLinks.length) {
-    parts.push('<h3>🔧 调试附件</h3>')
+
+  // 选中的网络请求：每条 inline 一个 curl 代码块（点开即可复制运行）
+  if (req.requests?.length) {
+    parts.push('<h3>🌐 网络请求（curl 可复制）</h3>')
+    for (const r of req.requests) {
+      parts.push(buildRequestCurlBlock(r, project))
+    }
+  }
+
+  // 调试附件：仅留 requests.json / errors.json 这类「完整 raw 数据」链接，
+  // curl.sh 已经 inline 在上面了，下载链接重复就剥掉。context 是 metadata
+  // 用户不关心，不放链接。
+  const downloadLinks = uploaded.filter(
+    f => f.kind === 'requests' || f.kind === 'errors'
+  )
+  if (downloadLinks.length) {
+    parts.push('<h3>🔧 调试附件（raw 数据）</h3>')
     parts.push('<ul>')
-    for (const f of debugLinks) {
+    for (const f of downloadLinks) {
       parts.push(
         `<li><a href="${f.url}" target="_blank">${escapeHtml(f.displayName)}</a> `
         + `— ${labelForKind(f.kind)}（${formatBytes(f.bytes)}）</li>`
@@ -223,6 +233,31 @@ export function buildZentaoStepsHtml(
   return parts.join('\n')
 }
 
+/**
+ * 单条请求一个 curl 代码块：标头一行（method / status / 短 URL / duration）
+ *   + <pre><code> 内 curl 命令（走 redact 脱敏）。
+ *
+ * 标头有 status color 提示：2xx 绿 / 3xx 灰 / 4xx 红 / 5xx 深红。inline style 走
+ * color 这种禅道实测保留的属性（max-width / border-radius 会被剥）。
+ */
+function buildRequestCurlBlock(r: CapturedRequest, project: Project): string {
+  const curl = toCurl(r, project.redact)
+  const ok = r.status >= 200 && r.status < 300
+  const statusColor = ok ? '#16a34a' : (r.status >= 500 ? '#991b1b' : r.status >= 400 ? '#dc2626' : '#999')
+  const shortUrl = r.url.length > 120 ? r.url.slice(0, 117) + '...' : r.url
+  const status = r.status || 'ERR'
+  // 单行标头 + curl pre 块；pre/code 在禅道 wiki 编辑器里是基础富文本标签
+  return [
+    `<p style="margin-bottom:4px;">`
+      + `<b>${escapeHtml(r.method)}</b> `
+      + `<code style="color:${statusColor};">[${status}]</code> `
+      + `<code>${escapeHtml(shortUrl)}</code> `
+      + `<small>${Math.round(r.duration)}ms</small>`
+    + `</p>`,
+    `<pre><code>${escapeHtml(curl)}</code></pre>`
+  ].join('\n')
+}
+
 function labelForKind(kind: UploadedFile['kind']): string {
   switch (kind) {
     case 'screenshot': return '截图'
@@ -264,7 +299,7 @@ export async function submitToZentao(
 
   const fields: ZentaoSubmitFields = {
     title: req.title,
-    steps: buildZentaoStepsHtml(req, uploaded, failed),
+    steps: buildZentaoStepsHtml(req, project, uploaded, failed),
     severity: z.defaultSeverity,
     pri: z.defaultPri,
     type: z.defaultType,
