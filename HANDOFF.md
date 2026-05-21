@@ -4,6 +4,8 @@
 
 ## 一句话现状
 
+**v0.3.0 已发**（2026-05-21，gitee tag `v0.3.0`，feature）。下载：[moo-chrome-dev-tool-0.3.0.zip](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.3.0/moo-chrome-dev-tool-0.3.0.zip)。**bug 状态回查**：历史 Tab 每条提交显示禅道里当前状态（待处理 / 处理中 / 已完成 / 已删除），进 Tab 时如果有 zentao 项目自动同步一次。`client.ts` 加 `getBug(env, bugId)` 走 `GET /api.php/v1/bugs/{id}` 拿 status / subStatus / assignedTo / resolution / lastEditedDate；`refreshHistoryStatus` 按 project.kind 分支（zentao → `fetchZentaoBugStatus` + `mapZentaoStatus`；webhook → 原 POST `/{remoteId}/status-public` 路径）。闭环：提一条 → 看到处理结果，不用切到禅道。
+
 **v0.2.3 已发**（2026-05-21，gitee tag `v0.2.3`，**大重写**）。下载：[moo-chrome-dev-tool-0.2.3.zip](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.2.3/moo-chrome-dev-tool-0.2.3.zip)。用户提醒 v0.2.0 dogfood 用错 v1 / form 路径搞了乌龙；重新完整读 [v2.0 API 文档](https://www.zentao.net/book/api/2142.html) + 实测后重构。最大用户视角变化：**不再需要手动登录禅道页面**（v0.2.0-0.2.2 的硬依赖彻底消除）—— Moo SW 用账号密码自动 v2 login 同时拿 token + 写 cookie。bug 创建改 `POST /api.php/v2/bugs` JSON + Token header（openedBy 自动正确，之前以为只能走 cookie 是误判）。附件仍走 `/file-ajaxUpload.html` cookie 路径（v2 `/files` 端点账号权限 deny，账号没 `file.create` 权限）。**架构事实更新**：HANDOFF「坑 #0 关键架构事实 2」过时了 — 写 bug 现在走 token，只剩附件走 cookie；cookie 由 SW 自动 login 写入 jar，user 不需登录禅道页。
 
 **v0.2.2 已发**（2026-05-21，gitee tag `v0.2.2`，hotfix）。下载：[moo-chrome-dev-tool-0.2.2.zip](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.2.2/moo-chrome-dev-tool-0.2.2.zip)。同事反馈 v0.2.1 的 Response 块视觉跟 curl 块没区分一眼看不出来 → 改成 `<div>` 卡片：左侧 3px 色条按 status 着色（2xx 绿 / 4xx 红 / 5xx 深红）+ 浅灰背景 + 📥 emoji 标头 + body 白底反白。实测禅道 sanitizer 保留 div + background + border-left + padding inline style（9337-9339 验证）。

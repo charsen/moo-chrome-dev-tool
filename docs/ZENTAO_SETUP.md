@@ -8,7 +8,7 @@
 - 🐞 当时发生了什么网络请求、报了什么 console 错
 - 📋 一键可下载的 `curl` 复现脚本
 
-**强烈建议用 v0.2.3+**（之前版本 v0.2.0-0.2.2 要求用户先在浏览器手动登录禅道，v0.2.3 起 Moo 自动登录无感）。[📦 拿最新版（gitee releases）](https://gitee.com/charsen/moo-chrome-dev-tool/releases)，当前 latest = **v0.2.3**：[直接下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.2.3/moo-chrome-dev-tool-0.2.3.zip)。
+**建议用 v0.3.0**（v0.3.0 起历史 Tab 显示禅道里 bug 当前处理状态，闭环完整；v0.2.3 起 Moo 自动登录无感）。[📦 拿最新版（gitee releases）](https://gitee.com/charsen/moo-chrome-dev-tool/releases)，当前 latest = **v0.3.0**：[直接下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.3.0/moo-chrome-dev-tool-0.3.0.zip)。
 
 ---
 
