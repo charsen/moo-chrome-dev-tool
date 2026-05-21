@@ -281,89 +281,88 @@ export async function submitBug(
 ): Promise<ZentaoResult<SubmitSuccess>> {
   const prod = await discoverProduct(env)
   if (!prod.ok) return prod
-  return withAuth(env, async (token) => {
-    const fd = new FormData()
-    // 13 位 hex uid，禅道用来绑附件
-    fd.append('uid', genUid())
-    fd.append('product', String(prod.data))
-    fd.append('module', String(env.moduleId))
-    fd.append('project', String(env.projectId))
-    fd.append('execution', '')
-    fd.append('plan', '')
-    fd.append('allBuilds', 'on')
-    // 'trunk' 是 magic value：项目没构建时也必填，否则禅道返「『影响版本』不能为空」
-    fd.append('openedBuild[]', 'trunk')
-    fd.append('allUsers', 'on')
-    fd.append('type', fields.type)
-    fd.append('severity', String(fields.severity))
-    fd.append('pri', String(fields.pri))
-    fd.append('title', fields.title)
-    fd.append('steps', fields.steps)
-    fd.append('assignedTo', fields.assignedTo ?? '')
-    fd.append('color', '')
-    // 这堆 hidden 字段不填禅道会报「未知错误」，全 '0'/'' 兜住
-    fd.append('fromCase', '0')
-    fd.append('caseVersion', '0')
-    fd.append('result', '0')
-    fd.append('testtask', '0')
-    fd.append('fileList', '[]')
-    fd.append('case', '')
-    fd.append('story', '')
-    fd.append('task', '')
-    fd.append('feedbackBy', '')
-    fd.append('notifyEmail', '')
-    fd.append('contactList', '')
-    fd.append('keywords', '')
-    for (const f of files) {
-      fd.append('files[]', f.blob, f.name)
-    }
-    const url = `${trimBase(env.baseUrl)}/bug-create-0-all-projectID=${env.projectId},moduleID=${env.moduleId}.html`
-    const res = await fetch(url, {
+
+  const fd = new FormData()
+  fd.append('uid', genUid())
+  fd.append('product', String(prod.data))
+  fd.append('module', String(env.moduleId))
+  fd.append('project', String(env.projectId))
+  fd.append('execution', '')
+  fd.append('plan', '')
+  fd.append('allBuilds', 'on')
+  // 'trunk' 是 magic value：项目没构建时也必填，否则禅道返「『影响版本』不能为空」
+  fd.append('openedBuild[]', 'trunk')
+  fd.append('allUsers', 'on')
+  fd.append('type', fields.type)
+  fd.append('severity', String(fields.severity))
+  fd.append('pri', String(fields.pri))
+  fd.append('title', fields.title)
+  fd.append('steps', fields.steps)
+  fd.append('assignedTo', fields.assignedTo ?? '')
+  fd.append('color', '')
+  // 这堆 hidden 字段不填禅道会报「未知错误」，全 '0'/'' 兜住
+  fd.append('fromCase', '0')
+  fd.append('caseVersion', '0')
+  fd.append('result', '0')
+  fd.append('testtask', '0')
+  fd.append('fileList', '[]')
+  fd.append('case', '')
+  fd.append('story', '')
+  fd.append('task', '')
+  fd.append('feedbackBy', '')
+  fd.append('notifyEmail', '')
+  fd.append('contactList', '')
+  fd.append('keywords', '')
+  // files 参数保留兼容旧调用（已经被禅道服务端忽略，附件实际走 file-ajaxUpload 链路）
+  for (const f of files) {
+    fd.append('files[]', f.blob, f.name)
+  }
+
+  // 提交必须走 cookie session（不带 Token header）—— Token 路径下禅道 form 端点
+  // 不查 token→user 映射，bug.openedBy 会落 'system' 看不出谁提的（实测 9279/9285）。
+  // cookie session 路径下 openedBy 正确绑到登录用户（实测 9286 → openedBy=13800000000）。
+  // 跟附件链路 (file-ajaxUpload) 保持一致：用户必须先在浏览器登录禅道，cookie 才在。
+  const url = `${trimBase(env.baseUrl)}/bug-create-0-all-projectID=${env.projectId},moduleID=${env.moduleId}.html`
+  let res: Response
+  try {
+    res = await fetch(url, {
       method: 'POST',
-      credentials: 'omit',
-      headers: buildHeaders({ 'Token': token }),
-      // 注意：不要手动设 Content-Type，让 fetch 自动加 multipart boundary
+      credentials: 'include',
+      headers: new Headers({ 'X-Requested-With': 'XMLHttpRequest' }),
       body: fd
     })
-    if (res.status === 401) return { _retry: true as const }
-    const body = await readJson(res) as { result?: string | boolean; message?: unknown; load?: string } | null
+  } catch (e) {
+    return { ok: false, error: `网络错误：${(e as Error).message}` }
+  }
 
-    // 禅道 form 端点的响应有两种形态（2026-05 实测）：
-    //   - cookie session 路径：{result:'success', message:'保存成功', load:'/bug-view-N'}
-    //   - Token header 路径：HTTP 200 + 空 body（bug 实际已写入数据库）
-    // 我们走 Token，所以「200 + 空 body」是成功信号。但要再问 server 拿 bugId
-    // —— 否则 SubmitDialog 没法跳「禅道里看」链接。
-    if (res.ok && body === null) {
-      const bugId = await fetchLatestBugId(env, token)
-      const viewUrl = bugId > 0
-        ? `${trimBase(env.baseUrl)}/bug-view-${bugId}.html`
-        : `${trimBase(env.baseUrl)}/project-bug-${env.projectId}.html`
-      return { ok: true as const, data: { bugId, viewUrl } }
-    }
-    if (body && (body.result === 'success' || body.result === true)) {
-      const bugId = parseBugIdFromLoad(body.load) ?? (await fetchLatestBugId(env, token))
-      const viewUrl = bugId > 0
-        ? `${trimBase(env.baseUrl)}/bug-view-${bugId}.html`
-        : trimBase(env.baseUrl) + (body.load ?? '')
-      return { ok: true as const, data: { bugId, viewUrl } }
-    }
-    // 401 的另一种表现：禅道返 {result:false, load:'login'} —— 也走 retry
-    if (body && (body.load === 'login' || /登录|未登录|登入/.test(formatMessage(body.message)))) {
-      return { _retry: true as const }
-    }
-    return { ok: false as const, error: formatMessage(body?.message) || `HTTP ${res.status}` }
-  })
+  const body = await readJson(res) as { result?: string | boolean; message?: unknown; load?: string } | null
+
+  if (body && (body.result === 'success' || body.result === true)) {
+    const bugId = parseBugIdFromLoad(body.load) ?? (await fetchLatestBugId(env))
+    const viewUrl = bugId > 0
+      ? `${trimBase(env.baseUrl)}/bug-view-${bugId}.html`
+      : trimBase(env.baseUrl) + (body.load ?? '')
+    return { ok: true, data: { bugId, viewUrl } }
+  }
+  // {result:false, load:'login'} / 「登录已超时」表示 cookie 失效。retry 救不了，
+  // 直接报错让用户去登录禅道。SubmitDialog 会显示这条提示。
+  if (body && (body.load === 'login' || /登录|未登录|登入/.test(formatMessage(body.message)))) {
+    return { ok: false, error: '禅道登录已失效；请打开禅道页面重新登录后再提交' }
+  }
+  return { ok: false, error: formatMessage(body?.message) || `HTTP ${res.status}` }
 }
 
 /**
- * Token header 路径下 submitBug 拿不到 bugId（响应空 body），所以紧接着查 list
- * 拿最新一条 id。99% 用户场景是「我提一条，立刻看回执」，list[0] 就是这条。
- * 极少数并发提交场景下可能拿错 id（仍是有效 bug，链接也能打开），不过度工程化。
+ * 提交后 bug.load 字段不一定带 bugId（cookie session 可能返 /bug-browse-N.html 列表页），
+ * 这时调 REST 列表拿最新 id 给 SubmitDialog「禅道里看」链接用。
+ * 走 Token 路径（这里只是查询，token 缓存命中就一次 HTTP）。
  */
-async function fetchLatestBugId(env: ZentaoEnv, token: string): Promise<number> {
+async function fetchLatestBugId(env: ZentaoEnv): Promise<number> {
+  const t = await ensureToken(env)
+  if (!t.ok) return 0
   try {
     const url = `${trimBase(env.baseUrl)}/api.php/v1/projects/${env.projectId}/bugs?limit=1`
-    const res = await fetch(url, { credentials: 'omit', headers: buildHeaders({ 'Token': token }) })
+    const res = await fetch(url, { credentials: 'omit', headers: buildHeaders({ 'Token': t.data }) })
     if (!res.ok) return 0
     const body = await readJson(res) as { bugs?: Array<{ id: number }> } | null
     return body?.bugs?.[0]?.id ?? 0

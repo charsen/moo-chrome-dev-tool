@@ -389,7 +389,9 @@ describe('retryQueue — v0.2.0 zentao 路径', () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes('/users/login')) return new Response(JSON.stringify({ status: 'success', token: 't' }), { status: 200, headers: { 'content-type': 'application/json' } })
       if (url.includes('/products')) return new Response(JSON.stringify({ products: [{ id: 14 }] }), { status: 200, headers: { 'content-type': 'application/json' } })
-      if (url.includes('/bug-create')) return new Response('', { status: 200, headers: { 'content-type': 'text/plain' } })
+      if (url.includes('/file-ajaxUpload')) return new Response(JSON.stringify({ error: 0, url: '/file-read-1.png' }), { status: 200, headers: { 'content-type': 'application/json' } })
+      // v0.2.0 dogfood 之后：提交走 cookie session，禅道返 JSON 不是空 body
+      if (url.includes('/bug-create')) return new Response(JSON.stringify({ result: 'success', load: '/bug-view-9999.html' }), { status: 200, headers: { 'content-type': 'application/json' } })
       if (url.includes('/projects/26/bugs')) return new Response(JSON.stringify({ bugs: [{ id: 9999 }] }), { status: 200, headers: { 'content-type': 'application/json' } })
       throw new Error(`unexpected fetch ${url}`)
     })
