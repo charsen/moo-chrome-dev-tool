@@ -786,6 +786,34 @@ export const SHADOW_CSS = `
   color: var(--c-warn-fg);
 }
 .server-warn b { color: var(--c-text); font-weight: 600; }
+.zentao-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--c-bg-elev);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.zentao-target-tag {
+  font-weight: 600;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  background: var(--c-brand, #3b82f6);
+  color: white;
+}
+.zentao-target-base {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--c-text);
+  word-break: break-all;
+}
+.zentao-target-pid {
+  color: var(--c-text-muted);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
 .moo-preview {
   background: var(--c-bg-soft);
   border: 1px solid var(--c-border);

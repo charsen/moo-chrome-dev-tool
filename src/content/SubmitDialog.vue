@@ -70,8 +70,22 @@
           </div>
         </div>
 
-        <!-- ⑤ 服务器：0 / >1 / endpoint 空时都显示；恰好 1 个且 endpoint 正常才隐藏减噪音 -->
-        <div class="moo-form-row" v-if="showServerRow">
+        <!-- ⑤ 上报目标：kind 分支 —— zentao 显示禅道信息行，webhook 显示原 server 选择 -->
+        <div class="moo-form-row" v-if="kind === 'zentao'">
+          <label>上报到</label>
+          <div class="server-pick">
+            <div class="zentao-target">
+              <span class="zentao-target-tag">禅道</span>
+              <span class="zentao-target-base">{{ project.zentao?.baseUrl || '(未填地址)' }}</span>
+              <span class="zentao-target-pid">项目 #{{ project.zentao?.projectId || '?' }}</span>
+            </div>
+            <div v-if="zentaoMissingList" class="server-warn">
+              ⚠ 禅道配置不完整，缺：{{ zentaoMissingList }}。<br>
+              请打开 <b>DevTools → Moo → 环境</b>，把缺的字段填上后再回来提交。
+            </div>
+          </div>
+        </div>
+        <div class="moo-form-row" v-else-if="showServerRow">
           <label for="moo-server">服务器</label>
           <div class="server-pick">
             <select id="moo-server" v-model="serverId">
@@ -205,7 +219,7 @@
       </div>
       <footer v-if="!successInfo" class="moo-dialog-foot">
         <button class="moo-btn" @click="emit('cancel')">取消 <span class="kbd-hint">Esc</span></button>
-        <button class="moo-btn ghost" :disabled="!canPreview || previewing" @click="onPreview">
+        <button v-if="kind === 'webhook'" class="moo-btn ghost" :disabled="!canPreview || previewing" @click="onPreview">
           {{ previewing ? '预览中…' : '预览请求体' }}
         </button>
         <button class="moo-btn primary" :disabled="!canSubmit || submitting" @click="onSubmit">
@@ -502,18 +516,36 @@ function errLevelTitle(level: ConsoleError['level']): string {
   return 'window.onerror（运行时错误）'
 }
 
-const canPreview = computed(() => !!serverId.value)
+const kind = computed(() => props.project.kind ?? 'webhook')
+
+const canPreview = computed(() => kind.value === 'webhook' && !!serverId.value)
 const currentServer = computed(() => props.project.servers.find((s) => s.id === serverId.value))
 const serverEndpointMissing = computed(() => !!currentServer.value && !currentServer.value.endpoint?.trim())
-/** 显示服务器选择行的条件：0 个 / 多个 / 唯一服务器配错了。
+/** 显示服务器选择行的条件（仅 webhook）：0 个 / 多个 / 唯一服务器配错了。
  * 单个且配置正确才隐藏（最常见的场景，减少表单噪音）。 */
 const showServerRow = computed(() => {
   if (props.project.servers.length !== 1) return true
   return serverEndpointMissing.value
 })
-const canSubmit = computed(() =>
-  !!serverId.value && !!title.value.trim() && !serverEndpointMissing.value
-)
+
+/** zentao 路径必填字段缺失清单（用于 UI 提示 + canSubmit 判定） */
+const zentaoMissingList = computed(() => {
+  if (kind.value !== 'zentao') return ''
+  const z = props.project.zentao
+  if (!z) return '禅道地址 / 账号 / 密码 / 项目 ID'
+  const missing: string[] = []
+  if (!z.baseUrl) missing.push('禅道地址')
+  if (!z.account) missing.push('账号')
+  if (!z.password) missing.push('密码')
+  if (!z.projectId) missing.push('项目 ID')
+  return missing.join(' / ')
+})
+
+const canSubmit = computed(() => {
+  if (!title.value.trim()) return false
+  if (kind.value === 'zentao') return !zentaoMissingList.value
+  return !!serverId.value && !serverEndpointMissing.value
+})
 
 function selectedRequests(): CapturedRequest[] {
   const ids = selectedIds.value
