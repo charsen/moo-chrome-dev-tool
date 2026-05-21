@@ -4,17 +4,17 @@
 
 ## 一句话现状
 
-**v0.2.0 已发**（2026-05-21，gitee tag `v0.2.0`，feature 大版本「禅道集成」）。**无 BREAKING**——老项目（无 `kind` 字段）一律按 `kind: 'b'` 走原路径不变。这一版主线：① **禅道集成（kind='zentao'）**——把 Moo 上报通道从「只支持自建 B 路径」扩成「自建 B / 禅道（云禅道 biz12 + 自建禅道，v2.0 API）」二选一 ② B' 路径拍板（background 直打禅道 v2.0 REST API，不中转）③ 真正写操作走 cookie session（修 `openedBy=system`，bug 正确归属真人）④ 附件走 zui editor `/file-ajaxUpload.html`（截图 inline 渲染在 bug 详情页，不用点附件）⑤ ZWS 绕禅道 WAF（inline curl URL 间插零宽空格，渲染 + 复制无差异，绕过 WAF 字符串匹配；curl.sh 附件保留无污染版）⑥ retryQueue 支持 zentao multipart 重试（FormData + 附件 blob 从 IndexedDB 恢复）⑦ Environment Tab kind 切换 + 4 字段表单 + 「📋 从禅道拉列表」 + 导入导出剥密码 ⑧ SubmitDialog 4 字段（type/severity/pri/assignedTo）提交时可改 + 指派人下拉 + cookie 预检 + 录像 50M 预警 + 「在禅道里看 →」链接。
+**v0.2.0 已发**（2026-05-21，gitee tag `v0.2.0`，feature 大版本「禅道集成」）。下载：[moo-chrome-dev-tool-0.2.0.zip](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.2.0/moo-chrome-dev-tool-0.2.0.zip) · sha256 `cf002dceccfd6fa90c0f4fd134590a027af0f477b5fca8f1e1d599cce6dbf6dd`。**无 BREAKING**——老项目（无 `kind` 字段）一律按 `kind: 'webhook'` 走原路径不变。这一版主线：① **禅道集成（kind='zentao'）**——把 Moo 上报通道从「只支持 webhook」扩成「webhook / 禅道（云禅道 biz12 + 自建禅道，v2.0 API）」二选一 ② B' 路径拍板（background 直打禅道 v2.0 REST API，不中转）③ 真正写操作走 cookie session（修 `openedBy=system`，bug 正确归属真人）④ 附件走 zui editor `/file-ajaxUpload.html`（截图 inline 渲染在 bug 详情页，不用点附件）⑤ ZWS 绕禅道 WAF（inline curl URL 间插零宽空格，渲染 + 复制无差异，绕过 WAF 字符串匹配；curl.sh 附件保留无污染版）⑥ retryQueue 支持 zentao multipart 重试 ⑦ Environment Tab kind 切换 + 5 必填字段 + 「📋 从禅道拉列表」 + 「提交默认值」卡片（类型/严重度/优先级/默认关键词）+ 导入导出剥密码 ⑧ SubmitDialog 4 字段（type/severity/pri/assignedTo）提交时可改 + 模块下拉 + 指派人下拉 + cookie 预检 + 录像 50M 预警 + 「在禅道里看 →」链接 ⑨ UA 自动解析 → 禅道 os / browser 字段。
 
 **硬依赖（用户视角必须满足两条）**：
 1. **浏览器里手动登录禅道页面**（提交走 cookie session，没登录 Moo 拿不到 cookie）
 2. **Moo Settings 配账号 / 密码 / 项目 ID**（login + 拉用户列表 + multipart upload）
 
-**发版决策小记**（2026-05-21）：v0.2.0 是 feature 大版本，**主动跳过 dogfood ≥ 几天**——禅道集成已在 yourcompany.chandao.net 真实环境完整 dogfood 过（用户实测发现并修了 7 个 dogfood fix，覆盖 cookie session / WAF / 附件链路 / 字段可改），所有场景闭环。3 条跳 checklist 标准前 2 条满足（① 无 BREAKING ② 235 单测 + type-check + vite build 全绿），第 3 条**用户明示放行**。后续如有其他禅道版本回归，hotfix 走 v0.2.1。
+**发版决策小记**（2026-05-21）：v0.2.0 是 feature 大版本，**主动跳过 dogfood ≥ 几天**——禅道集成已在 yourcompany.chandao.net 真实环境完整 dogfood 过（用户实测发现并修了 **11 个 dogfood fix**，覆盖 cookie session / WAF / 附件链路 / 字段可改 / UI 对齐 / 模块下拉 / 默认关键词 / 布局拆行），所有场景闭环。3 条跳 checklist 标准前 2 条满足（① 无 BREAKING ② **249 单测** + type-check + vite build 全绿，含 chrome-devtools MCP 端到端 17/17 + lab-tester 跑过 97 playwright e2e），第 3 条**用户明示放行**。后续如有其他禅道版本回归，hotfix 走 v0.2.1。
 
 **v0.1.14 已发**（保留历史）。**无 BREAKING**——后端无需配套升级。这一版主线：dialog 抽象 + 队列可见性 + 悬浮球两条 race fix。E2E 77 → 97。
 
-往前看：v0.2.0 把禅道集成从 0 到 1 一波打完（13 个 commit：P1-P5 主线 + ZENTAO_SETUP 手册 + 7 个 dogfood fix）。单测 170 → **235**（+65 含 zentao client / curlGenerator / retryQueue multipart 等）。当前没有强迫性 todo，等用户反馈 v0.2.0 禅道使用体感再说。
+往前看：v0.2.0 把禅道集成从 0 到 1 一波打完（**18+ 个 commit**：P1-P5 主线 + ZENTAO_SETUP 手册 + 11 个 dogfood fix）。单测 170 → **249**（+79 含 zentao client / curlGenerator / retryQueue multipart / UA 解析 / keywords 兜底等）。当前没有强迫性 todo，等用户反馈 v0.2.0 禅道使用体感再说。
 
 ## 这两周做了什么
 
