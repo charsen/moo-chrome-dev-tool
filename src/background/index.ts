@@ -13,8 +13,20 @@ import { renderTemplate } from '@/utils/template'
 import { parseRemoteId } from '@/utils/remoteHeaders'
 import { updateActionBadge } from '@/utils/badge'
 import { enqueueRetry, flushRetryQueue, getQueueLength } from '@/background/retryQueue'
+import {
+  login as zentaoLogin,
+  ping as zentaoPing,
+  listProjects as zentaoListProjects,
+  type ZentaoEnv
+} from '@/background/zentao/client'
 import type { BugServer, MooConfig, Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
+
+/** 「测试连接」/「拉列表」只用 baseUrl+account+password，projectId/moduleId 此时
+ *  还没拍板。用 0 占位让 ZentaoEnv 类型满足；这两个 endpoint 不读这两个字段。 */
+function makeZentaoEnv(creds: { baseUrl: string; account: string; password: string }): ZentaoEnv {
+  return { ...creds, projectId: 0, moduleId: 0 }
+}
 
 const RETRY_ALARM = 'mooRetry'
 
@@ -228,6 +240,26 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
             await broadcastAutoStopped('chrome-ui')
           }
           sendResponse({ ok: true })
+          break
+        }
+        case MSG.ZENTAO_TEST_CONNECTION: {
+          const { baseUrl, account, password } = message.payload
+          const loginRes = await zentaoLogin(baseUrl, account, password)
+          if (!loginRes.ok) { sendResponse({ ok: false, error: loginRes.error }); break }
+          const env = makeZentaoEnv(message.payload)
+          const ping = await zentaoPing(env)
+          if (!ping.ok) { sendResponse({ ok: false, error: ping.error }); break }
+          sendResponse({ ok: true, realname: ping.data.realname, account: ping.data.account })
+          break
+        }
+        case MSG.ZENTAO_LIST_PROJECTS: {
+          const { baseUrl, account, password } = message.payload
+          const loginRes = await zentaoLogin(baseUrl, account, password)
+          if (!loginRes.ok) { sendResponse({ ok: false, error: loginRes.error }); break }
+          const env = makeZentaoEnv(message.payload)
+          const list = await zentaoListProjects(env)
+          if (!list.ok) { sendResponse({ ok: false, error: list.error }); break }
+          sendResponse({ ok: true, projects: list.data.map(p => ({ id: p.id, name: p.name, status: p.status })) })
           break
         }
         default: {

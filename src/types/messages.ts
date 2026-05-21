@@ -129,7 +129,11 @@ export const MSG = {
   /** background 广播：录屏被外部因素自动停止（如 Chrome 停止共享条） */
   RECORD_AUTO_STOPPED: 'RECORD_AUTO_STOPPED',
   /** offscreen → background 内部通知：track ended 自动 stopped */
-  OFFSCREEN_AUTO_STOPPED: 'OFFSCREEN_AUTO_STOPPED'
+  OFFSCREEN_AUTO_STOPPED: 'OFFSCREEN_AUTO_STOPPED',
+  /** devtools → background：用 baseUrl+account+password login + ping 验 token */
+  ZENTAO_TEST_CONNECTION: 'ZENTAO_TEST_CONNECTION',
+  /** devtools → background：login 后拉项目列表给「📋 从禅道拉列表」下拉用 */
+  ZENTAO_LIST_PROJECTS: 'ZENTAO_LIST_PROJECTS'
 } as const
 
 // =================================================================
@@ -149,6 +153,26 @@ export interface RecordStartRes { ok: boolean; error?: string }
 export interface RecordStopRes { ok: boolean; dataUrl?: string; bytes?: number; mime?: string; error?: string }
 export interface RecordCancelRes { ok: boolean }
 
+/** 禅道凭据；devtools「测试连接」+「拉列表」共用。projectId 不在这里 ——
+ *  「测试连接」只验账号密码 + token；「拉列表」也是为了帮用户选 projectId。 */
+export interface ZentaoCredsReq {
+  baseUrl: string
+  account: string
+  password: string
+}
+export interface ZentaoTestConnectionRes {
+  ok: boolean
+  /** 成功时返用户名（"已登录为 张三"显示用） */
+  realname?: string
+  account?: string
+  error?: string
+}
+export interface ZentaoListProjectsRes {
+  ok: boolean
+  projects?: Array<{ id: number; name: string; status: string }>
+  error?: string
+}
+
 /** background.onMessage 收到的消息。switch (msg.type) 后每条自动 narrow。
  *  注意：source / tabId 是 envelope 字段，未来 caller 侧若加约束可移到这里。 */
 export type IncomingMessage =
@@ -163,6 +187,8 @@ export type IncomingMessage =
   | { type: typeof MSG.RECORD_CANCEL }
   | { type: typeof MSG.QUERY_RECORDING_STATE }
   | { type: typeof MSG.OFFSCREEN_AUTO_STOPPED }
+  | { type: typeof MSG.ZENTAO_TEST_CONNECTION; payload: ZentaoCredsReq }
+  | { type: typeof MSG.ZENTAO_LIST_PROJECTS; payload: ZentaoCredsReq }
 
 /** type → response 类型映射。background handler 返回对应类型，caller 侧
  *  可以用 `MessageResponse<typeof MSG.X>` 拿到精确返回 shape。 */
@@ -178,5 +204,7 @@ export interface MessageResponseMap {
   [MSG.RECORD_CANCEL]: RecordCancelRes
   [MSG.QUERY_RECORDING_STATE]: QueryRecordingStateRes
   [MSG.OFFSCREEN_AUTO_STOPPED]: { ok: boolean }
+  [MSG.ZENTAO_TEST_CONNECTION]: ZentaoTestConnectionRes
+  [MSG.ZENTAO_LIST_PROJECTS]: ZentaoListProjectsRes
 }
 export type MessageResponse<K extends keyof MessageResponseMap> = MessageResponseMap[K]
