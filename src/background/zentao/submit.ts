@@ -281,25 +281,35 @@ function buildRequestCurlBlock(r: CapturedRequest, project: Project): string {
   ].filter(Boolean).join('\n')
 }
 
-/** Response 代码块 —— 没 body 时返空串（buildRequestCurlBlock 用 filter 跳） */
+/**
+ * Response 卡片 —— 视觉上跟 curl 块明显区分。
+ *
+ * 实测禅道 sanitizer 保留 `<div style="...">` + background / border-left / padding，
+ * 但 border-radius 会被剥（凑合）。卡片左侧用 status color 色条标识 2xx 绿 / 4xx 红 / 5xx 深红。
+ *
+ * body 走 redact 脱敏 → 截断 1.5KB → ZWS 绕 WAF。binary（image/video/octet-stream）
+ * 不放 body 只放 size 提示。
+ */
 function buildResponseBlock(r: CapturedRequest, project: Project): string {
   if (!r.responseBody && !r.responseSizeBytes) return ''
   const ct = (headerCI(r.responseHeaders, 'content-type').split(';')[0] ?? '').trim()
   const sizeStr = formatBytes(r.responseSizeBytes || (r.responseBody?.length ?? 0))
   const isBinary = /^(image|video|audio)\//.test(ct) || ct === 'application/octet-stream'
 
-  // 标头一行：内容类型 + 大小（让用户一眼判断该不该看 body）
-  const headerLine = `<p style="font-size:12px;color:#666;margin:8px 0 4px;">`
-    + `↓ Response${ct ? ` · <code>${escapeHtml(ct)}</code>` : ''} · ${escapeHtml(sizeStr)}`
+  const ok = r.status >= 200 && r.status < 300
+  const barColor = ok ? '#16a34a' : (r.status >= 500 ? '#991b1b' : r.status >= 400 ? '#dc2626' : '#9ca3af')
+  // 卡片样式：左色条 + 浅灰背景 + 内 padding。禅道实测 background / border-left / padding 保留
+  const cardOpen = `<div style="margin:8px 0;background:#f8fafc;border-left:3px solid ${barColor};padding:8px 12px;">`
+  const headerLine = `<p style="margin:0 0 4px;font-size:12px;color:#475569;">`
+    + `📥 <b>Response</b>${ct ? ` · <code style="color:#0f766e;">${escapeHtml(ct)}</code>` : ''} · <small>${escapeHtml(sizeStr)}</small>`
 
   if (isBinary) {
-    return headerLine + ` · 二进制响应（不 inline，请查附件）</p>`
+    return cardOpen + headerLine + ` · 二进制响应（不 inline，请查附件）</p></div>`
   }
   if (!r.responseBody) {
-    return headerLine + ` · 空响应体</p>`
+    return cardOpen + headerLine + ` · 空响应体</p></div>`
   }
 
-  // body 走 project.redact 脱敏 → 截断到 1.5KB（防 steps 太长）→ ZWS 绕 WAF
   const RESP_MAX_INLINE = 1500
   const redacted = redactBody(r.responseBody, project.redact.bodyKeys) ?? r.responseBody
   let preview = redacted
@@ -311,8 +321,10 @@ function buildResponseBlock(r: CapturedRequest, project: Project): string {
   preview = obfuscateUrlsForWaf(preview)
 
   return [
+    cardOpen,
     headerLine + (truncated ? '（已截断 1.5KB，完整见 moo-requests.json）' : '') + `</p>`,
-    `<pre><code>${escapeHtml(preview)}</code></pre>`
+    `<pre style="margin:0;background:#fff;"><code>${escapeHtml(preview)}</code></pre>`,
+    `</div>`
   ].join('\n')
 }
 

@@ -2,6 +2,24 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.2.2
+
+**hotfix · UI 优化**：v0.2.1 加的 Response inline 只是普通 `<p>` + `<pre>`，同事
+反馈「视觉上跟 curl 块没区分，看不出来是 response」。改成卡片样式让一眼能认出。
+
+### 修复
+
+- `buildResponseBlock`：从 `<p>` + `<pre>` 改成 `<div>` 卡片包裹
+  - 左侧 3px 色条，按 status 着色：2xx 绿 `#16a34a` / 4xx 红 `#dc2626` / 5xx 深红 `#991b1b` / 其他灰
+  - 浅灰背景 `#f8fafc` + 内 padding 让卡片视觉分离
+  - 标头改用 `📥` emoji + `<b>Response</b>` 加粗 + content-type 用 `<code>` 风格突出
+  - body `<pre>` 白背景 `#fff` 在浅灰卡片里反白显眼
+- 实测禅道 sanitizer 保留 `<div>` + background / border-left / padding inline style（之前没专门测过，本次实测 9337/9338/9339 三色卡片三种状态码全部保留）
+
+### 测试统计
+
+260 单测全过，type-check + vite build 全绿。端到端实测 bug 9339 三色卡片渲染正常。
+
 ## v0.2.1
 
 **hotfix**：v0.2.0 发版后立刻发现的 curl URL 缺 origin 问题——用户写 `fetch('/api/foo')` 这种相对路径时 captured-request 的 url 字段是 `/api/foo`，导致 SubmitDialog inline curl + 禅道 bug 详情页 curl 代码块 + `moo-requests.curl.sh` 附件里的 URL **全都缺 origin**，复制到终端 `curl: (3) URL using bad/illegal format`。**无 BREAKING**。
