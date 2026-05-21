@@ -1,5 +1,40 @@
 export type HttpMethod = 'POST' | 'PUT' | 'PATCH'
 export type ImageFormat = 'base64' | 'multipart'
+export type ProjectKind = 'webhook' | 'zentao'
+
+/**
+ * 禅道项目配置（B' 路径，v0.2.0 起）。
+ * password 按用户 2026-05-21 决策本地明文存 chrome.storage.local（不进 sync 不上云）。
+ * 不做用户态加密 —— chrome.storage 已按用户隔离，再加密只让用户误以为更安全。
+ */
+export interface ZentaoProjectConfig {
+  /** 禅道地址，强校验 http(s)://；trim trailing slash 在 normalize 里做 */
+  baseUrl: string
+  /** 禅道账号（同浏览器登录用的） */
+  account: string
+  /** 禅道密码 */
+  password: string
+  /** 必填，> 0 */
+  projectId: number
+  /** ≥ 0，默认 0 */
+  moduleId: number
+  defaultSeverity: 1 | 2 | 3 | 4
+  defaultPri: 1 | 2 | 3 | 4
+  defaultType: string
+  /** 可空；留空则禅道按项目规则自己分派 */
+  defaultAssignedTo?: string
+}
+
+export const DEFAULT_ZENTAO: ZentaoProjectConfig = {
+  baseUrl: '',
+  account: '',
+  password: '',
+  projectId: 0,
+  moduleId: 0,
+  defaultSeverity: 3,
+  defaultPri: 3,
+  defaultType: 'codeerror'
+}
 
 export interface BugServer {
   id: string
@@ -47,8 +82,19 @@ export interface Project {
   name: string
   /** URL 通配模式，支持 * 通配，例如 https://*.example.com/* */
   matchPatterns: string[]
+  /**
+   * 上报通道类型。v0.2.0 起加入。老数据无此字段时 normalize 默认 'webhook' 兼容。
+   * - 'webhook': 用 servers + payloadTemplate（v0.1.x 老路径）
+   * - 'zentao': 用 zentao.{baseUrl, account, password, projectId, ...} 直接对接禅道
+   */
+  kind: ProjectKind
   servers: BugServer[]
   defaultServerId: string
+  /**
+   * 禅道配置；kind='zentao' 时使用。
+   * 即使 kind 切回 'webhook' 也保留此字段（用户切回去不丢配置），但 normalize 会清空 password。
+   */
+  zentao?: ZentaoProjectConfig
   capture: CaptureConfig
   redact: RedactConfig
   /** 是否启用（关闭后即使匹配也不显示悬浮球） */
@@ -102,6 +148,7 @@ export function createDefaultProject(name = '新项目'): Project {
     id: crypto.randomUUID(),
     name,
     matchPatterns: [],
+    kind: 'webhook',
     servers: [],
     defaultServerId: '',
     capture: { ...DEFAULT_CAPTURE },
@@ -126,8 +173,13 @@ export function normalizeProject(raw: unknown): Project {
     id: typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID(),
     name: typeof r.name === 'string' ? r.name : '新项目',
     matchPatterns: Array.isArray(r.matchPatterns) ? r.matchPatterns.filter((x): x is string => typeof x === 'string') : [],
+    // 老数据无 kind 字段时默认 'webhook'，与 v0.1.x 一致行为兼容
+    kind: r.kind === 'zentao' ? 'zentao' : 'webhook',
     servers: Array.isArray(r.servers) ? r.servers.map(normalizeServer) : [],
     defaultServerId: typeof r.defaultServerId === 'string' ? r.defaultServerId : '',
+    // zentao 字段即使 kind='webhook' 也保留（用户切回去不丢配置）；
+    // 不存在或全部字段不合法时返回 undefined 防止 schema 里塞空对象误导
+    zentao: normalizeZentao(r.zentao),
     capture: {
       requests: typeof capture.requests === 'boolean' ? capture.requests : DEFAULT_CAPTURE.requests,
       consoleErrors: typeof capture.consoleErrors === 'boolean' ? capture.consoleErrors : DEFAULT_CAPTURE.consoleErrors,
@@ -161,6 +213,105 @@ function sanitizeToken(raw: string): string | undefined {
   // 只允许可打印 ASCII（包括 - . _ ~ + 等 OAuth token 常见字符），拒 CRLF / 控制符
   if (!/^[\x21-\x7E]+$/.test(s)) return undefined
   return s
+}
+
+// ─────────────── ZentaoProjectConfig normalize / sanitize ───────────────
+
+/**
+ * 把 raw.zentao（可能来自老数据 / 用户导入 / partial UI 输入）兜成 ZentaoProjectConfig
+ * 或 undefined。**不抛**，任何脏字段单独兜底。
+ *
+ * 即使 kind='webhook' 也保留 zentao 字段（防用户切回去丢配置），但 password 在
+ * import / export 路径里另外剥（不在这里清，否则会破坏正常 save→load 流程）。
+ */
+function normalizeZentao(raw: unknown): ZentaoProjectConfig | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Partial<ZentaoProjectConfig>
+  return {
+    baseUrl: sanitizeZentaoBaseUrl(r.baseUrl),
+    account: sanitizeZentaoAccount(r.account),
+    password: sanitizeZentaoPassword(r.password),
+    projectId: sanitizePositiveInt(r.projectId, 0),
+    moduleId: sanitizeNonNegInt(r.moduleId, DEFAULT_ZENTAO.moduleId),
+    defaultSeverity: sanitizeSeverityOrPri(r.defaultSeverity, DEFAULT_ZENTAO.defaultSeverity),
+    defaultPri: sanitizeSeverityOrPri(r.defaultPri, DEFAULT_ZENTAO.defaultPri),
+    defaultType: sanitizeBugType(r.defaultType),
+    defaultAssignedTo: typeof r.defaultAssignedTo === 'string'
+      ? (sanitizeZentaoAccount(r.defaultAssignedTo) || undefined)
+      : undefined
+  }
+}
+
+/** baseUrl: 必须 http(s):// + trim trailing slash + 长度 ≤ 256 */
+function sanitizeZentaoBaseUrl(raw: unknown): string {
+  if (typeof raw !== 'string') return ''
+  const s = raw.trim().replace(/\/+$/, '')
+  if (!s || s.length > 256) return ''
+  try {
+    const u = new URL(s)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return ''
+    return s
+  } catch { return '' }
+}
+
+/** account: 可见 ASCII，长度 ≤ 64（禅道账号通常是手机号 / 邮箱 / 字母数字） */
+function sanitizeZentaoAccount(raw: unknown): string {
+  if (typeof raw !== 'string') return ''
+  const s = raw.trim()
+  if (!s || s.length > 64) return ''
+  if (!/^[\x21-\x7E]+$/.test(s)) return ''
+  return s
+}
+
+/** password: 不 trim（前后空格可能合法），拒 CRLF（防 header injection），长度 ≤ 512 */
+function sanitizeZentaoPassword(raw: unknown): string {
+  if (typeof raw !== 'string') return ''
+  if (raw.length > 512) return ''
+  if (/[\r\n]/.test(raw)) return ''
+  return raw
+}
+
+function sanitizePositiveInt(raw: unknown, fallback: number): number {
+  if (typeof raw === 'number' && Number.isInteger(raw) && raw > 0) return raw
+  if (typeof raw === 'string') {
+    const n = Number(raw)
+    if (Number.isInteger(n) && n > 0) return n
+  }
+  return fallback
+}
+
+function sanitizeNonNegInt(raw: unknown, fallback: number): number {
+  if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 0) return raw
+  if (typeof raw === 'string') {
+    const n = Number(raw)
+    if (Number.isInteger(n) && n >= 0) return n
+  }
+  return fallback
+}
+
+function sanitizeSeverityOrPri(raw: unknown, fallback: 1 | 2 | 3 | 4): 1 | 2 | 3 | 4 {
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (n === 1 || n === 2 || n === 3 || n === 4) return n
+  return fallback
+}
+
+/** bug type 进 multipart 字段，限 token-safe ASCII + 防原型污染关键字 */
+function sanitizeBugType(raw: unknown): string {
+  if (typeof raw !== 'string') return DEFAULT_ZENTAO.defaultType
+  const s = raw.trim().slice(0, 64)
+  if (!s) return DEFAULT_ZENTAO.defaultType
+  if (!/^[A-Za-z0-9_-]+$/.test(s)) return DEFAULT_ZENTAO.defaultType
+  if (isReservedKey(s)) return DEFAULT_ZENTAO.defaultType
+  return s
+}
+
+/**
+ * Import / export 用：剥掉 zentao.password（避免误传同事）。
+ * 调用方决定是否使用——load 流程不要走这个，否则用户每次开浏览器都要重输密码。
+ */
+export function stripSensitiveProjectFields(p: Project): Project {
+  if (!p.zentao) return p
+  return { ...p, zentao: { ...p.zentao, password: '' } }
 }
 
 /** 限制单条 header key/value 长度，防 4MB 大字段在 multipart 表头里溢出 */

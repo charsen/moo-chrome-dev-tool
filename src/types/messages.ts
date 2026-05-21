@@ -49,6 +49,14 @@ export interface SubmitBugReq {
     duration: number
     mime: string
   }
+  /**
+   * 仅 kind=zentao 时使用：SubmitDialog 提交时用户选的字段，覆盖 project.zentao 的
+   * default 值。这允许「每条 bug 选不同的严重度 / 指派人」。未填则用 project 默认值。
+   */
+  zentaoType?: string
+  zentaoSeverity?: 1 | 2 | 3 | 4
+  zentaoPri?: 1 | 2 | 3 | 4
+  zentaoAssignedTo?: string
 }
 export interface SubmitBugRes {
   ok: boolean
@@ -64,6 +72,8 @@ export interface SubmitBugRes {
   /** storage 整体异常导致连本次新条都没保存到本地（仅服务端收到了）。
    *  UI 必须区别于"丢了几条旧的"——后者新条还在，前者连新条也不在。 */
   historyAllDropped?: boolean
+  /** 仅 zentao kind 路径：成功时返禅道 bug 查看 URL，SubmitDialog 用它显示「禅道里看」 */
+  viewUrl?: string
 }
 
 export interface PreviewPayloadReq {
@@ -129,7 +139,16 @@ export const MSG = {
   /** background 广播：录屏被外部因素自动停止（如 Chrome 停止共享条） */
   RECORD_AUTO_STOPPED: 'RECORD_AUTO_STOPPED',
   /** offscreen → background 内部通知：track ended 自动 stopped */
-  OFFSCREEN_AUTO_STOPPED: 'OFFSCREEN_AUTO_STOPPED'
+  OFFSCREEN_AUTO_STOPPED: 'OFFSCREEN_AUTO_STOPPED',
+  /** devtools → background：用 baseUrl+account+password login + ping 验 token */
+  ZENTAO_TEST_CONNECTION: 'ZENTAO_TEST_CONNECTION',
+  /** devtools → background：login 后拉项目列表给「📋 从禅道拉列表」下拉用 */
+  ZENTAO_LIST_PROJECTS: 'ZENTAO_LIST_PROJECTS',
+  /** content → background：拉禅道用户列表给 SubmitDialog 「指派给」下拉用 */
+  ZENTAO_LIST_USERS: 'ZENTAO_LIST_USERS',
+  /** content → background：ping cookie session 是否有效（提交链路依赖 cookie，
+   *  没登录禅道时整条链路会失败，提交前预检让用户看见「请先登录禅道」而不是失败一脸懵） */
+  ZENTAO_PING_COOKIE: 'ZENTAO_PING_COOKIE'
 } as const
 
 // =================================================================
@@ -149,6 +168,49 @@ export interface RecordStartRes { ok: boolean; error?: string }
 export interface RecordStopRes { ok: boolean; dataUrl?: string; bytes?: number; mime?: string; error?: string }
 export interface RecordCancelRes { ok: boolean }
 
+/** 禅道凭据；devtools「测试连接」+「拉列表」共用。projectId 不在这里 ——
+ *  「测试连接」只验账号密码 + token；「拉列表」也是为了帮用户选 projectId。 */
+export interface ZentaoCredsReq {
+  baseUrl: string
+  account: string
+  password: string
+}
+export interface ZentaoTestConnectionRes {
+  ok: boolean
+  /** 成功时返用户名（"已登录为 张三"显示用） */
+  realname?: string
+  account?: string
+  error?: string
+}
+export interface ZentaoListProjectsRes {
+  ok: boolean
+  projects?: Array<{ id: number; name: string; status: string }>
+  error?: string
+}
+
+/**
+ * 列禅道用户 —— SubmitDialog「指派给」下拉用。
+ * payload 复用 ZentaoCredsReq（不复用 project，因为 content 拿不到完整 project）：
+ * BG handler 用 baseUrl+account+password 拿 token 后调 /api.php/v1/users。
+ */
+export interface ZentaoListUsersRes {
+  ok: boolean
+  users?: Array<{ id: number; account: string; realname: string; role?: string }>
+  error?: string
+}
+
+/** ping cookie session 是否有效；payload 只需 baseUrl。
+ *  cookie 有 → 用户已登录禅道；cookie 失效 → 引导用户去 baseUrl 登录。 */
+export interface ZentaoPingCookieReq {
+  baseUrl: string
+}
+export interface ZentaoPingCookieRes {
+  ok: boolean
+  /** 成功时返用户名给「✓ 已登录为 XXX」显示 */
+  realname?: string
+  error?: string
+}
+
 /** background.onMessage 收到的消息。switch (msg.type) 后每条自动 narrow。
  *  注意：source / tabId 是 envelope 字段，未来 caller 侧若加约束可移到这里。 */
 export type IncomingMessage =
@@ -163,6 +225,10 @@ export type IncomingMessage =
   | { type: typeof MSG.RECORD_CANCEL }
   | { type: typeof MSG.QUERY_RECORDING_STATE }
   | { type: typeof MSG.OFFSCREEN_AUTO_STOPPED }
+  | { type: typeof MSG.ZENTAO_TEST_CONNECTION; payload: ZentaoCredsReq }
+  | { type: typeof MSG.ZENTAO_LIST_PROJECTS; payload: ZentaoCredsReq }
+  | { type: typeof MSG.ZENTAO_LIST_USERS; payload: ZentaoCredsReq }
+  | { type: typeof MSG.ZENTAO_PING_COOKIE; payload: ZentaoPingCookieReq }
 
 /** type → response 类型映射。background handler 返回对应类型，caller 侧
  *  可以用 `MessageResponse<typeof MSG.X>` 拿到精确返回 shape。 */
@@ -178,5 +244,9 @@ export interface MessageResponseMap {
   [MSG.RECORD_CANCEL]: RecordCancelRes
   [MSG.QUERY_RECORDING_STATE]: QueryRecordingStateRes
   [MSG.OFFSCREEN_AUTO_STOPPED]: { ok: boolean }
+  [MSG.ZENTAO_TEST_CONNECTION]: ZentaoTestConnectionRes
+  [MSG.ZENTAO_LIST_PROJECTS]: ZentaoListProjectsRes
+  [MSG.ZENTAO_LIST_USERS]: ZentaoListUsersRes
+  [MSG.ZENTAO_PING_COOKIE]: ZentaoPingCookieRes
 }
 export type MessageResponse<K extends keyof MessageResponseMap> = MessageResponseMap[K]

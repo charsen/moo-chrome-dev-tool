@@ -12,9 +12,24 @@ import { addHistoryEntry, listHistory, onHistoryChanged, updateHistoryEntry } fr
 import { renderTemplate } from '@/utils/template'
 import { parseRemoteId } from '@/utils/remoteHeaders'
 import { updateActionBadge } from '@/utils/badge'
-import { enqueueRetry, flushRetryQueue, getQueueLength } from '@/background/retryQueue'
+import { enqueueRetry, enqueueZentaoRetry, flushRetryQueue, getQueueLength } from '@/background/retryQueue'
+import {
+  login as zentaoLogin,
+  ping as zentaoPing,
+  listProjects as zentaoListProjects,
+  listUsers as zentaoListUsers,
+  type ZentaoEnv
+} from '@/background/zentao/client'
+import { submitToZentao } from '@/background/zentao/submit'
+import { dataUrlToBlob } from '@/utils/dataUrl'
 import type { BugServer, MooConfig, Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
+
+/** 「测试连接」/「拉列表」只用 baseUrl+account+password，projectId/moduleId 此时
+ *  还没拍板。用 0 占位让 ZentaoEnv 类型满足；这两个 endpoint 不读这两个字段。 */
+function makeZentaoEnv(creds: { baseUrl: string; account: string; password: string }): ZentaoEnv {
+  return { ...creds, projectId: 0, moduleId: 0 }
+}
 
 const RETRY_ALARM = 'mooRetry'
 
@@ -230,6 +245,58 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
           sendResponse({ ok: true })
           break
         }
+        case MSG.ZENTAO_TEST_CONNECTION: {
+          const { baseUrl, account, password } = message.payload
+          const loginRes = await zentaoLogin(baseUrl, account, password)
+          if (!loginRes.ok) { sendResponse({ ok: false, error: loginRes.error }); break }
+          const env = makeZentaoEnv(message.payload)
+          const ping = await zentaoPing(env)
+          if (!ping.ok) { sendResponse({ ok: false, error: ping.error }); break }
+          sendResponse({ ok: true, realname: ping.data.realname, account: ping.data.account })
+          break
+        }
+        case MSG.ZENTAO_LIST_PROJECTS: {
+          const { baseUrl, account, password } = message.payload
+          const loginRes = await zentaoLogin(baseUrl, account, password)
+          if (!loginRes.ok) { sendResponse({ ok: false, error: loginRes.error }); break }
+          const env = makeZentaoEnv(message.payload)
+          const list = await zentaoListProjects(env)
+          if (!list.ok) { sendResponse({ ok: false, error: list.error }); break }
+          sendResponse({ ok: true, projects: list.data.map(p => ({ id: p.id, name: p.name, status: p.status })) })
+          break
+        }
+        case MSG.ZENTAO_LIST_USERS: {
+          const { baseUrl, account, password } = message.payload
+          const loginRes = await zentaoLogin(baseUrl, account, password)
+          if (!loginRes.ok) { sendResponse({ ok: false, error: loginRes.error }); break }
+          const env = makeZentaoEnv(message.payload)
+          const list = await zentaoListUsers(env)
+          if (!list.ok) { sendResponse({ ok: false, error: list.error }); break }
+          sendResponse({ ok: true, users: list.data })
+          break
+        }
+        case MSG.ZENTAO_PING_COOKIE: {
+          // 直接走 cookie session ping，不用 token 路径 —— 我们就是要看 cookie 是否有效。
+          // baseUrl trim trailing slash 让路径拼接稳定
+          const baseUrl = message.payload.baseUrl.replace(/\/+$/, '')
+          try {
+            const r = await fetch(`${baseUrl}/api.php/v1/user`, {
+              credentials: 'include',
+              headers: new Headers({ 'X-Requested-With': 'XMLHttpRequest' })
+            })
+            const text = await r.text()
+            let body: { profile?: { realname?: string } } | null = null
+            try { body = JSON.parse(text) } catch { /* HTML 错误页 / 跳登录 */ }
+            if (r.ok && body?.profile?.realname) {
+              sendResponse({ ok: true, realname: body.profile.realname })
+            } else {
+              sendResponse({ ok: false, error: '未登录禅道（cookie 失效或没有 session）' })
+            }
+          } catch (e) {
+            sendResponse({ ok: false, error: `网络错误：${(e as Error).message}` })
+          }
+          break
+        }
         default: {
           // 编译期 narrow：如果 IncomingMessage 里漏了某个 case，下面的 `never`
           // 赋值会 TS 错误。这是 discriminated union 的关键保护点。
@@ -290,6 +357,13 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
     await writeFailureHistory(req, undefined, undefined, err)
     return { ok: false, error: err }
   }
+
+  // v0.2.0：kind='zentao' 走专用分支，避开 webhook 的 server/endpoint 校验。
+  // 提交链路全在 zentao/submit.ts 里 orchestration，本函数仅负责 history + badge。
+  if (project.kind === 'zentao') {
+    return await submitBugViaZentao(req, project)
+  }
+
   const server = project.servers.find((s) => s.id === req.serverId)
   if (!server) {
     const err = '找不到选中的上报服务器（可能刚被删除）。请回到 DevTools → Moo → 环境 重新选择'
@@ -671,27 +745,54 @@ function buildRequestBody(
   return { body: rendered, headers: { ...server.headers } }
 }
 
-function dataUrlToBlob(dataUrl: string): Blob {
-  // 空字符串 / 非 data URL 形态：返回空 Blob 而不是 atob(undefined) 抛 InvalidCharacterError
-  // 触发场景：multipart 提交但用户没截图（image 模板渲染为空串）
-  if (!dataUrl || !dataUrl.startsWith('data:')) {
-    return new Blob([], { type: 'application/octet-stream' })
+/**
+ * v0.2.0 禅道路径：调 zentao/submit.ts → 写 history → 刷 badge。
+ * 与 webhook 路径并行，不复用 server 校验那段（zentao 没 server 概念）。
+ */
+async function submitBugViaZentao(req: SubmitBugReq, project: Project): Promise<SubmitBugRes> {
+  const res = await submitToZentao(req, project, dataUrlToBlob, { mooVersion: chrome.runtime?.getManifest?.()?.version })
+
+  // 失败入队（仅网络 / server 抽风类失败；认证 / 配置缺失这种重试也救不了的 error 由 retryQueue
+  // 内部的 retryZentao 走 drop 路径，不重试）。estimateZentaoSize 内做 1MB 上限校验，
+  // 带 video 的请求几乎肯定超 → 直接 false，跟 webhook multipart 不入队保持一致行为。
+  if (!res.ok) {
+    res.queued = await enqueueZentaoRetry(project.id, req)
   }
-  const commaIdx = dataUrl.indexOf(',')
-  if (commaIdx < 0) return new Blob([], { type: 'application/octet-stream' })
-  const meta = dataUrl.slice(0, commaIdx)
-  const b64 = dataUrl.slice(commaIdx + 1)
-  const mime = meta.match(/data:(.*?);base64/)?.[1] ?? 'image/png'
-  if (!b64) return new Blob([], { type: mime })
-  let bin: string
+
+  // history 字段：zentao 没 server 概念，serverId / serverName 用占位串
+  // 保持 BugHistoryEntry schema 不变（v0.1.x 历史读取不破）
+  const entry: BugHistoryEntry = {
+    id: crypto.randomUUID(),
+    timestamp: Date.now(),
+    projectId: project.id,
+    projectName: project.name,
+    serverId: 'zentao',
+    serverName: `禅道（${project.zentao?.baseUrl ?? ''}）`,
+    title: req.title,
+    description: req.description,
+    image: req.image,
+    hasVideo: !!req.video,
+    videoDuration: req.video?.duration ?? 0,
+    url: req.url,
+    userAgent: req.userAgent,
+    viewport: req.viewport,
+    requests: req.requests,
+    errors: req.errors,
+    result: res.ok
+      ? { ok: true, status: 200, body: res.viewUrl ?? '' }
+      : { ok: false, error: res.error },
+    remoteId: res.remoteId,
+    remoteBase: project.zentao?.baseUrl
+  }
   try {
-    bin = atob(b64)
-  } catch {
-    // base64 损坏（出现非法字符）— 不让整个 submitBug 链路因此崩，返回空 blob
-    return new Blob([], { type: mime })
+    const writeRes = await addHistoryEntry(entry)
+    if (writeRes.allDropped) res.historyAllDropped = true
+    else if (writeRes.trimmed > 0) res.trimmedHistory = writeRes.trimmed
+  } catch (e) {
+    console.warn('[Moo] failed to save zentao history', e)
   }
-  const len = bin.length
-  const buf = new Uint8Array(len)
-  for (let i = 0; i < len; i++) buf[i] = bin.charCodeAt(i)
-  return new Blob([buf], { type: mime })
+  void refreshBadge()
+  return res
 }
+
+// dataUrlToBlob 已抽到 @/utils/dataUrl —— retryQueue flush + zentao submit 都要用

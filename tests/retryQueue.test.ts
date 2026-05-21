@@ -35,11 +35,69 @@ function makeChrome(): MockStorage {
 // 所以静态 import 也行；这里仍按 useAutoSave.test.ts 的习惯放到先 stub 后 import。
 const {
   enqueueRetry,
+  enqueueZentaoRetry,
   flushRetryQueue,
   getQueueItems,
   removeQueueItem,
   __resetForTest
 } = await import('@/background/retryQueue')
+
+// client.ts 模块级 tokenCache / productCache 跨 test 会残留 ——
+// 让 case 之间互不污染必须每次 reset
+const { _clearZentaoCaches } = await import('@/background/zentao/client')
+
+// 给 zentao 路径准备 mock：chrome.runtime.getManifest 在 submit.ts 里被 retryZentao 调
+function stubChromeRuntime() {
+  ;(globalThis as any).chrome.runtime = {
+    getManifest: () => ({ version: '0.2.0-test' })
+  }
+}
+
+function makeZentaoConfig(projectId = 'proj-zentao', baseUrl = 'https://z.example.com') {
+  return {
+    mooConfig: {
+      globalEnabled: true,
+      projects: [{
+        id: projectId,
+        name: '禅道测试',
+        matchPatterns: [],
+        kind: 'zentao',
+        servers: [],
+        defaultServerId: '',
+        capture: { requests: true, consoleErrors: true, storageKeys: [], requestBufferSize: 50 },
+        redact: { headerKeys: [], bodyKeys: [], maskPasswordInputs: true },
+        enabled: true,
+        zentao: {
+          baseUrl,
+          account: 'alice',
+          password: 'secret',
+          projectId: 26,
+          moduleId: 0,
+          defaultSeverity: 3,
+          defaultPri: 3,
+          defaultType: 'codeerror'
+        }
+      }]
+    }
+  }
+}
+
+function makeZentaoReq(overrides: Record<string, unknown> = {}) {
+  return {
+    serverId: '',
+    projectId: 'proj-zentao',
+    title: '测试 bug',
+    description: '描述',
+    image: '',
+    url: 'https://app.example.com/page',
+    userAgent: 'test',
+    viewport: '1024x768',
+    timestamp: '2026-05-21T00:00:00Z',
+    requests: [],
+    errors: [],
+    ...overrides
+  }
+}
 
 describe('retryQueue', () => {
   let storage: MockStorage
@@ -280,5 +338,165 @@ describe('retryQueue', () => {
     const n = await flushRetryQueue()
     expect(n).toBe(1)
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('retryQueue — v0.2.0 zentao 路径', () => {
+  let storage: MockStorage
+
+  beforeEach(() => {
+    storage = makeChrome()
+    stubChromeRuntime()
+    __resetForTest()
+    _clearZentaoCaches()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    __resetForTest()
+    _clearZentaoCaches()
+  })
+
+  it('enqueueZentaoRetry：合法 req 入队 + kind=zentao 标记', async () => {
+    const ok = await enqueueZentaoRetry('proj-zentao', makeZentaoReq() as any)
+    expect(ok).toBe(true)
+    const list = storage.data.mooRetryQueue as any[]
+    expect(list).toHaveLength(1)
+    expect(list[0].kind).toBe('zentao')
+    expect(list[0].projectId).toBe('proj-zentao')
+    expect(list[0].req?.title).toBe('测试 bug')
+  })
+
+  it('enqueueZentaoRetry：带巨型 image base64（> 1MB）拒入队', async () => {
+    const bigImage = 'data:image/png;base64,' + 'a'.repeat(1_200_000)
+    const ok = await enqueueZentaoRetry('proj-zentao', makeZentaoReq({ image: bigImage }) as any)
+    expect(ok).toBe(false)
+    expect(storage.data.mooRetryQueue).toBeUndefined()
+  })
+
+  it('enqueueZentaoRetry：带 video（必然超 1MB）拒入队', async () => {
+    const bigVideo = { dataUrl: 'data:video/webm;base64,' + 'b'.repeat(2_000_000), bytes: 2_000_000, duration: 5000, mime: 'video/webm' }
+    const ok = await enqueueZentaoRetry('proj-zentao', makeZentaoReq({ video: bigVideo }) as any)
+    expect(ok).toBe(false)
+  })
+
+  it('flush zentao：调 submitToZentao + project=zentao kind → 成功后从队列移除', async () => {
+    Object.assign(storage.data, makeZentaoConfig())
+    storage.data.mooRetryQueue = [{
+      kind: 'zentao', enqueuedAt: 0, attempts: 0,
+      projectId: 'proj-zentao', req: makeZentaoReq()
+    }]
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) return new Response(JSON.stringify({ status: 'success', token: 't' }), { status: 200, headers: { 'content-type': 'application/json' } })
+      if (url.includes('/products')) return new Response(JSON.stringify({ products: [{ id: 14 }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      if (url.includes('/file-ajaxUpload')) return new Response(JSON.stringify({ error: 0, url: '/file-read-1.png' }), { status: 200, headers: { 'content-type': 'application/json' } })
+      // v0.2.0 dogfood 之后：提交走 cookie session，禅道返 JSON 不是空 body
+      if (url.includes('/bug-create')) return new Response(JSON.stringify({ result: 'success', load: '/bug-view-9999.html' }), { status: 200, headers: { 'content-type': 'application/json' } })
+      if (url.includes('/projects/26/bugs')) return new Response(JSON.stringify({ bugs: [{ id: 9999 }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const n = await flushRetryQueue()
+    expect(n).toBe(1)
+    expect(storage.data.mooRetryQueue).toEqual([])
+  })
+
+  it('flush zentao：project 已被删 → drop（不留 attempts++）', async () => {
+    // 不放 mooConfig，loadConfig 返空 projects
+    storage.data.mooRetryQueue = [{
+      kind: 'zentao', enqueuedAt: 0, attempts: 0,
+      projectId: 'proj-gone', req: makeZentaoReq()
+    }]
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const n = await flushRetryQueue()
+    expect(n).toBe(0)
+    expect(storage.data.mooRetryQueue).toEqual([])  // drop
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('flush zentao：project kind 已被切回 webhook → drop', async () => {
+    storage.data.mooConfig = {
+      globalEnabled: true,
+      projects: [{ id: 'p1', name: 'x', matchPatterns: [], kind: 'webhook', servers: [], defaultServerId: '', capture: {}, redact: {}, enabled: true }]
+    }
+    storage.data.mooRetryQueue = [{
+      kind: 'zentao', enqueuedAt: 0, attempts: 0, projectId: 'p1', req: makeZentaoReq()
+    }]
+    vi.stubGlobal('fetch', vi.fn())
+
+    const n = await flushRetryQueue()
+    expect(n).toBe(0)
+    expect(storage.data.mooRetryQueue).toEqual([])  // drop
+  })
+
+  it('flush zentao：登录失败 error 含「登录失败」→ drop（认证持久失败重试也救不了）', async () => {
+    Object.assign(storage.data, makeZentaoConfig())
+    storage.data.mooRetryQueue = [{
+      kind: 'zentao', enqueuedAt: 0, attempts: 0,
+      projectId: 'proj-zentao', req: makeZentaoReq()
+    }]
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ status: 'failed', reason: '登录失败，请检查您的用户名或密码。' }), { status: 200, headers: { 'content-type': 'application/json' } })
+    ))
+
+    const n = await flushRetryQueue()
+    expect(n).toBe(0)
+    expect(storage.data.mooRetryQueue).toEqual([])  // drop
+  })
+
+  it('flush zentao：网络错 → keep + attempts++', async () => {
+    Object.assign(storage.data, makeZentaoConfig())
+    storage.data.mooRetryQueue = [{
+      kind: 'zentao', enqueuedAt: 0, attempts: 1,
+      projectId: 'proj-zentao', req: makeZentaoReq()
+    }]
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down') }))
+
+    const n = await flushRetryQueue()
+    expect(n).toBe(0)
+    const list = storage.data.mooRetryQueue as any[]
+    expect(list).toHaveLength(1)
+    expect(list[0].attempts).toBe(2)
+    expect(list[0].lastError).toMatch(/network|网络/)
+  })
+
+  it('v0.1.x 老条目无 kind 字段 → normalize 成 webhook + 老 flush 路径仍跑', async () => {
+    storage.data.mooRetryQueue = [
+      // 无 kind 字段（v0.1.x 形态）
+      { enqueuedAt: 100, attempts: 0, endpoint: 'http://x/a', method: 'POST', headers: { 'Content-Type': 'application/json' }, bodyString: '{"t":1}' }
+    ]
+    const fetchMock = vi.fn(async () => new Response('ok', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const n = await flushRetryQueue()
+    expect(n).toBe(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(storage.data.mooRetryQueue).toEqual([])
+  })
+
+  it('getQueueItems 同时返 webhook + zentao 两种条目', async () => {
+    storage.data.mooRetryQueue = [
+      { kind: 'webhook', enqueuedAt: 100, attempts: 0, endpoint: 'http://x', method: 'POST', headers: {}, bodyString: '{}' },
+      { kind: 'zentao', enqueuedAt: 200, attempts: 0, projectId: 'p', req: makeZentaoReq() }
+    ]
+    const items = await getQueueItems()
+    expect(items).toHaveLength(2)
+    expect(items[0]?.kind).toBe('webhook')
+    expect(items[1]?.kind).toBe('zentao')
+  })
+
+  it('removeQueueItem 按 enqueuedAt 删 zentao 条目', async () => {
+    storage.data.mooRetryQueue = [
+      { kind: 'webhook', enqueuedAt: 100, attempts: 0, endpoint: 'http://x', method: 'POST', headers: {}, bodyString: '{}' },
+      { kind: 'zentao', enqueuedAt: 200, attempts: 0, projectId: 'p', req: makeZentaoReq() }
+    ]
+    const removed = await removeQueueItem(200)
+    expect(removed).toBe(true)
+    const list = storage.data.mooRetryQueue as any[]
+    expect(list).toHaveLength(1)
+    expect(list[0].kind).toBe('webhook')
   })
 })

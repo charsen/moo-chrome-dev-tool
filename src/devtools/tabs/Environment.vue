@@ -40,9 +40,18 @@
           >
             <span class="dot" :class="{ off: !p.enabled }" />
             <span class="name">{{ p.name || '(未命名)' }}</span>
-            <span class="count" :class="{ 'count--zero': p.servers.length === 0 }" :title="p.servers.length === 0 ? '没有上报服务器，悬浮球能匹配但提交会失败' : `${p.servers.length} 个上报服务器`">
-              {{ p.servers.length === 0 ? '⚠ 无服务器' : p.servers.length }}
-            </span>
+            <span
+              v-if="p.kind === 'zentao'"
+              class="count count--zentao"
+              :class="{ 'count--zero': !p.zentao?.projectId }"
+              :title="p.zentao?.projectId ? `禅道项目 #${p.zentao.projectId}` : '禅道未配项目 ID，提交会失败'"
+            >{{ p.zentao?.projectId ? '禅道' : '⚠ 未配' }}</span>
+            <span
+              v-else
+              class="count"
+              :class="{ 'count--zero': p.servers.length === 0 }"
+              :title="p.servers.length === 0 ? '没有上报服务器，悬浮球能匹配但提交会失败' : `${p.servers.length} 个上报服务器`"
+            >{{ p.servers.length === 0 ? '⚠ 无服务器' : p.servers.length }}</span>
           </li>
           <li v-if="!draft.projects.length" class="empty">暂无项目，点击 + 新建</li>
           <li v-else-if="!filteredProjects.length" class="empty">未匹配到项目</li>
@@ -76,6 +85,135 @@
           <code>http*://localhost:*/*</code> 匹配本地任意端口
         </div>
 
+        <div class="section-head">
+          <h4>上报方式</h4>
+        </div>
+        <div class="row kind-row">
+          <label class="inline kind-opt">
+            <input type="radio" :name="`kind-${activeProject.id}`" value="webhook" v-model="activeProject.kind" />
+            Webhook（POST 到自建服务器）
+          </label>
+          <label class="inline kind-opt">
+            <input type="radio" :name="`kind-${activeProject.id}`" value="zentao" v-model="activeProject.kind" />
+            禅道
+          </label>
+        </div>
+
+        <!-- ─────────────── Zentao 表单（kind=zentao） ─────────────── -->
+        <template v-if="activeProject.kind === 'zentao' && activeProject.zentao">
+          <div class="section-head">
+            <h4>禅道接入</h4>
+          </div>
+          <div class="row">
+            <label>禅道地址</label>
+            <input
+              v-model="activeProject.zentao.baseUrl"
+              placeholder="https://your-zentao.example.net"
+              class="grow"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div class="row">
+            <label>账号</label>
+            <input
+              v-model="activeProject.zentao.account"
+              placeholder="禅道账号（同浏览器登录用的）"
+              class="grow"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div class="row">
+            <label>密码</label>
+            <div class="token-input">
+              <input
+                v-model="activeProject.zentao.password"
+                :type="zentaoPwdVisible ? 'text' : 'password'"
+                placeholder="禅道密码（本地存 chrome.storage.local，不上云不传同事）"
+                autocomplete="off"
+                spellcheck="false"
+                class="grow"
+              />
+              <button
+                type="button"
+                class="token-toggle"
+                :aria-label="zentaoPwdVisible ? '隐藏密码' : '显示密码'"
+                :title="zentaoPwdVisible ? '隐藏' : '显示'"
+                @click="zentaoPwdVisible = !zentaoPwdVisible"
+              >{{ zentaoPwdVisible ? '🙈' : '👁' }}</button>
+            </div>
+          </div>
+          <div class="row">
+            <button
+              class="moo-btn moo-btn--sm"
+              @click="testZentaoConnection"
+              :disabled="!!zentaoBusy || !canCallZentao"
+              :title="canCallZentao ? '调禅道 /login + /user 接口验证账号' : '先填齐地址 / 账号 / 密码'"
+            >{{ zentaoBusy === 'test' ? '测试中…' : '测试连接' }}</button>
+            <button
+              class="moo-btn moo-btn--sm"
+              @click="loadZentaoProjects"
+              :disabled="!!zentaoBusy || !canCallZentao"
+              :title="canCallZentao ? '调禅道 /api.php/v1/projects' : '先填齐地址 / 账号 / 密码'"
+            >📋 从禅道拉列表</button>
+            <span v-if="zentaoStatus" :class="['zentao-status', zentaoStatusKind]">{{ zentaoStatus }}</span>
+          </div>
+
+          <div class="row" v-if="zentaoProjectsList.length">
+            <label>选项目</label>
+            <select v-model.number="activeProject.zentao.projectId" class="grow">
+              <option :value="0">— 从下面选一个 —</option>
+              <option v-for="p in zentaoProjectsList" :key="p.id" :value="p.id">
+                {{ p.name }}（#{{ p.id }}{{ p.status === 'closed' ? ' 已关闭' : '' }}）
+              </option>
+            </select>
+          </div>
+          <div class="row">
+            <label>项目 ID</label>
+            <input v-model.number="activeProject.zentao.projectId" type="number" min="1" class="narrow" />
+            <label>模块 ID</label>
+            <input v-model.number="activeProject.zentao.moduleId" type="number" min="0" class="narrow" />
+            <span class="tpl-hint">模块 ID 通常填 0（默认）</span>
+          </div>
+
+          <details class="zentao-advanced">
+            <summary>提交默认值（每条 bug 提交时可单独改）</summary>
+            <div class="row">
+              <label>类型</label>
+              <input v-model="activeProject.zentao.defaultType" class="narrow" placeholder="codeerror" />
+              <span class="tpl-hint">禅道 bug type 字段（codeerror / designdefect / config / ...）</span>
+            </div>
+            <div class="row">
+              <label>严重度</label>
+              <select v-model.number="activeProject.zentao.defaultSeverity" class="narrow">
+                <option :value="1">1 致命</option>
+                <option :value="2">2 严重</option>
+                <option :value="3">3 一般</option>
+                <option :value="4">4 提示</option>
+              </select>
+              <label>优先级</label>
+              <select v-model.number="activeProject.zentao.defaultPri" class="narrow">
+                <option :value="1">1 紧急</option>
+                <option :value="2">2 高</option>
+                <option :value="3">3 中</option>
+                <option :value="4">4 低</option>
+              </select>
+            </div>
+            <div class="row">
+              <label>指派给</label>
+              <input
+                :value="activeProject.zentao.defaultAssignedTo ?? ''"
+                @input="activeProject.zentao!.defaultAssignedTo = ($event.target as HTMLInputElement).value || undefined"
+                placeholder="禅道账号；留空则按项目规则自动分派"
+                class="grow"
+              />
+            </div>
+          </details>
+        </template>
+
+        <!-- ────────────── Webhook 表单（kind=webhook，原有 UI） ────────────── -->
+        <template v-else>
         <div class="section-head">
           <h4>上报 Token</h4>
         </div>
@@ -190,6 +328,7 @@
             <code v-pre>{{errorsJson}}</code>
           </div>
         </div>
+        </template>
       </main>
 
       <main class="detail empty-state" v-else>
@@ -215,10 +354,14 @@ import {
   createDefaultProject,
   createDefaultServer,
   normalizeProject,
+  stripSensitiveProjectFields,
+  DEFAULT_ZENTAO,
   type BugServer,
   type MooConfig,
   type Project
 } from '@/types/config'
+import { MSG, type ZentaoCredsReq, type ZentaoTestConnectionRes, type ZentaoListProjectsRes } from '@/types/messages'
+import { safeSendMessage } from '@/utils/messaging'
 import { clone } from '@/utils/clone'
 import { confirmDialog } from '../components/confirm'
 import PayloadEditorModal from '../components/PayloadEditorModal.vue'
@@ -230,6 +373,15 @@ const activeId = ref<string>('')
 const initialized = ref(false)
 /** Token 输入框默认遮罩，眼睛按钮切换显示。录屏/演示场景不暴露明文。 */
 const tokenVisible = ref(false)
+/** 禅道密码独立的可见性 toggle（与 webhook token 不共用） */
+const zentaoPwdVisible = ref(false)
+/** 「测试连接」/「拉列表」期间禁用按钮，避免双发请求。值是当前正在跑的动作名 */
+const zentaoBusy = ref<'' | 'test' | 'list'>('')
+/** 「测试连接」/「拉列表」结果文字，按结果 kind 切色 */
+const zentaoStatus = ref('')
+const zentaoStatusKind = ref<'ok' | 'err' | ''>('')
+/** 「📋 从禅道拉列表」拉到的项目列表，给下拉用 */
+const zentaoProjectsList = ref<Array<{ id: number; name: string; status: string }>>([])
 /** 项目列表搜索（项目 > 6 个时显示搜索框） */
 const projectFilter = ref('')
 
@@ -305,6 +457,87 @@ watch(
 const activeProject = computed<Project | undefined>(() =>
   draft.value.projects.find((p) => p.id === activeId.value)
 )
+
+/** kind 切到 zentao 时若 zentao 字段不存在则用 default 初始化。
+ *  切换不同 project / 切回 webhook 时清空连接状态（避免误显示上一个项目的「✓ 已登录为 X」）。 */
+watch(
+  () => [activeProject.value?.id, activeProject.value?.kind] as const,
+  ([, kind]) => {
+    zentaoStatus.value = ''
+    zentaoStatusKind.value = ''
+    zentaoProjectsList.value = []
+    if (kind === 'zentao' && activeProject.value && !activeProject.value.zentao) {
+      activeProject.value.zentao = { ...DEFAULT_ZENTAO }
+    }
+  }
+)
+
+/** 三个必填都有才允许调禅道，避免传空 password 触发服务器报「登录失败」浪费一来回 */
+const canCallZentao = computed(() => {
+  const z = activeProject.value?.zentao
+  return !!(z && z.baseUrl && z.account && z.password)
+})
+
+function zentaoCredsPayload(): ZentaoCredsReq | null {
+  const z = activeProject.value?.zentao
+  if (!z) return null
+  return { baseUrl: z.baseUrl, account: z.account, password: z.password }
+}
+
+async function testZentaoConnection() {
+  const creds = zentaoCredsPayload()
+  if (!creds) return
+  zentaoBusy.value = 'test'
+  zentaoStatus.value = '测试中…'
+  zentaoStatusKind.value = ''
+  try {
+    const res = await safeSendMessage<ZentaoTestConnectionRes>({
+      type: MSG.ZENTAO_TEST_CONNECTION,
+      source: 'devtools',
+      payload: creds
+    })
+    if (res?.ok) {
+      zentaoStatus.value = `✓ 已登录为 ${res.realname ?? res.account ?? '未知用户'}`
+      zentaoStatusKind.value = 'ok'
+    } else {
+      zentaoStatus.value = `✗ ${res?.error ?? '未知错误'}`
+      zentaoStatusKind.value = 'err'
+    }
+  } catch (e) {
+    zentaoStatus.value = `✗ ${(e as Error).message}`
+    zentaoStatusKind.value = 'err'
+  } finally {
+    zentaoBusy.value = ''
+  }
+}
+
+async function loadZentaoProjects() {
+  const creds = zentaoCredsPayload()
+  if (!creds) return
+  zentaoBusy.value = 'list'
+  zentaoStatus.value = '拉项目列表中…'
+  zentaoStatusKind.value = ''
+  try {
+    const res = await safeSendMessage<ZentaoListProjectsRes>({
+      type: MSG.ZENTAO_LIST_PROJECTS,
+      source: 'devtools',
+      payload: creds
+    })
+    if (res?.ok && res.projects) {
+      zentaoProjectsList.value = res.projects
+      zentaoStatus.value = `✓ 拉到 ${res.projects.length} 个项目，从下面下拉选`
+      zentaoStatusKind.value = 'ok'
+    } else {
+      zentaoStatus.value = `✗ ${res?.error ?? '未知错误'}`
+      zentaoStatusKind.value = 'err'
+    }
+  } catch (e) {
+    zentaoStatus.value = `✗ ${(e as Error).message}`
+    zentaoStatusKind.value = 'err'
+  } finally {
+    zentaoBusy.value = ''
+  }
+}
 
 // 任何 draft 变更 → useAutoSave 防抖 800ms → 落盘
 watch(
@@ -408,7 +641,14 @@ function removeHeader(s: BugServer, key: string) {
 }
 
 async function exportConfig() {
-  const data = JSON.stringify(draft.value, null, 2)
+  // 剥所有 zentao.password 字段 —— 导出文件可能流给同事 / 上 git，
+  // 密码绝对不能跟着走。同时保留 zentao 其他字段（地址 / projectId 等），
+  // 接收方导入后只需补自己的密码即可。
+  const stripped: MooConfig = {
+    ...draft.value,
+    projects: draft.value.projects.map(stripSensitiveProjectFields)
+  }
+  const data = JSON.stringify(stripped, null, 2)
   const blob = new Blob([data], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -446,7 +686,10 @@ function importConfig() {
       // 同时数一下「带预置 token 的项目」—— 别人给你的配置里如果带了他的 token，
       // 导入后你提交 bug 都会用他的身份记录到他的看板，是一种钓鱼手法。必须显式告知用户。
       const tokenCount = countProjectsWithToken(parsed.projects)
-      if (endpoints.length > 0 || tokenCount > 0) {
+      // v0.2.0：禅道路径还要数 zentao.password —— 同事手抖没走 exportConfig 直接给文件 / 改了
+      // 文件名上传 git 都可能带泄密。导入时显式提醒，让用户知道这份配置自带别人的密码。
+      const zentaoPwdCount = countProjectsWithZentaoPassword(parsed.projects)
+      if (endpoints.length > 0 || tokenCount > 0 || zentaoPwdCount > 0) {
         const lines: string[] = []
         if (endpoints.length > 0) {
           lines.push(
@@ -460,6 +703,10 @@ function importConfig() {
         if (tokenCount > 0) {
           if (lines.length) lines.push('')
           lines.push(`⚠ 其中 ${tokenCount} 个项目自带了预置 token——使用 Moo 提交 bug 时会用「配置作者」的身份上报，不是你自己的。如果不认识这份配置的来源，建议导入后手动清空 token 字段，改成自己的。`)
+        }
+        if (zentaoPwdCount > 0) {
+          if (lines.length) lines.push('')
+          lines.push(`⚠ 其中 ${zentaoPwdCount} 个项目自带了禅道密码——使用 Moo 提交禅道 bug 时会用「配置作者」的禅道账号身份上报。强烈建议导入后改成你自己的禅道账号 + 密码。`)
         }
         const ok = await confirmDialog({
           title: '确认导入配置',
@@ -489,6 +736,19 @@ function countProjectsWithToken(projects: unknown[]): number {
   for (const p of projects) {
     const t = (p as { token?: unknown })?.token
     if (typeof t === 'string' && t.trim()) n++
+  }
+  return n
+}
+
+/** 数一下导入 JSON 里有多少个 project 带 .zentao.password 字段（v0.2.0） */
+function countProjectsWithZentaoPassword(projects: unknown[]): number {
+  let n = 0
+  for (const p of projects) {
+    const z = (p as { zentao?: unknown })?.zentao
+    if (z && typeof z === 'object') {
+      const pwd = (z as { password?: unknown }).password
+      if (typeof pwd === 'string' && pwd.trim()) n++
+    }
   }
   return n
 }
@@ -886,5 +1146,41 @@ function truncate(s: string, n: number): string {
   border-radius: var(--moo-r-sm);
   font-family: var(--moo-ff-mono);
   font-size: 10px;
+}
+
+/* ───────────────── v0.2.0 禅道相关 UI ───────────────── */
+.kind-row {
+  gap: 16px;
+}
+.kind-opt {
+  font-size: var(--moo-fs-sm);
+  cursor: pointer;
+}
+.count--zentao {
+  font-family: var(--moo-ff-sans);
+}
+.zentao-status {
+  font-size: var(--moo-fs-xs);
+  font-family: var(--moo-ff-mono);
+  margin-left: 8px;
+}
+.zentao-status.ok { color: var(--moo-c-ok-fg, #16a34a); }
+.zentao-status.err { color: var(--moo-c-err-fg, #dc2626); }
+.zentao-advanced {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-md);
+  background: var(--moo-c-bg-elev);
+}
+.zentao-advanced > summary {
+  cursor: pointer;
+  font-size: var(--moo-fs-sm);
+  color: var(--moo-c-text-muted);
+  user-select: none;
+}
+.zentao-advanced[open] > summary {
+  margin-bottom: 8px;
+  color: var(--moo-c-text);
 }
 </style>

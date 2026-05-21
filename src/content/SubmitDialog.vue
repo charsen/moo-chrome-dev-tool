@@ -15,6 +15,13 @@
         <div v-if="successInfo.remoteId" class="moo-success-id">
           已记录为 <code>#{{ successInfo.remoteId }}</code>
         </div>
+        <a
+          v-if="successInfo.viewUrl"
+          class="moo-success-link"
+          :href="successInfo.viewUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+        >禅道里看 →</a>
         <div class="moo-success-msg">{{ successInfo.message }}</div>
       </div>
 
@@ -63,8 +70,93 @@
           </div>
         </div>
 
-        <!-- ⑤ 服务器：0 / >1 / endpoint 空时都显示；恰好 1 个且 endpoint 正常才隐藏减噪音 -->
-        <div class="moo-form-row" v-if="showServerRow">
+        <!-- ⑤ 上报目标：kind 分支 —— zentao 显示禅道信息行，webhook 显示原 server 选择 -->
+        <div class="moo-form-row" v-if="kind === 'zentao'">
+          <label>上报到</label>
+          <div class="server-pick">
+            <div class="zentao-target">
+              <span class="zentao-target-tag">禅道</span>
+              <span class="zentao-target-base">{{ project.zentao?.baseUrl || '(未填地址)' }}</span>
+              <span class="zentao-target-pid">项目 #{{ project.zentao?.projectId || '?' }}</span>
+            </div>
+            <div v-if="zentaoMissingList" class="server-warn">
+              ⚠ 禅道配置不完整，缺：{{ zentaoMissingList }}。<br>
+              请打开 <b>DevTools → Moo → 环境</b>，把缺的字段填上后再回来提交。
+            </div>
+            <!-- cookie 预检状态：依赖用户在浏览器登录禅道。失败时给「一键打开禅道」 -->
+            <div
+              v-else-if="zentaoCookieState !== 'unknown'"
+              :class="['zentao-cookie-row', zentaoCookieState === 'ok' ? 'ok' : 'fail']"
+            >
+              <span>{{ zentaoCookieMsg }}</span>
+              <a
+                v-if="zentaoCookieState === 'fail' && project.zentao?.baseUrl"
+                class="moo-btn small"
+                :href="project.zentao.baseUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+              >打开禅道登录</a>
+              <button
+                v-if="zentaoCookieState === 'fail'"
+                type="button"
+                class="moo-btn small ghost"
+                @click="pingZentaoCookie"
+              >重新检查</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ⑤.0 录像太大警告（zentao 50M 上限） -->
+        <div v-if="videoTooBigForZentao" class="moo-form-row">
+          <label></label>
+          <div class="server-warn">
+            ⚠ 录像 {{ (video!.bytes / 1024 / 1024).toFixed(1) }} MB 超过禅道附件上限（{{ ZENTAO_MAX_ATTACHMENT_MB }} MB）。<br>
+            提交后 bug 主体能建，但录像附件会失败上传，禅道里只能看到「⚠️ 附件上传失败」提示。可考虑重录一个短的。
+          </div>
+        </div>
+
+        <!-- ⑤.1 禅道字段：每条 bug 可改的 type / severity / pri / assignedTo -->
+        <template v-if="kind === 'zentao' && !zentaoMissingList">
+          <div class="moo-form-row moo-zentao-fields">
+            <label>类型 / 严重 / 优先</label>
+            <div class="moo-zentao-row">
+              <select v-model="zentaoType" class="zentao-field">
+                <option v-for="t in ZENTAO_TYPE_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</option>
+              </select>
+              <select v-model.number="zentaoSeverity" class="zentao-field">
+                <option :value="1">严重度 1（致命）</option>
+                <option :value="2">严重度 2（严重）</option>
+                <option :value="3">严重度 3（一般）</option>
+                <option :value="4">严重度 4（提示）</option>
+              </select>
+              <select v-model.number="zentaoPri" class="zentao-field">
+                <option :value="1">优先级 1（紧急）</option>
+                <option :value="2">优先级 2（高）</option>
+                <option :value="3">优先级 3（中）</option>
+                <option :value="4">优先级 4（低）</option>
+              </select>
+            </div>
+          </div>
+          <div class="moo-form-row">
+            <label for="moo-zentao-assignee">指派给</label>
+            <div class="zentao-assignee-pick">
+              <select id="moo-zentao-assignee" v-model="zentaoAssignedTo" class="grow">
+                <option value="">— 未指派（按项目规则自动分派）—</option>
+                <option v-for="u in zentaoUsers" :key="u.account" :value="u.account">
+                  {{ u.realname }}（{{ u.account }}{{ u.role ? ` · ${u.role}` : '' }}）
+                </option>
+              </select>
+              <button
+                class="moo-btn small"
+                type="button"
+                :disabled="zentaoUsersLoading"
+                :title="zentaoUsers.length ? '重新拉用户列表' : '拉禅道用户列表'"
+                @click="loadZentaoUsers"
+              >{{ zentaoUsersLoading ? '...' : (zentaoUsers.length ? '↻' : '拉列表') }}</button>
+            </div>
+          </div>
+        </template>
+        <div class="moo-form-row" v-else-if="showServerRow">
           <label for="moo-server">服务器</label>
           <div class="server-pick">
             <select id="moo-server" v-model="serverId">
@@ -198,7 +290,7 @@
       </div>
       <footer v-if="!successInfo" class="moo-dialog-foot">
         <button class="moo-btn" @click="emit('cancel')">取消 <span class="kbd-hint">Esc</span></button>
-        <button class="moo-btn ghost" :disabled="!canPreview || previewing" @click="onPreview">
+        <button v-if="kind === 'webhook'" class="moo-btn ghost" :disabled="!canPreview || previewing" @click="onPreview">
           {{ previewing ? '预览中…' : '预览请求体' }}
         </button>
         <button class="moo-btn primary" :disabled="!canSubmit || submitting" @click="onSubmit">
@@ -213,7 +305,26 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import type { Project } from '@/types/config'
 import type { CapturedRequest } from '@/types/requests'
 import type { ConsoleError } from '@/types/errors'
-import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes } from '@/types/messages'
+import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes, type ZentaoListUsersRes, type ZentaoPingCookieRes } from '@/types/messages'
+
+/** 禅道 maxUploadSize 实测是 50M（manifest 里写死，普通账号无法改），保守取 49 MB */
+const ZENTAO_MAX_ATTACHMENT_MB = 49
+
+/** 禅道 bug type 候选值（biz12 内置），用户每次提交可选 */
+const ZENTAO_TYPE_OPTIONS = [
+  { value: 'codeerror', label: '类型：代码错误' },
+  { value: 'designdefect', label: '类型：设计缺陷' },
+  { value: 'config', label: '类型：配置相关' },
+  { value: 'install', label: '类型：安装部署' },
+  { value: 'security', label: '类型：安全相关' },
+  { value: 'performance', label: '类型：性能问题' },
+  { value: 'standard', label: '类型：标准规范' },
+  { value: 'automation', label: '类型：自动化' },
+  { value: 'designchange', label: '类型：设计变更' },
+  { value: 'newfeature', label: '类型：新需求' },
+  { value: 'improvement', label: '类型：改进建议' },
+  { value: 'others', label: '类型：其他' }
+]
 import { formatSubmitResult } from '@/utils/submitMessage'
 import { safeSendMessage } from '@/utils/messaging'
 // ElementPicker 只在用户点"选元素"按钮（picking=true）才挂载，默认根本不渲染。
@@ -306,7 +417,7 @@ const titleInput = ref<HTMLInputElement | null>(null)
 // 让 trap 不抢初始焦点）。Esc 路径见 MooDialog 的 @close → onMaskClick。
 
 /** 提交成功后的内嵌反馈视图。设值即覆盖 body/footer 展示 ✓ 卡片。 */
-const successInfo = ref<{ message: string; remoteId?: string } | null>(null)
+const successInfo = ref<{ message: string; remoteId?: string; viewUrl?: string } | null>(null)
 const SUCCESS_VIEW_MS = 1500
 let successTimer: number | undefined
 
@@ -495,18 +606,112 @@ function errLevelTitle(level: ConsoleError['level']): string {
   return 'window.onerror（运行时错误）'
 }
 
-const canPreview = computed(() => !!serverId.value)
+const kind = computed(() => props.project.kind ?? 'webhook')
+
+// === zentao 提交字段：每条 bug 可改，初值取 project.zentao default ===
+const zentaoType = ref<string>(props.project.zentao?.defaultType || 'codeerror')
+const zentaoSeverity = ref<1 | 2 | 3 | 4>((props.project.zentao?.defaultSeverity ?? 3) as 1 | 2 | 3 | 4)
+const zentaoPri = ref<1 | 2 | 3 | 4>((props.project.zentao?.defaultPri ?? 3) as 1 | 2 | 3 | 4)
+const zentaoAssignedTo = ref<string>(props.project.zentao?.defaultAssignedTo ?? '')
+
+// cookie 预检：用户在浏览器禅道页面 session 是否有效 —— 提交链路依赖 cookie，
+// 失效时让用户看见「请先登录禅道」+「一键打开」按钮，而不是提交完一脸懵
+const zentaoCookieState = ref<'unknown' | 'ok' | 'fail'>('unknown')
+const zentaoCookieMsg = ref('')
+async function pingZentaoCookie() {
+  const z = props.project.zentao
+  if (!z?.baseUrl) return
+  zentaoCookieState.value = 'unknown'
+  zentaoCookieMsg.value = '检查禅道登录…'
+  try {
+    const res = await safeSendMessage<ZentaoPingCookieRes>({
+      type: MSG.ZENTAO_PING_COOKIE,
+      source: 'content',
+      payload: { baseUrl: z.baseUrl }
+    })
+    if (res?.ok) {
+      zentaoCookieState.value = 'ok'
+      zentaoCookieMsg.value = `✓ 已登录禅道（${res.realname ?? '未知用户'}）`
+    } else {
+      zentaoCookieState.value = 'fail'
+      zentaoCookieMsg.value = res?.error ?? '禅道未登录'
+    }
+  } catch (e) {
+    zentaoCookieState.value = 'fail'
+    zentaoCookieMsg.value = (e as Error).message
+  }
+}
+
+// 用户列表（指派给下拉）：第一次 dialog 打开 + kind=zentao 时懒加载，避免不用禅道时浪费请求
+const zentaoUsers = ref<NonNullable<ZentaoListUsersRes['users']>>([])
+const zentaoUsersLoading = ref(false)
+async function loadZentaoUsers() {
+  const z = props.project.zentao
+  if (!z?.baseUrl || !z.account || !z.password) return
+  zentaoUsersLoading.value = true
+  try {
+    const res = await safeSendMessage<ZentaoListUsersRes>({
+      type: MSG.ZENTAO_LIST_USERS,
+      source: 'content',
+      payload: { baseUrl: z.baseUrl, account: z.account, password: z.password }
+    })
+    if (res?.ok && res.users) zentaoUsers.value = res.users
+  } catch {
+    // 静默失败 —— 用户可以点按钮再试 / 也可以留空表示「按规则分派」
+  } finally {
+    zentaoUsersLoading.value = false
+  }
+}
+// dialog 一打开就预拉一次（kind=zentao 时）—— 注意 onMounted 注册在 setup
+// 同步段，回调在 mount 时执行，那时 zentaoMissingList 已经声明 OK
+onMounted(() => {
+  if (kind.value === 'zentao' && !zentaoMissingList.value) {
+    void pingZentaoCookie()
+    void loadZentaoUsers()
+  }
+})
+
+// 前向引用：zentaoMissingList 在下面声明，但 onMounted callback 在 mount 时才执行
+
+const canPreview = computed(() => kind.value === 'webhook' && !!serverId.value)
 const currentServer = computed(() => props.project.servers.find((s) => s.id === serverId.value))
 const serverEndpointMissing = computed(() => !!currentServer.value && !currentServer.value.endpoint?.trim())
-/** 显示服务器选择行的条件：0 个 / 多个 / 唯一服务器配错了。
+/** 显示服务器选择行的条件（仅 webhook）：0 个 / 多个 / 唯一服务器配错了。
  * 单个且配置正确才隐藏（最常见的场景，减少表单噪音）。 */
 const showServerRow = computed(() => {
   if (props.project.servers.length !== 1) return true
   return serverEndpointMissing.value
 })
-const canSubmit = computed(() =>
-  !!serverId.value && !!title.value.trim() && !serverEndpointMissing.value
-)
+
+/** zentao 路径必填字段缺失清单（用于 UI 提示 + canSubmit 判定） */
+const zentaoMissingList = computed(() => {
+  if (kind.value !== 'zentao') return ''
+  const z = props.project.zentao
+  if (!z) return '禅道地址 / 账号 / 密码 / 项目 ID'
+  const missing: string[] = []
+  if (!z.baseUrl) missing.push('禅道地址')
+  if (!z.account) missing.push('账号')
+  if (!z.password) missing.push('密码')
+  if (!z.projectId) missing.push('项目 ID')
+  return missing.join(' / ')
+})
+
+/** 视频超过禅道 maxUploadSize 限制时给警告 + 提交时附件会失败（仍允许提交，bug 主体能建） */
+const videoTooBigForZentao = computed(() => {
+  if (kind.value !== 'zentao' || !props.video) return false
+  return (props.video.bytes / 1024 / 1024) > ZENTAO_MAX_ATTACHMENT_MB
+})
+
+const canSubmit = computed(() => {
+  if (!title.value.trim()) return false
+  if (kind.value === 'zentao') {
+    if (zentaoMissingList.value) return false
+    // 提交前 cookie 必须有效；预检中状态 'unknown' 也允许（避免 race，BG 会再校验）
+    if (zentaoCookieState.value === 'fail') return false
+    return true
+  }
+  return !!serverId.value && !serverEndpointMissing.value
+})
 
 function selectedRequests(): CapturedRequest[] {
   const ids = selectedIds.value
@@ -587,7 +792,14 @@ async function onSubmit() {
       requests: ctx.requests,
       errors: ctx.errors,
       elements: ctx.elements,
-      video: ctx.video ?? undefined
+      video: ctx.video ?? undefined,
+      // zentao 字段仅 kind=zentao 时填，webhook 路径 BG 会忽略这些字段
+      ...(kind.value === 'zentao' ? {
+        zentaoType: zentaoType.value,
+        zentaoSeverity: zentaoSeverity.value,
+        zentaoPri: zentaoPri.value,
+        zentaoAssignedTo: zentaoAssignedTo.value || undefined
+      } : {})
     }
     const res = (await safeSendMessage({
       type: MSG.SUBMIT_BUG,
@@ -597,10 +809,13 @@ async function onSubmit() {
     const { ok, message } = formatSubmitResult(res)
     if (ok) {
       // 成功：展示 1.5s 的 ✓ 内嵌反馈再关闭。比 toast 一闪有更明确的"动作完成"感。
-      successInfo.value = { message, remoteId: res.remoteId }
+      // 禅道路径会带 viewUrl —— 让用户点链接直接跳禅道看（带 viewUrl 时延长展示
+      // 时间到 4s，给用户机会点链接；不带的 webhook 路径保持原 1.5s）。
+      successInfo.value = { message, remoteId: res.remoteId, viewUrl: res.viewUrl }
+      const dur = res.viewUrl ? 4000 : SUCCESS_VIEW_MS
       successTimer = window.setTimeout(() => {
         emit('submitted', true, message)
-      }, SUCCESS_VIEW_MS)
+      }, dur)
     } else {
       // 失败：dialog 不关，弹 toast 同时显示持久横幅。带录像 + 没入重试队列 → 标记
       // cannotAutoRetry，提示用户关窗后只能去 历史 Tab。判断依据是 background 返回的

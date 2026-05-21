@@ -786,6 +786,72 @@ export const SHADOW_CSS = `
   color: var(--c-warn-fg);
 }
 .server-warn b { color: var(--c-text); font-weight: 600; }
+.zentao-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--c-bg-elev);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.zentao-target-tag {
+  font-weight: 600;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  background: var(--c-brand, #3b82f6);
+  color: white;
+}
+.zentao-target-base {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--c-text);
+  word-break: break-all;
+}
+.zentao-target-pid {
+  color: var(--c-text-muted);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+/* SubmitDialog zentao 字段（类型/严重/优先级横排 + 指派下拉） */
+.moo-zentao-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.zentao-field {
+  flex: 1;
+  min-width: 130px;
+}
+.zentao-assignee-pick {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
+}
+.zentao-assignee-pick select { flex: 1; min-width: 0; }
+.zentao-assignee-pick .moo-btn { white-space: nowrap; }
+.zentao-cookie-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: var(--r-md);
+}
+.zentao-cookie-row.ok {
+  background: var(--c-bg-elev);
+  color: var(--c-ok-fg, #16a34a);
+}
+.zentao-cookie-row.fail {
+  background: var(--c-warn-soft);
+  color: var(--c-warn-fg);
+  border: 1px solid var(--c-warn-soft);
+}
+.zentao-cookie-row .moo-btn { margin-left: auto; }
+.zentao-cookie-row .moo-btn + .moo-btn { margin-left: 4px; }
 .moo-preview {
   background: var(--c-bg-soft);
   border: 1px solid var(--c-border);
@@ -1101,6 +1167,23 @@ export const SHADOW_CSS = `
 .moo-success-msg {
   font-size: 11px;
   color: var(--c-text-dim);
+}
+.moo-success-link {
+  display: inline-block;
+  margin: 6px 0 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--c-brand, #3b82f6);
+  background: var(--c-bg-elev);
+  border-radius: var(--r-sm);
+  text-decoration: none;
+  border: 1px solid var(--c-border);
+  transition: background 120ms;
+}
+.moo-success-link:hover {
+  background: var(--c-bg);
+  text-decoration: none;
 }
 
 /* 提交失败的内嵌持久横幅：toast 是一闪而过的通知，这里给用户「点击重试 / 知道为什么没成」
