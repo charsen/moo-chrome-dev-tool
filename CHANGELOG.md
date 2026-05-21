@@ -2,6 +2,60 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.2.3
+
+**hotfix · 大重写**：用户提醒 v0.2.0 dogfood 时**用错 v1 / form 端点**，应该用 v2 REST API。彻底重新探完 v2 API 文档（zentao.net/book/api/2142）+ 实测后重构。**无 BREAKING**。
+
+### 用户视角变化（最重要）
+
+- **不再需要手动登录禅道页面**——Moo SW 用你配的账号密码自动调 v2 login 同时拿 token + 写 cookie，提交时无感。
+- 之前 v0.2.0-0.2.2 的「硬依赖：先登录禅道」彻底消除。
+- bug 创建走 v2 REST API token 路径，openedBy 自动绑到真账号（之前以为只能走 cookie，是 v0.2.0 用错 v1 路径误判）。
+
+### 实测确认（重新探完 v2 API 后）
+
+| 操作 | v0.2.0-0.2.2 路径 | v0.2.3 新路径 | 实测 |
+|---|---|---|---|
+| login | v2 + credentials:'omit'（拿 token，扔掉 cookie） | v2 + **credentials:'include'**（同时拿 token + 写 cookie） | ✓ |
+| bug 创建 | form `/bug-create-N.html` + cookie + 18 字段 multipart | **v2 `POST /api.php/v2/bugs`** + Token header + JSON | ✓ 200 + openedBy 正确 |
+| 附件上传 | `/file-ajaxUpload.html` + cookie | 同（v2 `/files` 端点账号权限 deny） | ✓ |
+| WAF 绕开 ZWS | 必须 | 必须（v2 端点也走同 WAF） | 实测 v2 + 3 段域名 → 566 |
+
+### 代码改动
+
+- `src/background/zentao/client.ts`:
+  - `login()` credentials:'omit' → **'include'**（一次拿两样：token + cookie）
+  - 新增 `ensureCookieSession(env)`：probe `/api.php/v1/user` 失败时自动 login 重 probe
+  - **完全重写 `submitBug()`**：丢掉 form 端点 + multipart + 18 字段 hidden values，改成 v2 JSON POST + Token header + 14 字段（productID/title/openedBuild/project/module/severity/pri/type/steps/assignedTo/os/browser/keywords + 隐式可选）
+  - 401 自动 refresh token 重 submit 一次
+  - 566 WAF 明确报错
+- `src/background/zentao/submit.ts` `submitToZentao`：第一步 `ensureCookieSession` 自动登录；网络错 vs 认证失败分流让 retryQueue drop 规则只 drop 永久性错误
+- `src/background/index.ts` `ZENTAO_PING_COOKIE` handler 改成调 `ensureCookieSession`（payload 含账号密码自动 login）
+- `src/types/messages.ts` `ZentaoPingCookieReq = ZentaoCredsReq`（payload 加账号密码）
+- `src/content/SubmitDialog.vue` cookie 预检文案「检查禅道登录」→「正在登录禅道」，传账号密码给 BG
+- `docs/ZENTAO_SETUP.md`「30 秒开始 — **3 步 → 2 步**」（删登录禅道整段），FAQ 「未登录」段重写
+
+### 端到端实测（user 已签退状态下，bug 9343 自清）
+
+```
+step1_loggedOut: true            // 未登录确认
+step2_loginGotBoth: true         // login 同时拿 token + 写 cookie
+step3_cookieWritten: true        // cookie 真的在 jar 里
+step4_attachmentUploaded: true   // /file-ajaxUpload.html cookie 路径工作
+step5_bugCreated: true           // v2 /bugs token 路径 200 + id
+step6_fields: {
+  openedBy: '13800000000',       // ✓ 真账号不是 system
+  assignedTo: 'uicml', severity: 1, pri: 2,
+  type: 'performance', os: 'osx', browser: 'chrome', keywords: 'Moo',
+  stepsHasImg: true, stepsHasZWS: true, stepsHasResponseCard: true
+}
+allPass: true
+```
+
+### 测试统计
+
+260 单测 + type-check + vite build 全绿。retryQueue zentao 路径 mock 适配新 v2 endpoint。
+
 ## v0.2.2
 
 **hotfix · UI 优化**：v0.2.1 加的 Response inline 只是普通 `<p>` + `<pre>`，同事

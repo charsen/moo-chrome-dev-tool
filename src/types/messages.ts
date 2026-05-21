@@ -205,11 +205,9 @@ export interface ZentaoListUsersRes {
   error?: string
 }
 
-/** ping cookie session 是否有效；payload 只需 baseUrl。
- *  cookie 有 → 用户已登录禅道；cookie 失效 → 引导用户去 baseUrl 登录。 */
-export interface ZentaoPingCookieReq {
-  baseUrl: string
-}
+/** v0.2.3 起 payload 含账号密码 —— BG 调 ensureCookieSession 自动登录禅道（不再要求用户
+ *  手动登录禅道页面）。复用 ZentaoCredsReq 类型，projectId 可选不读。 */
+export type ZentaoPingCookieReq = ZentaoCredsReq
 export interface ZentaoPingCookieRes {
   ok: boolean
   /** 成功时返用户名给「✓ 已登录为 XXX」显示 */

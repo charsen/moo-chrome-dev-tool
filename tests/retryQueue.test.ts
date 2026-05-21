@@ -388,11 +388,12 @@ describe('retryQueue — v0.2.0 zentao 路径', () => {
     }]
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes('/users/login')) return new Response(JSON.stringify({ status: 'success', token: 't' }), { status: 200, headers: { 'content-type': 'application/json' } })
+      // v0.2.3 写操作的 cookie 预检：probeCookieSession 先 ping /user
+      if (url.includes('/api.php/v1/user') && !url.includes('/users')) return new Response(JSON.stringify({ profile: { realname: '张三' } }), { status: 200, headers: { 'content-type': 'application/json' } })
       if (url.includes('/products')) return new Response(JSON.stringify({ products: [{ id: 14 }] }), { status: 200, headers: { 'content-type': 'application/json' } })
       if (url.includes('/file-ajaxUpload')) return new Response(JSON.stringify({ error: 0, url: '/file-read-1.png' }), { status: 200, headers: { 'content-type': 'application/json' } })
-      // v0.2.0 dogfood 之后：提交走 cookie session，禅道返 JSON 不是空 body
-      if (url.includes('/bug-create')) return new Response(JSON.stringify({ result: 'success', load: '/bug-view-9999.html' }), { status: 200, headers: { 'content-type': 'application/json' } })
-      if (url.includes('/projects/26/bugs')) return new Response(JSON.stringify({ bugs: [{ id: 9999 }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      // v0.2.3：bug 创建走 v2 REST API JSON POST
+      if (url.includes('/api.php/v2/bugs')) return new Response(JSON.stringify({ status: 'success', id: 9999, message: '保存成功' }), { status: 200, headers: { 'content-type': 'application/json' } })
       throw new Error(`unexpected fetch ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)

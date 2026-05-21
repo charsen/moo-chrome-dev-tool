@@ -27,6 +27,7 @@ import { parseUserAgent } from '@/utils/ua'
 import {
   submitBug as zentaoClientSubmit,
   uploadEditorFile,
+  ensureCookieSession,
   type ZentaoEnv,
   type ZentaoSubmitFields
 } from './client'
@@ -381,6 +382,20 @@ export async function submitToZentao(
   const envRes = buildZentaoEnv(project)
   if (!envRes.ok) return { ok: false, error: envRes.error }
   const z = project.zentao as ZentaoProjectConfig
+
+  // v0.2.3 新增：先确保 cookie session（没登录就用账号密码自动登录）
+  // 让用户彻底不用手动登录禅道页面。
+  // 错误前缀分类：网络错 vs 认证失败 —— 让 retryQueue 的 drop 规则只 drop 永久性
+  // 错误（认证 / 配置），网络错走 keep 进重试。
+  try {
+    const cookieRes = await ensureCookieSession(envRes.env)
+    if (!cookieRes.ok) {
+      const isNetwork = /网络|network|timeout|超时/i.test(cookieRes.error)
+      return { ok: false, error: isNetwork ? cookieRes.error : `禅道登录失败：${cookieRes.error}` }
+    }
+  } catch (e) {
+    return { ok: false, error: `网络错误：${(e as Error).message}` }
+  }
 
   // 上传附件挂在 module 级闭包里给 dataUrlToBlobLocal 用（避免每个调用点都传）
   setDataUrlToBlob(dataUrlToBlob)

@@ -128,9 +128,14 @@ export async function login(baseUrl: string, account: string, password: string):
   const url = `${trimBase(baseUrl)}/api.php/v2/users/login`
   let res: Response
   try {
+    // v0.2.3 改：credentials:'include' 让 Chrome 接收 Set-Cookie 写入 jar，一次 login
+    // 拿两样：返 token（API 写操作用 Token header）+ 写 cookie（附件上传用 /file-ajaxUpload.html
+    // 必须 cookie session，那个端点 token 路径权限 deny）。
+    // 实测：用户已签退状态下，纯 token 路径 v2 login 同时 set cookie，后续 fetch
+    // credentials:'include' 完全工作。
     res = await fetch(url, {
       method: 'POST',
-      credentials: 'omit',
+      credentials: 'include',
       headers: buildHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ account, password })
     })
@@ -158,6 +163,53 @@ export async function ensureToken(env: ZentaoEnv): Promise<ZentaoResult<string>>
 
 function _clearToken(env: ZentaoEnv): void {
   tokenCache.delete(envKey(env))
+}
+
+// ──────────────────────────── ensureCookieSession ────────────────────────────
+
+/**
+ * 确保 cookie session 在。先 ping `/api.php/v1/user`，未登录就调 login 自动登录。
+ *
+ * 设计动机（v0.2.3）：v0.2.0-0.2.2 要求用户「先在浏览器手动登录禅道页面」才能用 Moo。
+ * 实测发现 v2 API `POST /api.php/v2/users/login` 用账号密码登录时**同时也 set cookie**
+ * （v0.2.x 一直用了 credentials:'omit' 把 cookie 扔了 → 浪费）。改成 credentials:'include'
+ * 即可让 Chrome 接收 Set-Cookie 写入 jar，后续 SW 跨 origin fetch credentials:'include' 自带 cookie，
+ * 附件上传 + bug 提交都工作。
+ *
+ * 副作用提示：login 成功后**用户在禅道页面也是登录态**（共享 cookie jar），跟用户手动登录效果一样。
+ *
+ * caller（submitToZentao / SubmitDialog cookie 预检）都调它，让用户完全无感 ——
+ * 没登录就自动登录，登录态在就直接用，cookie 失效也自动恢复。
+ */
+export async function ensureCookieSession(env: ZentaoEnv): Promise<ZentaoResult<{ realname: string }>> {
+  const probe = await probeCookieSession(env.baseUrl)
+  if (probe.ok) return probe
+  // cookie 不在 —— 用账号密码自动 login（同时拿 token 进 cache + 写 cookie 进 jar）
+  const loginRes = await login(env.baseUrl, env.account, env.password)
+  if (!loginRes.ok) return { ok: false, error: loginRes.error }
+  tokenCache.set(envKey(env), loginRes.data)
+  // 再 probe 确认 cookie 真的写入了
+  const reprobe = await probeCookieSession(env.baseUrl)
+  if (reprobe.ok) return reprobe
+  return { ok: false, error: 'login 成功但 cookie 未写入 jar（请检查 host_permissions 或浏览器 cookie 设置）' }
+}
+
+async function probeCookieSession(baseUrl: string): Promise<ZentaoResult<{ realname: string }>> {
+  try {
+    const res = await fetch(`${trimBase(baseUrl)}/api.php/v1/user`, {
+      credentials: 'include',
+      headers: new Headers({ 'X-Requested-With': 'XMLHttpRequest' })
+    })
+    if (!res.ok) return { ok: false, error: `cookie 未登录（HTTP ${res.status}）` }
+    const text = await res.text()
+    try {
+      const body = JSON.parse(text) as { profile?: { realname?: string } }
+      if (body.profile?.realname) return { ok: true, data: { realname: body.profile.realname } }
+    } catch { /* HTML 错误页 */ }
+    return { ok: false, error: 'cookie 未登录（profile 缺失）' }
+  } catch (e) {
+    return { ok: false, error: `网络错误：${(e as Error).message}` }
+  }
 }
 
 // ──────────────────────────── uploadEditorFile ────────────────────────────
@@ -341,104 +393,97 @@ export interface SubmitSuccess {
 }
 
 /**
- * 一发 multipart POST。包含 discoverProduct（缓存命中则直接用）。
- * 字段定义与禅道实测一致 —— 详见 docs/PLAN_v0.2.0.md「已实测确认的禅道 API」。
+ * 创建禅道 bug —— v2 REST API JSON POST + Token header（v0.2.3 改）。
+ *
+ * v0.2.0-0.2.2 用 form 端点 `POST /bug-create-...html` + cookie session。
+ * dogfood 时本以为 v2 token 路径下 bug.openedBy 会落 system，
+ * 但其实是 form 端点的 quirk，**v2 REST `/api.php/v2/bugs` 用 Token header 时
+ * openedBy 自动绑到 token 对应用户**（实测 9340/9342：openedBy="13800000000"）。
+ *
+ * 字段：JSON body 一次传全部 — productID（用 discoverProduct 反查）/ title /
+ * openedBuild=['trunk'] / project / module / severity / pri / type / steps /
+ * assignedTo / os / browser / keywords。文档没列的字段（os/browser/keywords/
+ * assignedTo/module）实测全部生效。
+ *
+ * 注意 v2 端点**仍走禅道 WAF**：steps 含 3 段域名 URL 也 566，所以 ZWS 绕 WAF
+ * 在 submit.ts buildResponseBlock / buildRequestCurlBlock 保留。
+ *
+ * files[] 参数（v2 API 没这字段）已不传 — 附件改在 submit.ts uploadZentaoAttachments
+ * 里通过 /file-ajaxUpload.html 走 cookie 路径（v2 /files 端点账号权限 deny）。
  */
 export async function submitBug(
   env: ZentaoEnv,
   fields: ZentaoSubmitFields,
-  files: ZentaoFile[]
+  _files: ZentaoFile[] = []  // 保留参数兼容老调用方，v2 API 用不到
 ): Promise<ZentaoResult<SubmitSuccess>> {
   const prod = await discoverProduct(env)
   if (!prod.ok) return prod
+  const t = await ensureToken(env)
+  if (!t.ok) return t
 
-  const fd = new FormData()
-  fd.append('uid', genUid())
-  fd.append('product', String(prod.data))
-  fd.append('module', String(env.moduleId))
-  fd.append('project', String(env.projectId))
-  fd.append('execution', '')
-  fd.append('plan', '')
-  fd.append('allBuilds', 'on')
-  // 'trunk' 是 magic value：项目没构建时也必填，否则禅道返「『影响版本』不能为空」
-  fd.append('openedBuild[]', 'trunk')
-  fd.append('allUsers', 'on')
-  fd.append('type', fields.type)
-  fd.append('severity', String(fields.severity))
-  fd.append('pri', String(fields.pri))
-  fd.append('title', fields.title)
-  fd.append('steps', fields.steps)
-  fd.append('assignedTo', fields.assignedTo ?? '')
-  fd.append('color', '')
-  // 这堆 hidden 字段不填禅道会报「未知错误」，全 '0'/'' 兜住
-  fd.append('fromCase', '0')
-  fd.append('caseVersion', '0')
-  fd.append('result', '0')
-  fd.append('testtask', '0')
-  fd.append('fileList', '[]')
-  fd.append('case', '')
-  fd.append('story', '')
-  fd.append('task', '')
-  fd.append('feedbackBy', '')
-  fd.append('notifyEmail', '')
-  fd.append('contactList', '')
-  fd.append('keywords', fields.keywords ?? '')
-  fd.append('os', fields.os ?? '')
-  fd.append('browser', fields.browser ?? '')
-  // files 参数保留兼容旧调用（已经被禅道服务端忽略，附件实际走 file-ajaxUpload 链路）
-  for (const f of files) {
-    fd.append('files[]', f.blob, f.name)
+  const body = {
+    productID: prod.data,
+    title: fields.title,
+    openedBuild: ['trunk'],
+    project: env.projectId,
+    module: env.moduleId,
+    severity: fields.severity,
+    pri: fields.pri,
+    type: fields.type,
+    steps: fields.steps,
+    // 可选字段（文档没列但实测生效）
+    ...(fields.assignedTo ? { assignedTo: fields.assignedTo } : {}),
+    ...(fields.os ? { os: fields.os } : {}),
+    ...(fields.browser ? { browser: fields.browser } : {}),
+    ...(fields.keywords ? { keywords: fields.keywords } : {})
   }
 
-  // 提交必须走 cookie session（不带 Token header）—— Token 路径下禅道 form 端点
-  // 不查 token→user 映射，bug.openedBy 会落 'system' 看不出谁提的（实测 9279/9285）。
-  // cookie session 路径下 openedBy 正确绑到登录用户（实测 9286 → openedBy=13800000000）。
-  // 跟附件链路 (file-ajaxUpload) 保持一致：用户必须先在浏览器登录禅道，cookie 才在。
-  const url = `${trimBase(env.baseUrl)}/bug-create-0-all-projectID=${env.projectId},moduleID=${env.moduleId}.html`
+  const url = `${trimBase(env.baseUrl)}/api.php/v2/bugs`
   let res: Response
   try {
     res = await fetch(url, {
       method: 'POST',
-      credentials: 'include',
-      headers: new Headers({ 'X-Requested-With': 'XMLHttpRequest' }),
-      body: fd
+      credentials: 'omit',
+      headers: buildHeaders({ 'Content-Type': 'application/json', 'token': t.data }),
+      body: JSON.stringify(body)
     })
   } catch (e) {
     return { ok: false, error: `网络错误：${(e as Error).message}` }
   }
 
-  const body = await readJson(res) as { result?: string | boolean; message?: unknown; load?: string } | null
-
-  if (body && (body.result === 'success' || body.result === true)) {
-    const bugId = parseBugIdFromLoad(body.load) ?? (await fetchLatestBugId(env))
-    const viewUrl = bugId > 0
-      ? `${trimBase(env.baseUrl)}/bug-view-${bugId}.html`
-      : trimBase(env.baseUrl) + (body.load ?? '')
-    return { ok: true, data: { bugId, viewUrl } }
+  if (res.status === 401) {
+    // token 失效，清缓存重试一次
+    _clearToken(env)
+    const t2 = await ensureToken(env)
+    if (!t2.ok) return t2
+    const retryRes = await fetch(url, {
+      method: 'POST',
+      credentials: 'omit',
+      headers: buildHeaders({ 'Content-Type': 'application/json', 'token': t2.data }),
+      body: JSON.stringify(body)
+    })
+    return interpretV2BugResponse(env, retryRes)
   }
-  // {result:false, load:'login'} / 「登录已超时」表示 cookie 失效。retry 救不了，
-  // 直接报错让用户去登录禅道。SubmitDialog 会显示这条提示。
-  if (body && (body.load === 'login' || /登录|未登录|登入/.test(formatMessage(body.message)))) {
-    return { ok: false, error: '禅道登录已失效；请打开禅道页面重新登录后再提交' }
+  // 566 是禅道 WAF 拦截（含 3 段以上 https URL 等违规字串）；上层应该已经做 ZWS 绕开
+  if (res.status === 566) {
+    return { ok: false, error: '禅道服务端 WAF 拦截（HTTP 566）。可能 steps 含违规 URL；Moo 已经做 ZWS 绕开，若仍触发说明该禅道实例 WAF 规则更严格' }
   }
-  return { ok: false, error: formatMessage(body?.message) || `HTTP ${res.status}` }
+  return interpretV2BugResponse(env, res)
 }
 
-/**
- * 提交后 bug.load 字段不一定带 bugId（cookie session 可能返 /bug-browse-N.html 列表页），
- * 这时调 REST 列表拿最新 id 给 SubmitDialog「禅道里看」链接用。
- * 走 Token 路径（这里只是查询，token 缓存命中就一次 HTTP）。
- */
-async function fetchLatestBugId(env: ZentaoEnv): Promise<number> {
-  const t = await ensureToken(env)
-  if (!t.ok) return 0
-  try {
-    const url = `${trimBase(env.baseUrl)}/api.php/v1/projects/${env.projectId}/bugs?limit=1`
-    const res = await fetch(url, { credentials: 'omit', headers: buildHeaders({ 'Token': t.data }) })
-    if (!res.ok) return 0
-    const body = await readJson(res) as { bugs?: Array<{ id: number }> } | null
-    return body?.bugs?.[0]?.id ?? 0
-  } catch { return 0 }
+async function interpretV2BugResponse(env: ZentaoEnv, res: Response): Promise<ZentaoResult<SubmitSuccess>> {
+  const body = await readJson(res) as { status?: string; id?: number; message?: unknown; error?: unknown; reason?: string } | null
+  if (body?.status === 'success' && typeof body.id === 'number') {
+    return {
+      ok: true,
+      data: { bugId: body.id, viewUrl: `${trimBase(env.baseUrl)}/bug-view-${body.id}.html` }
+    }
+  }
+  const errMsg = body?.reason
+    || formatMessage(body?.error)
+    || formatMessage(body?.message)
+    || `HTTP ${res.status}`
+  return { ok: false, error: errMsg }
 }
 
 // ───────────────────────── auth-retry harness ─────────────────────────

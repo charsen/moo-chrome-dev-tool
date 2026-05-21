@@ -643,19 +643,21 @@ async function pingZentaoCookie() {
   const z = props.project.zentao
   if (!z?.baseUrl) return
   zentaoCookieState.value = 'unknown'
-  zentaoCookieMsg.value = '检查禅道登录…'
+  zentaoCookieMsg.value = '正在登录禅道…'
   try {
+    // v0.2.3 改：传账号密码，BG 调 ensureCookieSession（cookie 没在自动登录）—— 用户
+    // 不再需要手动登录禅道页面。Moo SW 用账号密码调 v2 login 同时拿 token + 写 cookie
     const res = await safeSendMessage<ZentaoPingCookieRes>({
       type: MSG.ZENTAO_PING_COOKIE,
       source: 'content',
-      payload: { baseUrl: z.baseUrl }
+      payload: { baseUrl: z.baseUrl, account: z.account, password: z.password }
     })
     if (res?.ok) {
       zentaoCookieState.value = 'ok'
       zentaoCookieMsg.value = `✓ 已登录禅道（${res.realname ?? '未知用户'}）`
     } else {
       zentaoCookieState.value = 'fail'
-      zentaoCookieMsg.value = res?.error ?? '禅道未登录'
+      zentaoCookieMsg.value = res?.error ?? '禅道登录失败'
     }
   } catch (e) {
     zentaoCookieState.value = 'fail'

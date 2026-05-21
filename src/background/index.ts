@@ -20,6 +20,7 @@ import {
   listUsers as zentaoListUsers,
   listModules as zentaoListModules,
   discoverProduct as zentaoDiscoverProduct,
+  ensureCookieSession as zentaoEnsureCookie,
   type ZentaoEnv
 } from '@/background/zentao/client'
 import { submitToZentao } from '@/background/zentao/submit'
@@ -292,25 +293,12 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
           break
         }
         case MSG.ZENTAO_PING_COOKIE: {
-          // 直接走 cookie session ping，不用 token 路径 —— 我们就是要看 cookie 是否有效。
-          // baseUrl trim trailing slash 让路径拼接稳定
-          const baseUrl = message.payload.baseUrl.replace(/\/+$/, '')
-          try {
-            const r = await fetch(`${baseUrl}/api.php/v1/user`, {
-              credentials: 'include',
-              headers: new Headers({ 'X-Requested-With': 'XMLHttpRequest' })
-            })
-            const text = await r.text()
-            let body: { profile?: { realname?: string } } | null = null
-            try { body = JSON.parse(text) } catch { /* HTML 错误页 / 跳登录 */ }
-            if (r.ok && body?.profile?.realname) {
-              sendResponse({ ok: true, realname: body.profile.realname })
-            } else {
-              sendResponse({ ok: false, error: '未登录禅道（cookie 失效或没有 session）' })
-            }
-          } catch (e) {
-            sendResponse({ ok: false, error: `网络错误：${(e as Error).message}` })
-          }
+          // v0.2.3 改：payload 含账号密码 → 调 ensureCookieSession 自动登录（cookie 没在
+          // 就用账号密码 login 同时拿 token+写 cookie）。用户不再需要手动登录禅道。
+          const env = makeZentaoEnv(message.payload)
+          const ensured = await zentaoEnsureCookie(env)
+          if (ensured.ok) sendResponse({ ok: true, realname: ensured.data.realname })
+          else sendResponse({ ok: false, error: ensured.error })
           break
         }
         default: {
