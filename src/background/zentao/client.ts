@@ -138,6 +138,59 @@ function _clearToken(env: ZentaoEnv): void {
   tokenCache.delete(envKey(env))
 }
 
+// ──────────────────────────── uploadEditorFile ────────────────────────────
+
+/**
+ * 上传一个文件到禅道，拿到一个图床式 URL（形如 `/file-read-N.png`），
+ * 再 inline 进 steps 富文本里 `<img>` / `<a>` 渲染。
+ *
+ * 这是禅道 zui editor 的图片粘贴上传路径（从 zui3 source 里挖到）：
+ *   端点：POST /file-ajaxUpload.html?uid=xxx&extra=editor&field=imgFile&gid=xxx
+ *   字段名：imgFile（**不是** files[]，这是 v0.2.0 初版踩的坑）
+ *   认证：**必须 cookie session**，Token 路径下返 200 空 body 但实际没存
+ *   响应：{error:0, url:"/file-read-N.png"}
+ *
+ * 因为依赖 cookie，用户必须**先在浏览器里登录禅道页面**。没登录时 cookie 没在，
+ * 返 error≠0 或空 body —— caller 应该兜住 fallback（steps 里说明截图未传）。
+ *
+ * 注意：非图片文件会被禅道**强制改名** .txt（.webm / .sh / .json 都被改）。
+ * caller 用返回的 url 拼 `<a>` 链接给用户「下载」是 OK 的，但 `<video src>` 不能用
+ * （Content-Type 是 application/octet-stream + zentao sanitizer 也剥 video 标签）。
+ */
+export async function uploadEditorFile(
+  baseUrl: string,
+  blob: Blob,
+  filename: string
+): Promise<ZentaoResult<{ url: string }>> {
+  const editorUid = genUid()
+  const gid = btoa(`moo-${filename}-${Date.now()}`)
+  const url = `${trimBase(baseUrl)}/file-ajaxUpload.html`
+    + `?uid=${editorUid}&extra=editor&field=imgFile&gid=${encodeURIComponent(gid)}`
+  const fd = new FormData()
+  fd.append('imgFile', blob, filename)
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: new Headers({ 'X-Requested-With': 'XMLHttpRequest' }),
+      body: fd
+    })
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+    const text = await res.text()
+    if (!text) {
+      return { ok: false, error: '禅道未返响应体（请确认浏览器里已登录禅道：附件上传依赖 cookie session）' }
+    }
+    let body: { error?: number; url?: string; message?: string } | null = null
+    try { body = JSON.parse(text) } catch { return { ok: false, error: `禅道返非 JSON: ${text.slice(0, 100)}` } }
+    if (body?.error !== 0 || typeof body.url !== 'string') {
+      return { ok: false, error: body?.message || '上传失败' }
+    }
+    return { ok: true, data: { url: body.url } }
+  } catch (e) {
+    return { ok: false, error: `网络错误：${(e as Error).message}` }
+  }
+}
+
 // ──────────────────────────────── ping ────────────────────────────────
 
 /** 验 token 有效性 + 拿用户信息。Settings「测试连接」按钮用。 */

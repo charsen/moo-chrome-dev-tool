@@ -1,8 +1,21 @@
 /**
- * 禅道提交编排层（B' 路径）—— 把 Moo 的 SubmitBugReq 转成 ZentaoSubmitFields
- * + ZentaoFile[]，调 client.submitBug 收 result，再翻译成 SubmitBugRes。
+ * 禅道提交编排层（B' 路径）—— 把 Moo 的 SubmitBugReq 转成禅道的 steps HTML +
+ * 调 client.submitBug，再翻译成 SubmitBugRes。
  *
- * 这里只做 orchestration + format，不做 fetch / storage 副作用（这两个全在 client.ts 里）。
+ * v0.2.0 dogfood 后的关键策略变更：
+ *
+ *   1. **不再走 form 端点的 files[] 字段**——实测 9279 / 9281 / 9282 表明这条字段
+ *      被禅道服务端忽略，bug.files 永远是空数组。
+ *
+ *   2. **改走 zui editor 的 /file-ajaxUpload.html 链路**：先把每个附件单独
+ *      `POST /file-ajaxUpload.html?uid=xxx&extra=editor&field=imgFile` 上传（依赖
+ *      cookie session），拿到 `/file-read-N.png` 这种 URL，再 inline 进 steps：
+ *      - 截图：`<img src="/file-read-N.png">` → 禅道详情页直接渲染
+ *      - 视频 / json：`<a href="/file-read-N.txt">` → 禅道保留链接（video 标签被
+ *        sanitizer 剥光，所以视频改成下载链接）
+ *
+ *   3. **附件上传是 best-effort**：用户没登录禅道时 cookie 失效，上传整个 fallback
+ *      到「steps 里说明截图未传 + 主提交照常进行」。bug 仍然能建，只是没截图渲染。
  */
 
 import type { Project, ZentaoProjectConfig } from '@/types/config'
@@ -10,15 +23,11 @@ import type { SubmitBugReq, SubmitBugRes } from '@/types/messages'
 import { toCurlScript } from '@/utils/curlGenerator'
 import {
   submitBug as zentaoClientSubmit,
+  uploadEditorFile,
   type ZentaoEnv,
-  type ZentaoSubmitFields,
-  type ZentaoFile
+  type ZentaoSubmitFields
 } from './client'
 
-/**
- * 把项目里的 ZentaoProjectConfig 拼成 client.ts 要的 ZentaoEnv。
- * 在 BG 调用前做完 missing-field 校验，避免后续异步错误难定位。
- */
 export function buildZentaoEnv(project: Project): { ok: true; env: ZentaoEnv } | { ok: false; error: string } {
   const z = project.zentao
   if (!z) return { ok: false, error: '项目缺禅道配置；请去 DevTools → Moo → 环境，切到「禅道」并填齐字段' }
@@ -32,123 +41,210 @@ export function buildZentaoEnv(project: Project): { ok: true; env: ZentaoEnv } |
   }
   return {
     ok: true,
-    env: {
-      baseUrl: z.baseUrl,
-      account: z.account,
-      password: z.password,
-      projectId: z.projectId,
-      moduleId: z.moduleId
-    }
+    env: { baseUrl: z.baseUrl, account: z.account, password: z.password, projectId: z.projectId, moduleId: z.moduleId }
   }
 }
 
+/** 已上传到禅道的附件结果，给 buildZentaoStepsHtml 拼 inline HTML 用 */
+interface UploadedFile {
+  /** Moo 命名（screenshot / recording / requests.json 等） */
+  kind: 'screenshot' | 'recording' | 'requests' | 'curl' | 'errors' | 'context'
+  /** 显示名（在 a 链接 / img alt 里用） */
+  displayName: string
+  /** 禅道返回的 URL（已经是 /file-read-N.* 形态，禅道渲染时会自动改写成 pi.php） */
+  url: string
+  /** 字节数（描述里显示「2.3 MB」用） */
+  bytes: number
+}
+
+/** 上传失败的记录，给 steps 里 fallback 提示用 */
+interface FailedUpload {
+  kind: UploadedFile['kind']
+  displayName: string
+  error: string
+}
+
 /**
- * 拼 steps 字段（HTML 富文本）。禅道 form 直接吃 HTML 渲染到 bug 详情页。
- * 结构：描述（可空）+ 环境信息列表 + 附件说明段。
+ * 把所有附件挨个上传到禅道。best-effort：单条失败不中断其他，所有失败的也回到
+ * `failed[]` 让 steps 里告诉用户「哪些没传上」。
  */
-export function buildZentaoStepsHtml(req: SubmitBugReq, attachmentNames: string[]): string {
+export async function uploadZentaoAttachments(
+  req: SubmitBugReq,
+  project: Project,
+  baseUrl: string,
+  opts: { mooVersion?: string } = {}
+): Promise<{ uploaded: UploadedFile[]; failed: FailedUpload[] }> {
+  const uploaded: UploadedFile[] = []
+  const failed: FailedUpload[] = []
+
+  const upload = async (kind: UploadedFile['kind'], displayName: string, blob: Blob) => {
+    if (blob.size === 0) return
+    const r = await uploadEditorFile(baseUrl, blob, displayName)
+    if (r.ok) uploaded.push({ kind, displayName, url: r.data.url, bytes: blob.size })
+    else failed.push({ kind, displayName, error: r.error })
+  }
+
+  // 截图
+  if (req.image) {
+    const blob = dataUrlToBlobLocal(req.image)
+    await upload('screenshot', 'moo-screenshot.png', blob)
+  }
+
+  // 视频
+  if (req.video?.dataUrl) {
+    const blob = dataUrlToBlobLocal(req.video.dataUrl)
+    const ext = req.video.mime?.includes('mp4') ? 'mp4' : 'webm'
+    await upload('recording', `moo-recording.${ext}`, blob)
+  }
+
+  // requests.json + curl.sh
+  if (req.requests?.length) {
+    await upload(
+      'requests',
+      'moo-requests.json',
+      new Blob([JSON.stringify(req.requests, null, 2)], { type: 'application/json' })
+    )
+    const script = toCurlScript(req.requests, project.redact, { mooVersion: opts.mooVersion })
+    await upload(
+      'curl',
+      'moo-requests.curl.sh',
+      new Blob([script], { type: 'text/x-shellscript' })
+    )
+  }
+
+  // errors
+  if (req.errors?.length) {
+    await upload(
+      'errors',
+      'moo-errors.json',
+      new Blob([JSON.stringify(req.errors, null, 2)], { type: 'application/json' })
+    )
+  }
+
+  // context
+  await upload(
+    'context',
+    'moo-context.json',
+    new Blob([JSON.stringify({
+      url: req.url, userAgent: req.userAgent, viewport: req.viewport, timestamp: req.timestamp,
+      hasVideo: !!req.video, requestCount: req.requests?.length ?? 0, errorCount: req.errors?.length ?? 0
+    }, null, 2)], { type: 'application/json' })
+  )
+
+  return { uploaded, failed }
+}
+
+/**
+ * 拼 steps HTML —— bug 详情页直接渲染的富文本。结构：
+ *   描述（可空）→ 截图（inline img）→ 录像 / 附件链接 → 环境信息
+ */
+export function buildZentaoStepsHtml(
+  req: SubmitBugReq,
+  uploaded: UploadedFile[],
+  failed: FailedUpload[]
+): string {
   const parts: string[] = []
+
+  // 描述
   if (req.description?.trim()) {
-    parts.push('<h3>描述</h3>')
-    // description 来自用户输入，按段拆。h-escape 之后保留换行成 <br>
+    parts.push('<h3>📝 描述</h3>')
     parts.push(`<p>${escapeHtml(req.description).replace(/\n/g, '<br>')}</p>`)
   }
-  parts.push('<h3>环境</h3>')
+
+  // 截图 inline
+  const screenshot = uploaded.find(f => f.kind === 'screenshot')
+  if (screenshot) {
+    parts.push('<h3>📸 截图</h3>')
+    parts.push(
+      `<p><img src="${screenshot.url}" alt="${escapeHtml(screenshot.displayName)}" `
+      + `style="max-width:100%;border:1px solid #ddd;border-radius:4px;" /></p>`
+    )
+  }
+
+  // 录像 + 调试附件（链接形式）
+  const downloadLinks = uploaded.filter(f => f.kind !== 'screenshot' && f.kind !== 'context')
+  const recording = uploaded.find(f => f.kind === 'recording')
+  if (recording) {
+    parts.push('<h3>🎥 录像</h3>')
+    parts.push(
+      `<p>${labelForKind('recording')} `
+      + `<a href="${recording.url}" target="_blank">下载 ${escapeHtml(recording.displayName)}</a> `
+      + `（${formatBytes(recording.bytes)}）</p>`
+    )
+  }
+  const debugLinks = downloadLinks.filter(f => f.kind !== 'recording')
+  if (debugLinks.length) {
+    parts.push('<h3>🔧 调试附件</h3>')
+    parts.push('<ul>')
+    for (const f of debugLinks) {
+      parts.push(
+        `<li><a href="${f.url}" target="_blank">${escapeHtml(f.displayName)}</a> `
+        + `— ${labelForKind(f.kind)}（${formatBytes(f.bytes)}）</li>`
+      )
+    }
+    parts.push('</ul>')
+  }
+
+  // 失败附件提示
+  if (failed.length) {
+    parts.push('<h3>⚠️ 附件上传失败</h3>')
+    parts.push('<ul>')
+    for (const f of failed) {
+      parts.push(`<li>${escapeHtml(f.displayName)} —— ${escapeHtml(f.error)}</li>`)
+    }
+    parts.push('</ul>')
+    if (failed.some(f => /cookie|登录/.test(f.error))) {
+      parts.push('<p>💡 附件上传依赖浏览器里登录禅道的 cookie；请确保 Moo 提交时你在同一浏览器登录了禅道，再重试该条 bug。</p>')
+    }
+  }
+
+  // 环境信息
+  parts.push('<h3>🌐 环境</h3>')
   parts.push('<ul>')
-  parts.push(`<li>URL: ${escapeHtml(req.url)}</li>`)
-  parts.push(`<li>UA: ${escapeHtml(req.userAgent)}</li>`)
-  parts.push(`<li>视口: ${escapeHtml(req.viewport)}</li>`)
-  parts.push(`<li>时间: ${escapeHtml(req.timestamp)}</li>`)
+  parts.push(`<li><b>URL</b>：${escapeHtml(req.url)}</li>`)
+  parts.push(`<li><b>UA</b>：${escapeHtml(req.userAgent)}</li>`)
+  parts.push(`<li><b>视口</b>：${escapeHtml(req.viewport)}</li>`)
+  parts.push(`<li><b>时间</b>：${escapeHtml(req.timestamp)}</li>`)
   if (req.video) {
     const secs = Math.round(req.video.duration / 1000)
-    const mb = (req.video.bytes / 1024 / 1024).toFixed(2)
-    parts.push(`<li>录像: ${secs}s / ${mb} MB</li>`)
+    parts.push(`<li><b>录像时长</b>：${secs}s（${formatBytes(req.video.bytes)}）</li>`)
+  }
+  if (req.requests?.length) {
+    parts.push(`<li><b>抓到请求</b>：${req.requests.length} 条</li>`)
+  }
+  if (req.errors?.length) {
+    parts.push(`<li><b>console 错误</b>：${req.errors.length} 条</li>`)
   }
   parts.push('</ul>')
-  if (attachmentNames.length) {
-    parts.push('<h3>附件</h3>')
-    parts.push('<ul>')
-    for (const n of attachmentNames) parts.push(`<li>${escapeHtml(n)}</li>`)
-    parts.push('</ul>')
-    parts.push('<p>截图见附件；请求/错误明细见 *.json；curl 复现见 *.curl.sh（禅道会把 .sh 重命名为 .txt）。</p>')
-  }
+
+  parts.push('<hr/>')
+  parts.push('<p style="color:#999;font-size:12px;">由 Moo Dev Tool 自动生成</p>')
+
   return parts.join('\n')
 }
 
-/**
- * 构造禅道附件列表。bgIndex 注入 dataUrlToBlob（避免重复实现 base64 解码）。
- *
- * 附件列表：
- *   - moo-screenshot.png（必有，截图）
- *   - moo-recording.webm（可选，录像）
- *   - moo-requests.json（raw captured requests）
- *   - moo-requests.curl.sh（脱敏后的 curl 复现脚本）
- *   - moo-errors.json（raw console errors）
- *   - moo-context.json（URL / UA / viewport / timestamp 元信息）
- */
-export function buildZentaoAttachments(
-  req: SubmitBugReq,
-  project: Project,
-  dataUrlToBlob: (url: string) => Blob,
-  opts: { mooVersion?: string } = {}
-): ZentaoFile[] {
-  const files: ZentaoFile[] = []
-
-  if (req.image) {
-    const blob = dataUrlToBlob(req.image)
-    if (blob.size > 0) files.push({ name: 'moo-screenshot.png', blob })
+function labelForKind(kind: UploadedFile['kind']): string {
+  switch (kind) {
+    case 'screenshot': return '截图'
+    case 'recording': return '录像（禅道会改名为 .txt）'
+    case 'requests': return '抓到的网络请求 raw 数据'
+    case 'curl': return 'curl 复现脚本（已脱敏）'
+    case 'errors': return 'console.error / unhandledrejection raw'
+    case 'context': return 'URL / UA / 视口 / 时间等元信息'
   }
+}
 
-  if (req.video?.dataUrl) {
-    const blob = dataUrlToBlob(req.video.dataUrl)
-    if (blob.size > 0) {
-      const ext = req.video.mime?.includes('mp4') ? 'mp4' : 'webm'
-      files.push({ name: `moo-recording.${ext}`, blob })
-    }
-  }
-
-  if (req.requests?.length) {
-    files.push({
-      name: 'moo-requests.json',
-      blob: new Blob([JSON.stringify(req.requests, null, 2)], { type: 'application/json' })
-    })
-    // curl 脚本走 project.redact 规则脱敏；命中 Authorization / Cookie / X-API-Key / password 等
-    // 一律 *** 化，避免凭据被原样吐到禅道附件里
-    const script = toCurlScript(req.requests, project.redact, { mooVersion: opts.mooVersion })
-    // 禅道把 .sh 自动改名 .txt（安全策略），attach 时两种名字都能用。我们用 .curl.sh
-    // 让用户在 OS 下载列表里一眼看出"这是 shell 脚本"
-    files.push({
-      name: 'moo-requests.curl.sh',
-      blob: new Blob([script], { type: 'text/x-shellscript' })
-    })
-  }
-
-  if (req.errors?.length) {
-    files.push({
-      name: 'moo-errors.json',
-      blob: new Blob([JSON.stringify(req.errors, null, 2)], { type: 'application/json' })
-    })
-  }
-
-  files.push({
-    name: 'moo-context.json',
-    blob: new Blob([JSON.stringify({
-      url: req.url,
-      userAgent: req.userAgent,
-      viewport: req.viewport,
-      timestamp: req.timestamp,
-      hasVideo: !!req.video,
-      requestCount: req.requests?.length ?? 0,
-      errorCount: req.errors?.length ?? 0
-    }, null, 2)], { type: 'application/json' })
-  })
-
-  return files
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(2)} MB`
 }
 
 /**
- * 顶层 orchestrator：env 校验 → 拼附件 → 拼 steps → 调 client → 翻译结果。
- * 失败时 error 串已经是用户可读消息，BG 层直接进 history。
+ * 顶层 orchestrator：env 校验 → 上传所有附件 → 拼 steps（带 inline img / 下载链接）
+ *   → 调 client submitBug → 翻译结果。
+ *
+ * submitBug 不再带 files[] 字段（禅道服务端会忽略），附件全通过 file-ajaxUpload 链路。
  */
 export async function submitToZentao(
   req: SubmitBugReq,
@@ -160,21 +256,24 @@ export async function submitToZentao(
   if (!envRes.ok) return { ok: false, error: envRes.error }
   const z = project.zentao as ZentaoProjectConfig
 
-  const files = buildZentaoAttachments(req, project, dataUrlToBlob, opts)
+  // 上传附件挂在 module 级闭包里给 dataUrlToBlobLocal 用（避免每个调用点都传）
+  setDataUrlToBlob(dataUrlToBlob)
+
+  // 附件上传：best-effort，单条失败不阻断主提交
+  const { uploaded, failed } = await uploadZentaoAttachments(req, project, envRes.env.baseUrl, opts)
+
   const fields: ZentaoSubmitFields = {
     title: req.title,
-    steps: buildZentaoStepsHtml(req, files.map(f => f.name)),
+    steps: buildZentaoStepsHtml(req, uploaded, failed),
     severity: z.defaultSeverity,
     pri: z.defaultPri,
     type: z.defaultType,
     assignedTo: z.defaultAssignedTo
   }
 
-  // submitBug / discoverProduct 内部 fetch 不再 catch（client.ts 故意保留异常透传给 caller
-  // 看具体哪里炸）；submit 这层是 BG 顶层，必须把网络异常转 ZentaoResult，否则
-  // retryQueue 的 flush 异常 throw 出来会被外层当 fatal，整个 flush 失败浪费一轮 alarm。
   try {
-    const r = await zentaoClientSubmit(envRes.env, fields, files)
+    // 注意：submitBug 第三参传空数组 —— files[] 字段被禅道忽略，靠 ajaxUpload 链路绑附件
+    const r = await zentaoClientSubmit(envRes.env, fields, [])
     if (!r.ok) {
       return { ok: false, error: r.error }
     }
@@ -187,6 +286,15 @@ export async function submitToZentao(
   } catch (e) {
     return { ok: false, error: `网络错误：${(e as Error).message}` }
   }
+}
+
+// dataUrlToBlob 由 BG 注入（避免在 submit.ts 直接 import @/utils/dataUrl 时与 retryQueue
+// 路径形成依赖图复杂度）。setter + 局部 helper 桥接给 uploadZentaoAttachments 用。
+let _dataUrlToBlob: ((url: string) => Blob) | null = null
+function setDataUrlToBlob(fn: (url: string) => Blob): void { _dataUrlToBlob = fn }
+function dataUrlToBlobLocal(url: string): Blob {
+  if (!_dataUrlToBlob) throw new Error('dataUrlToBlob not injected')
+  return _dataUrlToBlob(url)
 }
 
 /** HTML 转义：steps 字段会被禅道渲染，用户输入的 < > & 等不能直接拼进去 */
