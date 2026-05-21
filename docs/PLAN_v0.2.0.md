@@ -21,12 +21,14 @@
   baseUrl / projectId / moduleId / account / password
        │
        ▼  ① SW 启动 / token 不存在 / token 失效
-  POST {baseUrl}/api.php/v1/tokens
+  POST {baseUrl}/api.php/v2/users/login        ← v2 端点（实测 2026-05 biz12）
   Header: X-Requested-With: XMLHttpRequest
   Body: {"account":"...","password":"..."}
+  成功响应（HTTP 200）：{status:'success', token:'...', user:{id, account, realname, ...}}
+  失败响应（HTTP 200！）：{status:'failed', reason:'登录失败，请检查您的用户名或密码是否填写正确。'}
        │
-       ▼ 成功 → 缓存 { token, expiresAt? } in SW 内存（不进 chrome.storage，防 token 泄露面扩大）
-       ▼ 失败 → return { ok:false, error:'登录失败' } → Settings 「测试连接」按钮显红
+       ▼ 成功 → 缓存 { token } in SW 内存（不进 chrome.storage，防 token 泄露面扩大）
+       ▼ 失败 → return { ok:false, error: reason } → Settings 「测试连接」按钮显红
        │
        ▼  ② 提交 bug 时复用缓存的 token
   POST {baseUrl}/bug-create-0-all-projectID={pid},moduleID={mid}.html
@@ -38,11 +40,11 @@
        ▼ {result:success} → 完成
 ```
 
-**密码存储要点**（P2 阶段实施时确认）：
-- chrome.storage.local（不进 sync，避免上云）
-- 不做用户态加密（chrome.storage 本身按用户隔离，附加加密只增复杂度无实际收益）
+**密码存储要点**（用户 2026-05-21 明示「本地自己电脑安全没问题」）：
+- chrome.storage.local（**不进 sync 上云**，user-scope 还是要守住）
+- **不做用户态加密** —— 用户明示坦然存本地明文。chrome.storage.local 按用户隔离，其他扩展读不到；附加加密只让用户误以为更安全，无实际收益
 - Settings UI 输入框 type=password + 不回显原值（再次显示时显示 `••••••••`）
-- 导入 / 导出配置时 password 字段一律剥掉，避免误传给同事
+- **导入 / 导出配置时 password 字段一律剥掉**，避免误传给同事
 
 ## 已实测确认的禅道 API（直接抄）
 
@@ -134,7 +136,9 @@ Header: Token: {user_token}
 7. **🆕 zin SPA 渲染**：biz12 用 zin 框架，form HTML 不带 `<form>` 标签，正则抓 hidden input 全废 → 走 REST
 8. **🆕 Token header 路径下 form 端点响应空 body**：cookie 路径返 `{result:'success',load:'/bug-view-N'}`；Token 路径返 200 + 空 body（bug 已写入数据库）。client.ts 要兼容两种 + 用 list 拿 bugId
 9. **🆕 `GET /api.php/v1/projects/{pid}` 403 "Access not allowed"**：但 list `/api.php/v1/projects` 列里有这个 project — 这是禅道权限模型 quirk，project 详情比列表更严。所以 `listProjects` 走得通，`/projects/{id}` 单条不行
-10. **🆕 `/api.php/v1/tokens` 返 HTTP 201**（不是 200）— 这是 REST 风格的 created 语义，response 检查时不要硬编码 200
+10. ~~`/api.php/v1/tokens` 返 HTTP 201~~（v1 端点废弃）→ 走 v2
+11. **🆕 v2 login 失败也返 HTTP 200**：`POST /api.php/v2/users/login` 成功 `{status:'success', token, user}`；密码错也返 200 + `{status:'failed', reason:'登录失败...'}`。client 必须看 status 字段不能光看 HTTP 码
+12. **🆕 v2 token 在 v1 端点完全兼容**：`/api.php/v1/user` / `/api.php/v1/products` / form 端点都接受 v2 token，所以只需要 login 走 v2，其他端点不动
 
 ## P1 验证状态（2026-05-21 接手会话已做）
 

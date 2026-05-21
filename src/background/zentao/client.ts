@@ -92,10 +92,18 @@ async function readJson(res: Response): Promise<unknown> {
 
 /**
  * 用 account+password 换 token。无副作用（不写缓存）。
- * 端点优先 v1（与文档实测一致），response 形态 `{status:'success', token:'...'}` 或 `{error:...}`
+ *
+ * 走 v2 端点（2026-05 实测 yourcompany.chandao.net biz12）：
+ *   POST /api.php/v2/users/login
+ *   body: {account, password}
+ *   成功（HTTP 200）: {status:'success', token:'...', user:{id, account, realname, ...}}
+ *   失败（HTTP 200）: {status:'failed', reason:'登录失败...'}
+ *
+ * 注意 v2 失败也返 200，必须看 status 字段；v2 token 在 v1 的其他端点
+ * (/user /products form 端点) 完全兼容，所以其他方法不用动。
  */
 export async function login(baseUrl: string, account: string, password: string): Promise<ZentaoResult<string>> {
-  const url = `${trimBase(baseUrl)}/api.php/v1/tokens`
+  const url = `${trimBase(baseUrl)}/api.php/v2/users/login`
   let res: Response
   try {
     res = await fetch(url, {
@@ -107,11 +115,12 @@ export async function login(baseUrl: string, account: string, password: string):
   } catch (e) {
     return { ok: false, error: `网络错误：${(e as Error).message}` }
   }
-  const body = await readJson(res) as { status?: string; token?: string; error?: string } | null
-  if (res.ok && body && typeof body.token === 'string' && body.token) {
+  const body = await readJson(res) as { status?: string; token?: string; reason?: string; error?: string } | null
+  if (res.ok && body?.status === 'success' && typeof body.token === 'string' && body.token) {
     return { ok: true, data: body.token }
   }
-  const errMsg = body?.error || (body && typeof body === 'object' && '_rawText' in body ? String((body as any)._rawText) : `HTTP ${res.status}`)
+  const errMsg = body?.reason || body?.error
+    || (body && typeof body === 'object' && '_rawText' in body ? String((body as any)._rawText) : `HTTP ${res.status}`)
   return { ok: false, error: errMsg }
 }
 

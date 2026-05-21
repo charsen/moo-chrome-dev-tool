@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeProject, DEFAULT_PAYLOAD_TEMPLATE, DEFAULT_REDACT } from '@/types/config'
+import { normalizeProject, stripSensitiveProjectFields, DEFAULT_PAYLOAD_TEMPLATE, DEFAULT_REDACT, DEFAULT_ZENTAO } from '@/types/config'
 
 // normalizeProject 是导入 / loadConfig 路径的薄冰带 —— 任何用户 / v0.0.x storage
 // 喂进来的脏数据都要在这里收尾。这一组测试覆盖各类 sanitize 路径。
@@ -186,5 +186,262 @@ describe('normalizeProject — servers normalize（间接覆盖 normalizeServer�
   it('name 截到 100 字符', () => {
     const big = 'a'.repeat(200)
     expect(normalizeProject({ servers: [{ name: big }] }).servers[0]?.name.length).toBe(100)
+  })
+})
+
+describe('normalizeProject — kind 字段（v0.2.0）', () => {
+  it('无 kind 字段时默认 webhook（兼容 v0.1.x 老数据）', () => {
+    expect(normalizeProject({}).kind).toBe('webhook')
+  })
+
+  it('kind=zentao 时保留', () => {
+    expect(normalizeProject({ kind: 'zentao' }).kind).toBe('zentao')
+  })
+
+  it('kind 异常值（unknown / null / 数字 / 对象）一律兜成 webhook', () => {
+    expect(normalizeProject({ kind: 'unknown' }).kind).toBe('webhook')
+    expect(normalizeProject({ kind: null }).kind).toBe('webhook')
+    expect(normalizeProject({ kind: 123 }).kind).toBe('webhook')
+    expect(normalizeProject({ kind: {} }).kind).toBe('webhook')
+  })
+})
+
+describe('normalizeProject — zentao 字段（v0.2.0）', () => {
+  it('无 raw.zentao → undefined（避免空对象误导后续 if (p.zentao) 判定）', () => {
+    expect(normalizeProject({}).zentao).toBeUndefined()
+  })
+
+  it('raw.zentao 非对象（null / string / 数字）→ undefined', () => {
+    expect(normalizeProject({ zentao: null }).zentao).toBeUndefined()
+    expect(normalizeProject({ zentao: 'x' }).zentao).toBeUndefined()
+    expect(normalizeProject({ zentao: 42 }).zentao).toBeUndefined()
+  })
+
+  it('raw.zentao={} 时返完整 default 对象（不是 undefined）', () => {
+    const z = normalizeProject({ zentao: {} }).zentao
+    expect(z).toEqual(DEFAULT_ZENTAO)
+  })
+
+  it('合法 zentao 全字段保留', () => {
+    const z = normalizeProject({
+      zentao: {
+        baseUrl: 'https://yourcompany.chandao.net',
+        account: '13800000000',
+        password: 'fcs9909',
+        projectId: 26,
+        moduleId: 0,
+        defaultSeverity: 2,
+        defaultPri: 4,
+        defaultType: 'designdefect',
+        defaultAssignedTo: 'colorfulhome'
+      }
+    }).zentao!
+    expect(z.baseUrl).toBe('https://yourcompany.chandao.net')
+    expect(z.account).toBe('13800000000')
+    expect(z.password).toBe('fcs9909')
+    expect(z.projectId).toBe(26)
+    expect(z.moduleId).toBe(0)
+    expect(z.defaultSeverity).toBe(2)
+    expect(z.defaultPri).toBe(4)
+    expect(z.defaultType).toBe('designdefect')
+    expect(z.defaultAssignedTo).toBe('colorfulhome')
+  })
+})
+
+describe('normalizeProject — zentao.baseUrl sanitize', () => {
+  it('http/https 都接受', () => {
+    expect(normalizeProject({ zentao: { baseUrl: 'http://x.com' } }).zentao?.baseUrl).toBe('http://x.com')
+    expect(normalizeProject({ zentao: { baseUrl: 'https://x.com' } }).zentao?.baseUrl).toBe('https://x.com')
+  })
+
+  it('trailing slash 自动剥（client 拼路径时依赖这点）', () => {
+    expect(normalizeProject({ zentao: { baseUrl: 'https://x.com/' } }).zentao?.baseUrl).toBe('https://x.com')
+    expect(normalizeProject({ zentao: { baseUrl: 'https://x.com//' } }).zentao?.baseUrl).toBe('https://x.com')
+  })
+
+  it('非 http(s) 协议（javascript:/data:/file:/ftp:）→ 空串', () => {
+    expect(normalizeProject({ zentao: { baseUrl: 'javascript:alert(1)' } }).zentao?.baseUrl).toBe('')
+    expect(normalizeProject({ zentao: { baseUrl: 'file:///etc/passwd' } }).zentao?.baseUrl).toBe('')
+    expect(normalizeProject({ zentao: { baseUrl: 'data:text/plain,xxx' } }).zentao?.baseUrl).toBe('')
+    expect(normalizeProject({ zentao: { baseUrl: 'ftp://x.com' } }).zentao?.baseUrl).toBe('')
+  })
+
+  it('裸字符串（无协议）→ 空串（强校验，导入时立即让用户看见格式错误）', () => {
+    expect(normalizeProject({ zentao: { baseUrl: 'yourcompany.chandao.net' } }).zentao?.baseUrl).toBe('')
+  })
+
+  it('长度 >256 → 空串', () => {
+    const big = 'https://' + 'a'.repeat(260) + '.com'
+    expect(normalizeProject({ zentao: { baseUrl: big } }).zentao?.baseUrl).toBe('')
+  })
+
+  it('空串 / 非字符串 → 空串', () => {
+    expect(normalizeProject({ zentao: { baseUrl: '' } }).zentao?.baseUrl).toBe('')
+    expect(normalizeProject({ zentao: { baseUrl: null } }).zentao?.baseUrl).toBe('')
+    expect(normalizeProject({ zentao: { baseUrl: 123 } }).zentao?.baseUrl).toBe('')
+  })
+})
+
+describe('normalizeProject — zentao.account sanitize', () => {
+  it('手机号 / 邮箱 / 字母数字账号都保留', () => {
+    expect(normalizeProject({ zentao: { account: '13800000000' } }).zentao?.account).toBe('13800000000')
+    expect(normalizeProject({ zentao: { account: 'alice@example.com' } }).zentao?.account).toBe('alice@example.com')
+    expect(normalizeProject({ zentao: { account: 'colorfulhome' } }).zentao?.account).toBe('colorfulhome')
+  })
+
+  it('trim 前后空格', () => {
+    expect(normalizeProject({ zentao: { account: '  alice  ' } }).zentao?.account).toBe('alice')
+  })
+
+  it('含 CRLF / 控制符 / 中文 → 空串（中文账号当前不支持）', () => {
+    expect(normalizeProject({ zentao: { account: 'alice\r\nX-Inject: evil' } }).zentao?.account).toBe('')
+    expect(normalizeProject({ zentao: { account: 'a\x00b' } }).zentao?.account).toBe('')
+    expect(normalizeProject({ zentao: { account: '张三' } }).zentao?.account).toBe('')
+  })
+
+  it('长度 >64 → 空串', () => {
+    expect(normalizeProject({ zentao: { account: 'a'.repeat(65) } }).zentao?.account).toBe('')
+  })
+})
+
+describe('normalizeProject — zentao.password sanitize', () => {
+  it('合法 password 原样保留（包括前后空格 —— 真实密码可能含空格）', () => {
+    expect(normalizeProject({ zentao: { password: 'fcs9909' } }).zentao?.password).toBe('fcs9909')
+    expect(normalizeProject({ zentao: { password: '  has space  ' } }).zentao?.password).toBe('  has space  ')
+  })
+
+  it('特殊字符密码（含 !@#$ / Unicode）允许', () => {
+    expect(normalizeProject({ zentao: { password: 'P@ss!#$%^&*()' } }).zentao?.password).toBe('P@ss!#$%^&*()')
+    expect(normalizeProject({ zentao: { password: '密码123' } }).zentao?.password).toBe('密码123')
+  })
+
+  it('CRLF 拒绝（防 header injection 即使密码进 body）', () => {
+    expect(normalizeProject({ zentao: { password: 'abc\r\nX-Inject: evil' } }).zentao?.password).toBe('')
+    expect(normalizeProject({ zentao: { password: 'abc\nx' } }).zentao?.password).toBe('')
+  })
+
+  it('长度 >512 → 空串', () => {
+    expect(normalizeProject({ zentao: { password: 'p'.repeat(513) } }).zentao?.password).toBe('')
+    expect(normalizeProject({ zentao: { password: 'p'.repeat(512) } }).zentao?.password.length).toBe(512)
+  })
+
+  it('非字符串 → 空串', () => {
+    expect(normalizeProject({ zentao: { password: 123 } }).zentao?.password).toBe('')
+    expect(normalizeProject({ zentao: { password: null } }).zentao?.password).toBe('')
+  })
+})
+
+describe('normalizeProject — zentao.projectId / moduleId', () => {
+  it('projectId 正整数保留', () => {
+    expect(normalizeProject({ zentao: { projectId: 26 } }).zentao?.projectId).toBe(26)
+  })
+
+  it('projectId 字符串数字自动解析（用户从 URL 复制可能带 string）', () => {
+    expect(normalizeProject({ zentao: { projectId: '26' } }).zentao?.projectId).toBe(26)
+  })
+
+  it('projectId <=0 / 负数 / NaN / 浮点 → 0', () => {
+    expect(normalizeProject({ zentao: { projectId: 0 } }).zentao?.projectId).toBe(0)
+    expect(normalizeProject({ zentao: { projectId: -5 } }).zentao?.projectId).toBe(0)
+    expect(normalizeProject({ zentao: { projectId: 1.5 } }).zentao?.projectId).toBe(0)
+    expect(normalizeProject({ zentao: { projectId: 'abc' } }).zentao?.projectId).toBe(0)
+  })
+
+  it('moduleId 默认 0（无字段 / 非法都兜默认）', () => {
+    expect(normalizeProject({ zentao: {} }).zentao?.moduleId).toBe(0)
+    expect(normalizeProject({ zentao: { moduleId: 'x' } }).zentao?.moduleId).toBe(0)
+  })
+
+  it('moduleId=0 合法（与 projectId 不同，0 是有效模块 ID）', () => {
+    expect(normalizeProject({ zentao: { moduleId: 0 } }).zentao?.moduleId).toBe(0)
+    expect(normalizeProject({ zentao: { moduleId: 7 } }).zentao?.moduleId).toBe(7)
+  })
+
+  it('moduleId 负数 → fallback 默认 0', () => {
+    expect(normalizeProject({ zentao: { moduleId: -3 } }).zentao?.moduleId).toBe(0)
+  })
+})
+
+describe('normalizeProject — zentao.severity / pri', () => {
+  it('1-4 范围内整数保留', () => {
+    for (const n of [1, 2, 3, 4]) {
+      expect(normalizeProject({ zentao: { defaultSeverity: n } }).zentao?.defaultSeverity).toBe(n)
+      expect(normalizeProject({ zentao: { defaultPri: n } }).zentao?.defaultPri).toBe(n)
+    }
+  })
+
+  it('范围外 / 0 / 5 / 字符串 / 浮点 → 兜底 3', () => {
+    expect(normalizeProject({ zentao: { defaultSeverity: 0 } }).zentao?.defaultSeverity).toBe(3)
+    expect(normalizeProject({ zentao: { defaultSeverity: 5 } }).zentao?.defaultSeverity).toBe(3)
+    expect(normalizeProject({ zentao: { defaultSeverity: 'high' } }).zentao?.defaultSeverity).toBe(3)
+    expect(normalizeProject({ zentao: { defaultPri: 2.5 } }).zentao?.defaultPri).toBe(3)
+  })
+
+  it("字符串数字 '2' 也接受（数字 ID 一致行为）", () => {
+    expect(normalizeProject({ zentao: { defaultSeverity: '2' } }).zentao?.defaultSeverity).toBe(2)
+  })
+})
+
+describe('normalizeProject — zentao.defaultType', () => {
+  it('合法 type 保留', () => {
+    expect(normalizeProject({ zentao: { defaultType: 'codeerror' } }).zentao?.defaultType).toBe('codeerror')
+    expect(normalizeProject({ zentao: { defaultType: 'designdefect' } }).zentao?.defaultType).toBe('designdefect')
+  })
+
+  it('含空格 / 特殊字符 → 兜底 codeerror', () => {
+    expect(normalizeProject({ zentao: { defaultType: 'code error' } }).zentao?.defaultType).toBe('codeerror')
+    expect(normalizeProject({ zentao: { defaultType: 'a/b' } }).zentao?.defaultType).toBe('codeerror')
+  })
+
+  it('原型污染关键字 → 兜底 codeerror', () => {
+    expect(normalizeProject({ zentao: { defaultType: '__proto__' } }).zentao?.defaultType).toBe('codeerror')
+    expect(normalizeProject({ zentao: { defaultType: 'constructor' } }).zentao?.defaultType).toBe('codeerror')
+    expect(normalizeProject({ zentao: { defaultType: 'prototype' } }).zentao?.defaultType).toBe('codeerror')
+  })
+
+  it('长度 >64 → 截断后兜底（防巨型字符串）', () => {
+    const big = 'a'.repeat(80)
+    expect(normalizeProject({ zentao: { defaultType: big } }).zentao?.defaultType.length).toBeLessThanOrEqual(64)
+  })
+
+  it('空串 / 非字符串 → 兜底 codeerror', () => {
+    expect(normalizeProject({ zentao: { defaultType: '' } }).zentao?.defaultType).toBe('codeerror')
+    expect(normalizeProject({ zentao: { defaultType: 123 } }).zentao?.defaultType).toBe('codeerror')
+  })
+})
+
+describe('normalizeProject — zentao.defaultAssignedTo', () => {
+  it('合法账号保留', () => {
+    expect(normalizeProject({ zentao: { defaultAssignedTo: 'alice' } }).zentao?.defaultAssignedTo).toBe('alice')
+  })
+
+  it('未指派 / 空串 / 非法 → undefined（避免 multipart 里出现空 assignedTo 字段）', () => {
+    expect(normalizeProject({ zentao: {} }).zentao?.defaultAssignedTo).toBeUndefined()
+    expect(normalizeProject({ zentao: { defaultAssignedTo: '' } }).zentao?.defaultAssignedTo).toBeUndefined()
+    expect(normalizeProject({ zentao: { defaultAssignedTo: '张三' } }).zentao?.defaultAssignedTo).toBeUndefined()
+  })
+})
+
+describe('stripSensitiveProjectFields', () => {
+  it('有 zentao 时清空 password 字段', () => {
+    const p = normalizeProject({
+      zentao: { baseUrl: 'https://x.com', account: 'a', password: 'secret', projectId: 1 }
+    })
+    const stripped = stripSensitiveProjectFields(p)
+    expect(stripped.zentao?.password).toBe('')
+    expect(stripped.zentao?.account).toBe('a')  // 其他字段保留
+    expect(stripped.zentao?.baseUrl).toBe('https://x.com')
+  })
+
+  it('无 zentao 字段时原样返回', () => {
+    const p = normalizeProject({})
+    expect(stripSensitiveProjectFields(p)).toBe(p)
+  })
+
+  it('返回新对象（不 mutate 原 project）', () => {
+    const p = normalizeProject({ zentao: { password: 'secret' } })
+    const stripped = stripSensitiveProjectFields(p)
+    expect(stripped).not.toBe(p)
+    expect(p.zentao?.password).toBe('secret')  // 原对象不变
   })
 })
