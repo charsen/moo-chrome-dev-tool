@@ -4,6 +4,8 @@
 
 ## 一句话现状
 
+**v0.2.1 已发**（2026-05-21，gitee tag `v0.2.1`，hotfix）。下载：[moo-chrome-dev-tool-0.2.1.zip](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.2.1/moo-chrome-dev-tool-0.2.1.zip)。两个修：① fetch/xhr 相对路径 `'/api/foo'` 通过 `src/utils/url.ts` 的 `absolutize` 补成完整 URL（URL 构造器 base=`location.href`），让 curl + curl.sh 复制都能直接跑 ② SubmitDialog inline curl 块下方加 Response 块（content-type / 大小 / body 预览，走 redact + ZWS + 截断 1.5KB；binary 不放 body 只放 size）；完整 raw 仍在 `moo-requests.json` 附件。260 单测全绿。
+
 **v0.2.0 已发**（2026-05-21，gitee tag `v0.2.0`，feature 大版本「禅道集成」）。下载：[moo-chrome-dev-tool-0.2.0.zip](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.2.0/moo-chrome-dev-tool-0.2.0.zip) · sha256 `cf002dceccfd6fa90c0f4fd134590a027af0f477b5fca8f1e1d599cce6dbf6dd`。**无 BREAKING**——老项目（无 `kind` 字段）一律按 `kind: 'webhook'` 走原路径不变。这一版主线：① **禅道集成（kind='zentao'）**——把 Moo 上报通道从「只支持 webhook」扩成「webhook / 禅道（云禅道 biz12 + 自建禅道，v2.0 API）」二选一 ② B' 路径拍板（background 直打禅道 v2.0 REST API，不中转）③ 真正写操作走 cookie session（修 `openedBy=system`，bug 正确归属真人）④ 附件走 zui editor `/file-ajaxUpload.html`（截图 inline 渲染在 bug 详情页，不用点附件）⑤ ZWS 绕禅道 WAF（inline curl URL 间插零宽空格，渲染 + 复制无差异，绕过 WAF 字符串匹配；curl.sh 附件保留无污染版）⑥ retryQueue 支持 zentao multipart 重试 ⑦ Environment Tab kind 切换 + 5 必填字段 + 「📋 从禅道拉列表」 + 「提交默认值」卡片（类型/严重度/优先级/默认关键词）+ 导入导出剥密码 ⑧ SubmitDialog 4 字段（type/severity/pri/assignedTo）提交时可改 + 模块下拉 + 指派人下拉 + cookie 预检 + 录像 50M 预警 + 「在禅道里看 →」链接 ⑨ UA 自动解析 → 禅道 os / browser 字段。
 
 **硬依赖（用户视角必须满足两条）**：
