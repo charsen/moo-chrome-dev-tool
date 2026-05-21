@@ -814,6 +814,25 @@ export const SHADOW_CSS = `
   color: var(--c-text-muted);
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
 }
+/* SubmitDialog zentao 字段（类型/严重/优先级横排 + 指派下拉） */
+.moo-zentao-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.zentao-field {
+  flex: 1;
+  min-width: 130px;
+}
+.zentao-assignee-pick {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
+}
+.zentao-assignee-pick select { flex: 1; min-width: 0; }
+.zentao-assignee-pick .moo-btn { white-space: nowrap; }
 .moo-preview {
   background: var(--c-bg-soft);
   border: 1px solid var(--c-border);

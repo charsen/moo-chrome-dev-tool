@@ -178,7 +178,7 @@
           </div>
 
           <details class="zentao-advanced">
-            <summary>高级（默认 bug 类型 / 严重度 / 优先级 / 指派人）</summary>
+            <summary>提交默认值（每条 bug 提交时可单独改）</summary>
             <div class="row">
               <label>类型</label>
               <input v-model="activeProject.zentao.defaultType" class="narrow" placeholder="codeerror" />

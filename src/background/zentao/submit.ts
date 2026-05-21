@@ -297,13 +297,14 @@ export async function submitToZentao(
   // 附件上传：best-effort，单条失败不阻断主提交
   const { uploaded, failed } = await uploadZentaoAttachments(req, project, envRes.env.baseUrl, opts)
 
+  // SubmitDialog 里用户每次可改的 4 字段，优先于 project 默认值（项目级默认是兜底）
   const fields: ZentaoSubmitFields = {
     title: req.title,
     steps: buildZentaoStepsHtml(req, project, uploaded, failed),
-    severity: z.defaultSeverity,
-    pri: z.defaultPri,
-    type: z.defaultType,
-    assignedTo: z.defaultAssignedTo
+    severity: req.zentaoSeverity ?? z.defaultSeverity,
+    pri: req.zentaoPri ?? z.defaultPri,
+    type: req.zentaoType ?? z.defaultType,
+    assignedTo: req.zentaoAssignedTo || z.defaultAssignedTo
   }
 
   try {

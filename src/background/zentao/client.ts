@@ -49,6 +49,13 @@ interface ZentaoProjectSummary {
   status: string
 }
 
+export interface ZentaoUserSummary {
+  id: number
+  account: string
+  realname: string
+  role?: string
+}
+
 // ─────────── 模块级 SW 内存缓存（重启 SW 自动清空，这正是想要的） ───────────
 
 const tokenCache = new Map<string, string>()
@@ -221,6 +228,30 @@ export async function listProjects(env: ZentaoEnv, limit = 50): Promise<ZentaoRe
     if (res.status === 401) return { _retry: true as const }
     const body = await readJson(res) as { projects?: ZentaoProjectSummary[] } | null
     if (res.ok && Array.isArray(body?.projects)) return { ok: true as const, data: body.projects }
+    return { ok: false as const, error: `HTTP ${res.status}` }
+  })
+}
+
+// ────────────────────────── listUsers ──────────────────────────
+
+/**
+ * 拉禅道全公司用户列表。SubmitDialog「指派给」下拉用 —— 实测 v1 项目成员 endpoint 404，
+ * 列全公司用户是 next-best：前端搜索过滤即可。
+ *
+ * limit 默认 200 —— 中小公司一般 < 200 人单页拉完。total > 200 时分页留给将来。
+ */
+export async function listUsers(env: ZentaoEnv, limit = 200): Promise<ZentaoResult<ZentaoUserSummary[]>> {
+  return withAuth(env, async (token) => {
+    const url = `${trimBase(env.baseUrl)}/api.php/v1/users?limit=${limit}`
+    const res = await fetch(url, {
+      credentials: 'omit',
+      headers: buildHeaders({ 'Token': token })
+    })
+    if (res.status === 401) return { _retry: true as const }
+    const body = await readJson(res) as { users?: ZentaoUserSummary[] } | null
+    if (res.ok && Array.isArray(body?.users)) {
+      return { ok: true as const, data: body.users.map(u => ({ id: u.id, account: u.account, realname: u.realname, role: u.role })) }
+    }
     return { ok: false as const, error: `HTTP ${res.status}` }
   })
 }

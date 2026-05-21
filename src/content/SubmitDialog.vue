@@ -85,6 +85,48 @@
             </div>
           </div>
         </div>
+
+        <!-- ⑤.1 禅道字段：每条 bug 可改的 type / severity / pri / assignedTo -->
+        <template v-if="kind === 'zentao' && !zentaoMissingList">
+          <div class="moo-form-row moo-zentao-fields">
+            <label>类型 / 严重 / 优先</label>
+            <div class="moo-zentao-row">
+              <select v-model="zentaoType" class="zentao-field">
+                <option v-for="t in ZENTAO_TYPE_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</option>
+              </select>
+              <select v-model.number="zentaoSeverity" class="zentao-field">
+                <option :value="1">严重度 1（致命）</option>
+                <option :value="2">严重度 2（严重）</option>
+                <option :value="3">严重度 3（一般）</option>
+                <option :value="4">严重度 4（提示）</option>
+              </select>
+              <select v-model.number="zentaoPri" class="zentao-field">
+                <option :value="1">优先级 1（紧急）</option>
+                <option :value="2">优先级 2（高）</option>
+                <option :value="3">优先级 3（中）</option>
+                <option :value="4">优先级 4（低）</option>
+              </select>
+            </div>
+          </div>
+          <div class="moo-form-row">
+            <label for="moo-zentao-assignee">指派给</label>
+            <div class="zentao-assignee-pick">
+              <select id="moo-zentao-assignee" v-model="zentaoAssignedTo" class="grow">
+                <option value="">— 未指派（按项目规则自动分派）—</option>
+                <option v-for="u in zentaoUsers" :key="u.account" :value="u.account">
+                  {{ u.realname }}（{{ u.account }}{{ u.role ? ` · ${u.role}` : '' }}）
+                </option>
+              </select>
+              <button
+                class="moo-btn small"
+                type="button"
+                :disabled="zentaoUsersLoading"
+                :title="zentaoUsers.length ? '重新拉用户列表' : '拉禅道用户列表'"
+                @click="loadZentaoUsers"
+              >{{ zentaoUsersLoading ? '...' : (zentaoUsers.length ? '↻' : '拉列表') }}</button>
+            </div>
+          </div>
+        </template>
         <div class="moo-form-row" v-else-if="showServerRow">
           <label for="moo-server">服务器</label>
           <div class="server-pick">
@@ -234,7 +276,23 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import type { Project } from '@/types/config'
 import type { CapturedRequest } from '@/types/requests'
 import type { ConsoleError } from '@/types/errors'
-import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes } from '@/types/messages'
+import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes, type ZentaoListUsersRes } from '@/types/messages'
+
+/** 禅道 bug type 候选值（biz12 内置），用户每次提交可选 */
+const ZENTAO_TYPE_OPTIONS = [
+  { value: 'codeerror', label: '类型：代码错误' },
+  { value: 'designdefect', label: '类型：设计缺陷' },
+  { value: 'config', label: '类型：配置相关' },
+  { value: 'install', label: '类型：安装部署' },
+  { value: 'security', label: '类型：安全相关' },
+  { value: 'performance', label: '类型：性能问题' },
+  { value: 'standard', label: '类型：标准规范' },
+  { value: 'automation', label: '类型：自动化' },
+  { value: 'designchange', label: '类型：设计变更' },
+  { value: 'newfeature', label: '类型：新需求' },
+  { value: 'improvement', label: '类型：改进建议' },
+  { value: 'others', label: '类型：其他' }
+]
 import { formatSubmitResult } from '@/utils/submitMessage'
 import { safeSendMessage } from '@/utils/messaging'
 // ElementPicker 只在用户点"选元素"按钮（picking=true）才挂载，默认根本不渲染。
@@ -518,6 +576,40 @@ function errLevelTitle(level: ConsoleError['level']): string {
 
 const kind = computed(() => props.project.kind ?? 'webhook')
 
+// === zentao 提交字段：每条 bug 可改，初值取 project.zentao default ===
+const zentaoType = ref<string>(props.project.zentao?.defaultType || 'codeerror')
+const zentaoSeverity = ref<1 | 2 | 3 | 4>((props.project.zentao?.defaultSeverity ?? 3) as 1 | 2 | 3 | 4)
+const zentaoPri = ref<1 | 2 | 3 | 4>((props.project.zentao?.defaultPri ?? 3) as 1 | 2 | 3 | 4)
+const zentaoAssignedTo = ref<string>(props.project.zentao?.defaultAssignedTo ?? '')
+
+// 用户列表（指派给下拉）：第一次 dialog 打开 + kind=zentao 时懒加载，避免不用禅道时浪费请求
+const zentaoUsers = ref<NonNullable<ZentaoListUsersRes['users']>>([])
+const zentaoUsersLoading = ref(false)
+async function loadZentaoUsers() {
+  const z = props.project.zentao
+  if (!z?.baseUrl || !z.account || !z.password) return
+  zentaoUsersLoading.value = true
+  try {
+    const res = await safeSendMessage<ZentaoListUsersRes>({
+      type: MSG.ZENTAO_LIST_USERS,
+      source: 'content',
+      payload: { baseUrl: z.baseUrl, account: z.account, password: z.password }
+    })
+    if (res?.ok && res.users) zentaoUsers.value = res.users
+  } catch {
+    // 静默失败 —— 用户可以点按钮再试 / 也可以留空表示「按规则分派」
+  } finally {
+    zentaoUsersLoading.value = false
+  }
+}
+// dialog 一打开就预拉一次（kind=zentao 时）—— 注意 onMounted 注册在 setup
+// 同步段，回调在 mount 时执行，那时 zentaoMissingList 已经声明 OK
+onMounted(() => {
+  if (kind.value === 'zentao' && !zentaoMissingList.value) void loadZentaoUsers()
+})
+
+// 前向引用：zentaoMissingList 在下面声明，但 onMounted callback 在 mount 时才执行
+
 const canPreview = computed(() => kind.value === 'webhook' && !!serverId.value)
 const currentServer = computed(() => props.project.servers.find((s) => s.id === serverId.value))
 const serverEndpointMissing = computed(() => !!currentServer.value && !currentServer.value.endpoint?.trim())
@@ -626,7 +718,14 @@ async function onSubmit() {
       requests: ctx.requests,
       errors: ctx.errors,
       elements: ctx.elements,
-      video: ctx.video ?? undefined
+      video: ctx.video ?? undefined,
+      // zentao 字段仅 kind=zentao 时填，webhook 路径 BG 会忽略这些字段
+      ...(kind.value === 'zentao' ? {
+        zentaoType: zentaoType.value,
+        zentaoSeverity: zentaoSeverity.value,
+        zentaoPri: zentaoPri.value,
+        zentaoAssignedTo: zentaoAssignedTo.value || undefined
+      } : {})
     }
     const res = (await safeSendMessage({
       type: MSG.SUBMIT_BUG,

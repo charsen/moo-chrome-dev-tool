@@ -17,6 +17,7 @@ import {
   login as zentaoLogin,
   ping as zentaoPing,
   listProjects as zentaoListProjects,
+  listUsers as zentaoListUsers,
   type ZentaoEnv
 } from '@/background/zentao/client'
 import { submitToZentao } from '@/background/zentao/submit'
@@ -262,6 +263,16 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
           const list = await zentaoListProjects(env)
           if (!list.ok) { sendResponse({ ok: false, error: list.error }); break }
           sendResponse({ ok: true, projects: list.data.map(p => ({ id: p.id, name: p.name, status: p.status })) })
+          break
+        }
+        case MSG.ZENTAO_LIST_USERS: {
+          const { baseUrl, account, password } = message.payload
+          const loginRes = await zentaoLogin(baseUrl, account, password)
+          if (!loginRes.ok) { sendResponse({ ok: false, error: loginRes.error }); break }
+          const env = makeZentaoEnv(message.payload)
+          const list = await zentaoListUsers(env)
+          if (!list.ok) { sendResponse({ ok: false, error: list.error }); break }
+          sendResponse({ ok: true, users: list.data })
           break
         }
         default: {

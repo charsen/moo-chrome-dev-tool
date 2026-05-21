@@ -49,6 +49,14 @@ export interface SubmitBugReq {
     duration: number
     mime: string
   }
+  /**
+   * 仅 kind=zentao 时使用：SubmitDialog 提交时用户选的字段，覆盖 project.zentao 的
+   * default 值。这允许「每条 bug 选不同的严重度 / 指派人」。未填则用 project 默认值。
+   */
+  zentaoType?: string
+  zentaoSeverity?: 1 | 2 | 3 | 4
+  zentaoPri?: 1 | 2 | 3 | 4
+  zentaoAssignedTo?: string
 }
 export interface SubmitBugRes {
   ok: boolean
@@ -135,7 +143,9 @@ export const MSG = {
   /** devtools → background：用 baseUrl+account+password login + ping 验 token */
   ZENTAO_TEST_CONNECTION: 'ZENTAO_TEST_CONNECTION',
   /** devtools → background：login 后拉项目列表给「📋 从禅道拉列表」下拉用 */
-  ZENTAO_LIST_PROJECTS: 'ZENTAO_LIST_PROJECTS'
+  ZENTAO_LIST_PROJECTS: 'ZENTAO_LIST_PROJECTS',
+  /** content → background：拉禅道用户列表给 SubmitDialog 「指派给」下拉用 */
+  ZENTAO_LIST_USERS: 'ZENTAO_LIST_USERS'
 } as const
 
 // =================================================================
@@ -175,6 +185,17 @@ export interface ZentaoListProjectsRes {
   error?: string
 }
 
+/**
+ * 列禅道用户 —— SubmitDialog「指派给」下拉用。
+ * payload 复用 ZentaoCredsReq（不复用 project，因为 content 拿不到完整 project）：
+ * BG handler 用 baseUrl+account+password 拿 token 后调 /api.php/v1/users。
+ */
+export interface ZentaoListUsersRes {
+  ok: boolean
+  users?: Array<{ id: number; account: string; realname: string; role?: string }>
+  error?: string
+}
+
 /** background.onMessage 收到的消息。switch (msg.type) 后每条自动 narrow。
  *  注意：source / tabId 是 envelope 字段，未来 caller 侧若加约束可移到这里。 */
 export type IncomingMessage =
@@ -191,6 +212,7 @@ export type IncomingMessage =
   | { type: typeof MSG.OFFSCREEN_AUTO_STOPPED }
   | { type: typeof MSG.ZENTAO_TEST_CONNECTION; payload: ZentaoCredsReq }
   | { type: typeof MSG.ZENTAO_LIST_PROJECTS; payload: ZentaoCredsReq }
+  | { type: typeof MSG.ZENTAO_LIST_USERS; payload: ZentaoCredsReq }
 
 /** type → response 类型映射。background handler 返回对应类型，caller 侧
  *  可以用 `MessageResponse<typeof MSG.X>` 拿到精确返回 shape。 */
@@ -208,5 +230,6 @@ export interface MessageResponseMap {
   [MSG.OFFSCREEN_AUTO_STOPPED]: { ok: boolean }
   [MSG.ZENTAO_TEST_CONNECTION]: ZentaoTestConnectionRes
   [MSG.ZENTAO_LIST_PROJECTS]: ZentaoListProjectsRes
+  [MSG.ZENTAO_LIST_USERS]: ZentaoListUsersRes
 }
 export type MessageResponse<K extends keyof MessageResponseMap> = MessageResponseMap[K]
