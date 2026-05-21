@@ -170,15 +170,22 @@ export async function submitToZentao(
     assignedTo: z.defaultAssignedTo
   }
 
-  const r = await zentaoClientSubmit(envRes.env, fields, files)
-  if (!r.ok) {
-    return { ok: false, error: r.error }
-  }
-  return {
-    ok: true,
-    status: 200,
-    remoteId: r.data.bugId ? String(r.data.bugId) : undefined,
-    viewUrl: r.data.viewUrl
+  // submitBug / discoverProduct 内部 fetch 不再 catch（client.ts 故意保留异常透传给 caller
+  // 看具体哪里炸）；submit 这层是 BG 顶层，必须把网络异常转 ZentaoResult，否则
+  // retryQueue 的 flush 异常 throw 出来会被外层当 fatal，整个 flush 失败浪费一轮 alarm。
+  try {
+    const r = await zentaoClientSubmit(envRes.env, fields, files)
+    if (!r.ok) {
+      return { ok: false, error: r.error }
+    }
+    return {
+      ok: true,
+      status: 200,
+      remoteId: r.data.bugId ? String(r.data.bugId) : undefined,
+      viewUrl: r.data.viewUrl
+    }
+  } catch (e) {
+    return { ok: false, error: `网络错误：${(e as Error).message}` }
   }
 }
 

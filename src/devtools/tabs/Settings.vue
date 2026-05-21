@@ -156,14 +156,20 @@
               role="listitem"
             >
               <div class="qdi-line">
-                <span :class="['qdi-method', q.method.toLowerCase()]">{{ q.method }}</span>
-                <span class="qdi-endpoint" :title="q.endpoint">{{ q.endpoint }}</span>
+                <template v-if="q.kind === 'zentao'">
+                  <span class="qdi-method zentao">禅道</span>
+                  <span class="qdi-endpoint" :title="`禅道项目 ${q.projectId}：${q.req?.title ?? ''}`">{{ q.req?.title || '(无标题)' }}</span>
+                </template>
+                <template v-else>
+                  <span :class="['qdi-method', q.method.toLowerCase()]">{{ q.method }}</span>
+                  <span class="qdi-endpoint" :title="q.endpoint">{{ q.endpoint }}</span>
+                </template>
                 <span class="qdi-ago">{{ relativeTime(q.enqueuedAt) }}</span>
                 <button
                   type="button"
                   class="qdi-rm"
                   :disabled="busy === 'rmOne'"
-                  :aria-label="`从队列移除：${q.method} ${q.endpoint}`"
+                  :aria-label="`从队列移除`"
                   @click="removeQueueOne(q.enqueuedAt)"
                 >×</button>
               </div>
@@ -222,7 +228,7 @@ import {
   clearQueue as clearRetryQueue,
   removeQueueItem,
   RETRY_MAX_ATTEMPTS,
-  type QueuedRequest
+  type QueuedItem
 } from '@/background/retryQueue'
 import { useConfig } from '@/composables/useConfig'
 import { useAutoSave } from '@/composables/useAutoSave'
@@ -238,7 +244,7 @@ const { config, loaded } = useConfig()
 const activeId = ref('')
 const historyCount = ref(0)
 const queueCount = ref(0)
-const queueItems = ref<QueuedRequest[]>([])
+const queueItems = ref<QueuedItem[]>([])
 const queueExpanded = ref(false)
 const busy = ref<'' | 'history' | 'flush' | 'clearQueue' | 'rmOne'>('')
 const version = chrome.runtime.getManifest().version

@@ -12,7 +12,7 @@ import { addHistoryEntry, listHistory, onHistoryChanged, updateHistoryEntry } fr
 import { renderTemplate } from '@/utils/template'
 import { parseRemoteId } from '@/utils/remoteHeaders'
 import { updateActionBadge } from '@/utils/badge'
-import { enqueueRetry, flushRetryQueue, getQueueLength } from '@/background/retryQueue'
+import { enqueueRetry, enqueueZentaoRetry, flushRetryQueue, getQueueLength } from '@/background/retryQueue'
 import {
   login as zentaoLogin,
   ping as zentaoPing,
@@ -20,6 +20,7 @@ import {
   type ZentaoEnv
 } from '@/background/zentao/client'
 import { submitToZentao } from '@/background/zentao/submit'
+import { dataUrlToBlob } from '@/utils/dataUrl'
 import type { BugServer, MooConfig, Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
 
@@ -718,6 +719,13 @@ function buildRequestBody(
 async function submitBugViaZentao(req: SubmitBugReq, project: Project): Promise<SubmitBugRes> {
   const res = await submitToZentao(req, project, dataUrlToBlob, { mooVersion: chrome.runtime?.getManifest?.()?.version })
 
+  // 失败入队（仅网络 / server 抽风类失败；认证 / 配置缺失这种重试也救不了的 error 由 retryQueue
+  // 内部的 retryZentao 走 drop 路径，不重试）。estimateZentaoSize 内做 1MB 上限校验，
+  // 带 video 的请求几乎肯定超 → 直接 false，跟 webhook multipart 不入队保持一致行为。
+  if (!res.ok) {
+    res.queued = await enqueueZentaoRetry(project.id, req)
+  }
+
   // history 字段：zentao 没 server 概念，serverId / serverName 用占位串
   // 保持 BugHistoryEntry schema 不变（v0.1.x 历史读取不破）
   const entry: BugHistoryEntry = {
@@ -754,27 +762,4 @@ async function submitBugViaZentao(req: SubmitBugReq, project: Project): Promise<
   return res
 }
 
-function dataUrlToBlob(dataUrl: string): Blob {
-  // 空字符串 / 非 data URL 形态：返回空 Blob 而不是 atob(undefined) 抛 InvalidCharacterError
-  // 触发场景：multipart 提交但用户没截图（image 模板渲染为空串）
-  if (!dataUrl || !dataUrl.startsWith('data:')) {
-    return new Blob([], { type: 'application/octet-stream' })
-  }
-  const commaIdx = dataUrl.indexOf(',')
-  if (commaIdx < 0) return new Blob([], { type: 'application/octet-stream' })
-  const meta = dataUrl.slice(0, commaIdx)
-  const b64 = dataUrl.slice(commaIdx + 1)
-  const mime = meta.match(/data:(.*?);base64/)?.[1] ?? 'image/png'
-  if (!b64) return new Blob([], { type: mime })
-  let bin: string
-  try {
-    bin = atob(b64)
-  } catch {
-    // base64 损坏（出现非法字符）— 不让整个 submitBug 链路因此崩，返回空 blob
-    return new Blob([], { type: mime })
-  }
-  const len = bin.length
-  const buf = new Uint8Array(len)
-  for (let i = 0; i < len; i++) buf[i] = bin.charCodeAt(i)
-  return new Blob([buf], { type: mime })
-}
+// dataUrlToBlob 已抽到 @/utils/dataUrl —— retryQueue flush + zentao submit 都要用
