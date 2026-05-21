@@ -6,7 +6,7 @@
 
 **禅道集成**——把 Moo 上报通道从「只支持自建 B 路径接口」扩成「自建 B / 禅道（云禅道 biz12 + 自建禅道，v2.0 API）」二选一。同一份截图 / 录像 / 请求 / 错误 / curl 复现，可以直接一键开成禅道 bug，自带附件。**无 BREAKING**——老项目（无 `kind` 字段）一律按 `kind: 'b'` 走原路径，行为不变。
 
-**发版决策小记**（2026-05-21）：v0.2.0 是 feature 大版本，**主动跳过 dogfood ≥ 几天**——禅道集成已在 yourcompany.chandao.net 真实环境 dogfood 过完整流程（用户实测发现并修复 7 个 dogfood fix，见下文），全部场景闭环。3 条跳 checklist 标准只满足前 2（① 无 BREAKING ② 235 单测 + type-check + vite build 全绿），第 3 条 dogfood ≥ 几天**用户明示放行**。后续如有其他禅道版本回归，hotfix 走 v0.2.1。
+**发版决策小记**（2026-05-21）：v0.2.0 是 feature 大版本，**主动跳过 dogfood ≥ 几天**——禅道集成已在 yourcompany.chandao.net 真实环境 dogfood 过完整流程（用户实测发现并修复 7+4 个 dogfood fix，见下文），全部场景闭环。3 条跳 checklist 标准只满足前 2（① 无 BREAKING ② 249 单测 + type-check + vite build 全绿），第 3 条 dogfood ≥ 几天**用户明示放行**。后续如有其他禅道版本回归，hotfix 走 v0.2.1。
 
 ### 关键架构（接下来的会话要直接看懂）
 
@@ -71,6 +71,13 @@
 - **绕开禅道 WAF**（`18cccf1`）：inline curl 的 URL 加 zero-width space，渲染 + 复制粘贴无差异，绕过 WAF 字符串匹配；curl.sh 附件保留无污染版本
 - **cookie 预检 + 录像 50M 预警**（`b5b9dcf`）：SubmitDialog 打开时预检 `chrome.cookies.get` 是否拿得到禅道 cookie，没有就提示「请先在浏览器里登录禅道页面」；录像 > 50MB 时提示用户可能超禅道附件大小限制
 
+### 修复（dogfood-late——发版前最后一批 UI / 字段补全）
+
+- **补全禅道字段：os / browser 自动解析 + 默认 keywords + 模块下拉**（`53bb9f8`）：之前禅道 bug 详情 16 个字段 Moo 只填 5 个；这批加 `parseUserAgent` 自动填 os/browser（走禅道 enum：osx/win10/ios/android + chrome/safari/firefox/edge/opera）+ 默认 keywords='Moo'（团队能按关键词搜全部 Moo 上报）+ 「所属模块」下拉（调禅道 `/v1/modules?type=bug` 拉项目模块树）。`src/utils/ua.ts` 11 个新单测覆盖主流 UA 组合
+- **环境「提交默认值」UI 优化 + 抽共享常量**（`d042135`）：`<details>` 折叠改默认展开 + 卡片样式；「类型」从 input 改 select（与 SubmitDialog 一致）；删项目级「指派给默认」（每条 bug 情况不同）；加「默认关键词」配置项；新建 `src/utils/zentaoOptions.ts` 抽共享 `ZENTAO_TYPE_OPTIONS / SEVERITY / PRI`，避免 Environment 和 SubmitDialog 各自维护一份分叉。`sanitizeKeywords` 加 trim + 拒 CRLF/控制符 + 长度上限 200 + 空兜 'Moo'
+- **环境配置布局拆行**（`687374d`）：用户反馈「项目 ID / 模块 ID」和「严重度 / 优先级」挤一行 + label 被甩到右侧空缺位；都拆成独立 row，每个字段一行一个 label + input/select
+- **SubmitDialog label + ↻按钮微调**（`47c8d70`）：「类型/严重/优先」label 11 字超 64px label 宽换行成两行丑 → 改「分级」2 字（select 自带「类型：/严重度/优先级」前缀已说明含义）；↻ 按钮 height 24px 跟 select ~32px 对不齐 → `align-self:stretch + height:auto + min-width:36px`
+
 ### 硬依赖（用户视角）
 
 1. **浏览器里手动登录禅道页面**（提交走 cookie session）
@@ -80,7 +87,7 @@
 
 ### 测试
 
-- 235 单测全绿（v0.1.14 是 170 → +65 含 zentao client 71 + retryQueue multipart 11 - 部分老 mock 调整）
+- 249 单测全绿（v0.1.14 是 170 → +79：zentao client 71 + retryQueue multipart 11 + UA parser 11 + sanitizeKeywords 5 -19 老 mock 调整 + 拆 assignedTo）
 - type-check 全绿
 - vite build 全绿
 - 真实环境 dogfood 通过：yourcompany.chandao.net 项目 26（测试项目，已清干净）
