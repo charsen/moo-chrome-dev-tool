@@ -10,6 +10,30 @@
 - 全绿才 `pnpm release` + push；任何一条红就回去修
 - SW DevTools 路径：`chrome://extensions` → Moo 卡片底部「service worker」蓝字 → 打开 → console / 网络 Tab
 
+## dogfood / 测试装扩展的两条路（重要）
+
+**路 A — 装 release zip（推荐 dogfood 长期使用）**
+
+每次发版后从 gitee releases 下 `moo-chrome-dev-tool-x.y.z.zip` → 解压到**独立目录**（不要解压到项目内）→ chrome://extensions 「加载已解压的扩展程序」指向解压目录。
+
+✓ 优点：chunk hash 与该次 release 永久对齐，不会被后续 `pnpm build` 覆盖。
+✗ 缺点：每次想升级要重下 zip + 删旧装新。
+
+**路 B — 装项目 dist/ 目录（仅短期开发）**
+
+chrome://extensions 「加载已解压的扩展程序」指向 `<repo>/dist`。
+
+✗ **陷阱**：vite 每次 `pnpm build` 会**重生成 chunk hash**（`assets/index.ts-XXXX.js`），旧文件被删。已经打开的 page 上 content script 引用的是 build 时刻的 chunk URL，build 之后老 page 一刷新就 `Failed to fetch chrome-extension://.../assets/index.ts-OLDHASH.js` → host 不创建 → 悬浮球消失。
+
+**症状识别**：DevTools console 出现 `TypeError: Failed to fetch dynamically imported module: chrome-extension://...assets/index.ts-<hash>.js` 且 `__moo_dev_tool_host__` 不在 DOM。
+
+**修复**：chrome://extensions Moo 「重新加载」+ 所有已打开 tab 刷新。或干脆走路 A 用 release zip。
+
+## 自动化测试（chrome-devtools MCP / playwright MCP）注意
+
+- 悬浮球用 pointer 事件自实现 click 判定（防 drag 误触）。CDP `click` / `click_at` 合成事件**可能触发不了**截图按钮 —— v0.3.0+ 已加 dragEndedAt 时间窗（250ms 之外的合成 click 放过），但极快连击仍有打架。如自动化遇「click 报 success 但 Annotator 不弹」，先确认 host 已创建、再尝试隔 300ms 重试。
+- CDP `fill` 对 closed shadow root 内 textbox 设置 `input.value` **不触发 Vue v-model input event** → Vue 内部 state 不更新 → 提交时拿到的是 v-model 原值。解决：自动化需用 `dispatchEvent(new Event('input', { bubbles: true }))` 显式触发。
+
 ## v0.1.11 BREAKING — webhook 化基线
 
 | # | 场景 | 操作 | 期望 | ☐ |

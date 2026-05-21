@@ -7,6 +7,8 @@ dist
 .vite
 release/
 .test-screenshots/
+.test-output/
+.playwright-mcp/
 coverage/
 tests-e2e/screenshots/
 playwright-report/

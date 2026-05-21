@@ -26,6 +26,7 @@ import {
   type ZentaoBugDetail
 } from '@/background/zentao/client'
 import { submitToZentao } from '@/background/zentao/submit'
+import { mapZentaoStatus } from '@/background/zentaoStatus'
 import { dataUrlToBlob } from '@/utils/dataUrl'
 import type { BugServer, MooConfig, Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
@@ -711,17 +712,6 @@ async function refreshHistoryStatus(): Promise<number> {
     }
   }
   return updated
-}
-
-/** 禅道 bug 状态字段 → Moo 的统一枚举（兼容 webhook 路径的 v0.1.x 老 remoteStatus 值） */
-function mapZentaoStatus(bug: ZentaoBugDetail): BugHistoryEntry['remoteStatus'] {
-  if (bug.deleted) return 'deleted'
-  switch (bug.status) {
-    case 'active': return 'open'
-    case 'resolved': return 'in_progress'
-    case 'closed': return 'done'
-    default: return undefined
-  }
 }
 
 async function fetchZentaoBugStatus(project: Project, remoteId: string): Promise<BugHistoryEntry['remoteStatus']> {

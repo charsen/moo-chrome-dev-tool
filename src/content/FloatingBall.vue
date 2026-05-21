@@ -108,6 +108,16 @@ const logoTitle = computed(() => {
 let downAt = { x: 0, y: 0 }
 let originPos = { x: 0, y: 0 }
 let moved = false
+/**
+ * 拖动结束的时间戳（performance.now()）。click handler 用「Date.now() - dragEndedAt < 250」
+ * 拦截 drag 后浏览器合成的 click —— 不再依赖 moved flag 跨 pointer 周期残留。
+ *
+ * 原本 `if (moved) return` 的拦截方式有副作用：moved 在 onDown 才 reset，CDP 等自动化
+ * 工具的合成 click 不发 pointerdown → moved 卡在上一次 drag 的 true → 截图按钮永远点不动。
+ * 改成时间戳后：真 drag 合成 click 仍被拦（< 250ms），但 250ms 之外（含 CDP 合成 click）
+ * 可通过，自动化 e2e 能正常驱动悬浮球。
+ */
+let dragEndedAt = 0
 
 /** 估算的悬浮球尺寸（实际 156×46，留一点 safety margin 给 hover 阴影） */
 const BALL_W = 170
@@ -290,7 +300,10 @@ function endDrag(save: boolean = false): void {
   if (save && moved) {
     try { localStorage.setItem(POS_KEY, JSON.stringify(pos.value)) } catch {}
   }
-  // dragging 在 next tick 才置回 false，让 click handler 通过 moved 标志早退
+  // 记录 drag 结束时刻 —— click handler 据此拦截 250ms 内的合成 click。
+  // blur 兜底路径（save=false）也要记，避免 alt-tab 抢救后浏览器仍 emit 一个合成 click。
+  if (moved) dragEndedAt = Date.now()
+  // dragging 在 next tick 才置回 false，让 click handler 看到当前帧仍是 dragging 状态
   setTimeout(() => { dragging.value = false }, 0)
 }
 
@@ -315,7 +328,7 @@ function ensureActive(action: PendingAction): boolean {
 }
 
 function onLogoClick() {
-  if (moved) return
+  if (Date.now() - dragEndedAt < 250) return
   if (props.matches.length <= 1) return // 单匹配点 logo 无操作（拖动手柄）
   // 多匹配：进入 picker 让用户重选
   pendingAction.value = null  // 重选不带后续动作
@@ -323,13 +336,13 @@ function onLogoClick() {
 }
 
 function onTriggerCapture() {
-  if (moved) return
+  if (Date.now() - dragEndedAt < 250) return
   if (!ensureActive('capture')) return
   emit('capture')
 }
 
 function onTriggerRecord() {
-  if (moved) return
+  if (Date.now() - dragEndedAt < 250) return
   if (!ensureActive('record')) return
   emit('record')
 }

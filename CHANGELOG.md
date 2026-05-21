@@ -2,6 +2,27 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.3.1
+
+**质量补强 + 文档优化**。v0.3.0 发版后全面验收发现 4 个真问题一捆修，**无 BREAKING + 无生产行为变更**（P3 时间窗对真用户操作 0 影响，仅自动化测试受益）。
+
+### 用户视角
+
+- 禅道使用文档大改：删 `⌘⇧B` / `Ctrl+Shift+B` 误导（manifest 没注册这个快捷键），改成「悬浮球截图按钮 / popup 触发截图」；inline curl 解释从「零宽空格」开发者术语改成「禅道 XSS 防护改字符」白话版；加「悬浮球被挡 / 跑屏幕外」常见问题（含清 `moo-ball-pos` localStorage 兜底）；加「怎么知道我提的 bug 现在禅道里是什么状态？」v0.3.0 状态回查 Q&A + 4 状态对应表
+- 悬浮球行为更鲁棒：drag 防御从「moved flag 跨 pointer 周期残留」改成「dragEndedAt 250ms 时间窗」—— 极端 case 下「上一次 drag 完隔很久才点截图按钮」不再被误拦
+
+### 实现
+
+- `src/background/zentaoStatus.ts` 新文件，抽 `mapZentaoStatus` 出 `background/index.ts`（原 file 有 `chrome.runtime.onInstalled.addListener` 等 top-level 副作用，vitest 无法直接 import；抽出后纯函数 + import type 零依赖）
+- `tests/zentaoStatus.test.ts` 新增 6 用例，覆盖 5 分支 + deleted 优先于 status + deleted=false+未知 status 的边界
+- `src/content/FloatingBall.vue` 加 `let dragEndedAt = 0`；`endDrag` 末尾 `if (moved) dragEndedAt = Date.now()`；onLogoClick / onTriggerCapture / onTriggerRecord 的 `if (moved) return` → `if (Date.now() - dragEndedAt < 250) return`。`moved` 变量保留（位置落盘判定仍用）
+- `docs/RELEASE_TEST_CHECKLIST.md` 加「dogfood 装扩展的两条路」（路 A release zip 推荐 / 路 B dist/ 陷阱 + chunk hash 漂移症状识别 + 修复）+ 「自动化测试 caveat」（pointer-only click 兼容 + closed shadow fill 不触发 v-model input event 的 fix 提示）
+- `.gitignore` 加 `.test-output/` + `.playwright-mcp/` 防 MCP 测试中间产物（含敏感截图）误入仓库
+
+### 测试统计
+
+**266 单测**（260 + 6 新 mapZentaoStatus）+ type-check + vite build 全绿。
+
 ## v0.3.0
 
 **feature · 历史 Tab 显示禅道 bug 实时状态**。提了 bug 后 Moo 里直接能看到禅道里这条 bug 的当前处理结果，闭环完整。**无 BREAKING**。
