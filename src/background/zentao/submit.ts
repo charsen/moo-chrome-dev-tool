@@ -22,6 +22,7 @@ import type { Project, ZentaoProjectConfig } from '@/types/config'
 import type { CapturedRequest } from '@/types/requests'
 import type { SubmitBugReq, SubmitBugRes } from '@/types/messages'
 import { toCurl, toCurlScript } from '@/utils/curlGenerator'
+import { parseUserAgent } from '@/utils/ua'
 import {
   submitBug as zentaoClientSubmit,
   uploadEditorFile,
@@ -326,19 +327,32 @@ export async function submitToZentao(
   // 附件上传：best-effort，单条失败不阻断主提交
   const { uploaded, failed } = await uploadZentaoAttachments(req, project, envRes.env.baseUrl, opts)
 
-  // SubmitDialog 里用户每次可改的 4 字段，优先于 project 默认值（项目级默认是兜底）
+  // UA → os / browser 自动解析，零用户操作
+  const ua = parseUserAgent(req.userAgent || '')
+
+  // SubmitDialog 里用户每次可改的字段，优先于 project 默认值（项目级默认是兜底）
   const fields: ZentaoSubmitFields = {
     title: req.title,
     steps: buildZentaoStepsHtml(req, project, uploaded, failed),
     severity: req.zentaoSeverity ?? z.defaultSeverity,
     pri: req.zentaoPri ?? z.defaultPri,
     type: req.zentaoType ?? z.defaultType,
-    assignedTo: req.zentaoAssignedTo || z.defaultAssignedTo
+    assignedTo: req.zentaoAssignedTo || z.defaultAssignedTo,
+    os: ua.os,
+    browser: ua.browser,
+    // 默认 'Moo' 让团队能按关键词搜出所有 Moo 上报的 bug —— 项目级 / 用户级目前不开放
+    // 配置（保持 UX 简洁）；后续如需自定义再加 zentao.defaultKeywords 字段
+    keywords: 'Moo'
   }
 
   try {
+    // SubmitDialog 用户选的模块覆盖 project.zentao.moduleId（项目级默认是兜底）
+    const effectiveEnv: ZentaoEnv = {
+      ...envRes.env,
+      moduleId: req.zentaoModuleId ?? envRes.env.moduleId
+    }
     // 注意：submitBug 第三参传空数组 —— files[] 字段被禅道忽略，靠 ajaxUpload 链路绑附件
-    const r = await zentaoClientSubmit(envRes.env, fields, [])
+    const r = await zentaoClientSubmit(effectiveEnv, fields, [])
     if (!r.ok) {
       return { ok: false, error: r.error }
     }

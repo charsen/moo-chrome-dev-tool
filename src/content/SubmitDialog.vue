@@ -138,6 +138,24 @@
             </div>
           </div>
           <div class="moo-form-row">
+            <label for="moo-zentao-module">所属模块</label>
+            <div class="zentao-assignee-pick">
+              <select id="moo-zentao-module" v-model.number="zentaoModuleId" class="grow">
+                <option :value="0">— 根模块（/）—</option>
+                <option v-for="m in zentaoModules" :key="m.id" :value="m.id">
+                  {{ m.path || m.name }}
+                </option>
+              </select>
+              <button
+                class="moo-btn zentao-assignee-refresh"
+                type="button"
+                :disabled="zentaoModulesLoading"
+                :title="zentaoModules.length ? '重新拉模块列表' : '拉禅道模块列表'"
+                @click="loadZentaoModules"
+              >{{ zentaoModulesLoading ? '...' : (zentaoModules.length ? '↻' : '拉列表') }}</button>
+            </div>
+          </div>
+          <div class="moo-form-row">
             <label for="moo-zentao-assignee">指派给</label>
             <div class="zentao-assignee-pick">
               <select id="moo-zentao-assignee" v-model="zentaoAssignedTo" class="grow">
@@ -305,7 +323,7 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import type { Project } from '@/types/config'
 import type { CapturedRequest } from '@/types/requests'
 import type { ConsoleError } from '@/types/errors'
-import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes, type ZentaoListUsersRes, type ZentaoPingCookieRes } from '@/types/messages'
+import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes, type ZentaoListUsersRes, type ZentaoListModulesRes, type ZentaoPingCookieRes } from '@/types/messages'
 
 /** 禅道 maxUploadSize 实测是 50M（manifest 里写死，普通账号无法改），保守取 49 MB */
 const ZENTAO_MAX_ATTACHMENT_MB = 49
@@ -613,6 +631,27 @@ const zentaoType = ref<string>(props.project.zentao?.defaultType || 'codeerror')
 const zentaoSeverity = ref<1 | 2 | 3 | 4>((props.project.zentao?.defaultSeverity ?? 3) as 1 | 2 | 3 | 4)
 const zentaoPri = ref<1 | 2 | 3 | 4>((props.project.zentao?.defaultPri ?? 3) as 1 | 2 | 3 | 4)
 const zentaoAssignedTo = ref<string>(props.project.zentao?.defaultAssignedTo ?? '')
+/** 所属模块 id；0 = 根「/」。初值来自 project.zentao.moduleId（项目级默认） */
+const zentaoModuleId = ref<number>(props.project.zentao?.moduleId ?? 0)
+const zentaoModules = ref<NonNullable<ZentaoListModulesRes['modules']>>([])
+const zentaoModulesLoading = ref(false)
+async function loadZentaoModules() {
+  const z = props.project.zentao
+  if (!z?.baseUrl || !z.account || !z.password || !z.projectId) return
+  zentaoModulesLoading.value = true
+  try {
+    const res = await safeSendMessage<ZentaoListModulesRes>({
+      type: MSG.ZENTAO_LIST_MODULES,
+      source: 'content',
+      payload: { baseUrl: z.baseUrl, account: z.account, password: z.password, projectId: z.projectId }
+    })
+    if (res?.ok && res.modules) zentaoModules.value = res.modules
+  } catch {
+    // 静默；用户可点 ↻ 重试
+  } finally {
+    zentaoModulesLoading.value = false
+  }
+}
 
 // cookie 预检：用户在浏览器禅道页面 session 是否有效 —— 提交链路依赖 cookie，
 // 失效时让用户看见「请先登录禅道」+「一键打开」按钮，而不是提交完一脸懵
@@ -668,6 +707,7 @@ onMounted(() => {
   if (kind.value === 'zentao' && !zentaoMissingList.value) {
     void pingZentaoCookie()
     void loadZentaoUsers()
+    void loadZentaoModules()
   }
 })
 
@@ -798,7 +838,8 @@ async function onSubmit() {
         zentaoType: zentaoType.value,
         zentaoSeverity: zentaoSeverity.value,
         zentaoPri: zentaoPri.value,
-        zentaoAssignedTo: zentaoAssignedTo.value || undefined
+        zentaoAssignedTo: zentaoAssignedTo.value || undefined,
+        zentaoModuleId: zentaoModuleId.value
       } : {})
     }
     const res = (await safeSendMessage({

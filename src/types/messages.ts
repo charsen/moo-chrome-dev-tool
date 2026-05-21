@@ -57,6 +57,8 @@ export interface SubmitBugReq {
   zentaoSeverity?: 1 | 2 | 3 | 4
   zentaoPri?: 1 | 2 | 3 | 4
   zentaoAssignedTo?: string
+  /** 用户在 SubmitDialog 选的模块 id（0 = 根模块「/」），覆盖 project.zentao.moduleId */
+  zentaoModuleId?: number
 }
 export interface SubmitBugRes {
   ok: boolean
@@ -148,7 +150,9 @@ export const MSG = {
   ZENTAO_LIST_USERS: 'ZENTAO_LIST_USERS',
   /** content → background：ping cookie session 是否有效（提交链路依赖 cookie，
    *  没登录禅道时整条链路会失败，提交前预检让用户看见「请先登录禅道」而不是失败一脸懵） */
-  ZENTAO_PING_COOKIE: 'ZENTAO_PING_COOKIE'
+  ZENTAO_PING_COOKIE: 'ZENTAO_PING_COOKIE',
+  /** content → background：拉 product 的 bug 模块列表给 SubmitDialog「所属模块」下拉用 */
+  ZENTAO_LIST_MODULES: 'ZENTAO_LIST_MODULES'
 } as const
 
 // =================================================================
@@ -174,6 +178,8 @@ export interface ZentaoCredsReq {
   baseUrl: string
   account: string
   password: string
+  /** ZENTAO_LIST_MODULES 用：BG 先 discoverProduct 拿 productId 再 listModules */
+  projectId?: number
 }
 export interface ZentaoTestConnectionRes {
   ok: boolean
@@ -211,6 +217,13 @@ export interface ZentaoPingCookieRes {
   error?: string
 }
 
+/** 拉 product 的 bug 模块列表。BG 先 discoverProduct 拿 productId 再 listModules。 */
+export interface ZentaoListModulesRes {
+  ok: boolean
+  modules?: Array<{ id: number; name: string; path?: string; parent?: number }>
+  error?: string
+}
+
 /** background.onMessage 收到的消息。switch (msg.type) 后每条自动 narrow。
  *  注意：source / tabId 是 envelope 字段，未来 caller 侧若加约束可移到这里。 */
 export type IncomingMessage =
@@ -229,6 +242,7 @@ export type IncomingMessage =
   | { type: typeof MSG.ZENTAO_LIST_PROJECTS; payload: ZentaoCredsReq }
   | { type: typeof MSG.ZENTAO_LIST_USERS; payload: ZentaoCredsReq }
   | { type: typeof MSG.ZENTAO_PING_COOKIE; payload: ZentaoPingCookieReq }
+  | { type: typeof MSG.ZENTAO_LIST_MODULES; payload: ZentaoCredsReq }
 
 /** type → response 类型映射。background handler 返回对应类型，caller 侧
  *  可以用 `MessageResponse<typeof MSG.X>` 拿到精确返回 shape。 */
@@ -248,5 +262,6 @@ export interface MessageResponseMap {
   [MSG.ZENTAO_LIST_PROJECTS]: ZentaoListProjectsRes
   [MSG.ZENTAO_LIST_USERS]: ZentaoListUsersRes
   [MSG.ZENTAO_PING_COOKIE]: ZentaoPingCookieRes
+  [MSG.ZENTAO_LIST_MODULES]: ZentaoListModulesRes
 }
 export type MessageResponse<K extends keyof MessageResponseMap> = MessageResponseMap[K]

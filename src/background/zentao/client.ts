@@ -26,6 +26,12 @@ export interface ZentaoSubmitFields {
   pri: 1 | 2 | 3 | 4
   type: string
   assignedTo?: string
+  /** 可选：从 UA 解析的 OS（windows/win10/osx/linux/ios/android/...）— 禅道 enum */
+  os?: string
+  /** 可选：从 UA 解析的浏览器（chrome/safari/firefox/edge/...）— 禅道 enum */
+  browser?: string
+  /** 可选：默认填 'Moo' 让团队能按关键词搜出所有 Moo 上报的 bug */
+  keywords?: string
 }
 
 export interface ZentaoFile {
@@ -54,6 +60,15 @@ export interface ZentaoUserSummary {
   account: string
   realname: string
   role?: string
+}
+
+export interface ZentaoModuleSummary {
+  id: number
+  name: string
+  /** 模块路径如 "/前端/列表页"，根模块路径是 "/" */
+  path?: string
+  /** 父模块 id，0 表示根 */
+  parent?: number
 }
 
 // ─────────── 模块级 SW 内存缓存（重启 SW 自动清空，这正是想要的） ───────────
@@ -256,6 +271,30 @@ export async function listUsers(env: ZentaoEnv, limit = 200): Promise<ZentaoResu
   })
 }
 
+// ────────────────────────── listModules ──────────────────────────
+
+/**
+ * 拉 product 的 bug 模块列表。SubmitDialog「所属模块」下拉用。
+ * 实测端点：GET /api.php/v1/modules?id={productId}&type=bug
+ *   - 返回 {modules:[{id, name, path, parent, ...}]}
+ *   - 没建过模块的 product 返 {modules:[]}（此时下拉只显示「根模块（/）」）
+ */
+export async function listModules(env: ZentaoEnv, productId: number): Promise<ZentaoResult<ZentaoModuleSummary[]>> {
+  return withAuth(env, async (token) => {
+    const url = `${trimBase(env.baseUrl)}/api.php/v1/modules?id=${productId}&type=bug`
+    const res = await fetch(url, {
+      credentials: 'omit',
+      headers: buildHeaders({ 'Token': token })
+    })
+    if (res.status === 401) return { _retry: true as const }
+    const body = await readJson(res) as { modules?: ZentaoModuleSummary[] } | null
+    if (res.ok && Array.isArray(body?.modules)) {
+      return { ok: true as const, data: body.modules.map(m => ({ id: m.id, name: m.name, path: m.path, parent: m.parent })) }
+    }
+    return { ok: false as const, error: `HTTP ${res.status}` }
+  })
+}
+
 // ────────────────────────── discoverProduct ──────────────────────────
 
 /**
@@ -343,7 +382,9 @@ export async function submitBug(
   fd.append('feedbackBy', '')
   fd.append('notifyEmail', '')
   fd.append('contactList', '')
-  fd.append('keywords', '')
+  fd.append('keywords', fields.keywords ?? '')
+  fd.append('os', fields.os ?? '')
+  fd.append('browser', fields.browser ?? '')
   // files 参数保留兼容旧调用（已经被禅道服务端忽略，附件实际走 file-ajaxUpload 链路）
   for (const f of files) {
     fd.append('files[]', f.blob, f.name)

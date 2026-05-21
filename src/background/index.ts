@@ -18,6 +18,8 @@ import {
   ping as zentaoPing,
   listProjects as zentaoListProjects,
   listUsers as zentaoListUsers,
+  listModules as zentaoListModules,
+  discoverProduct as zentaoDiscoverProduct,
   type ZentaoEnv
 } from '@/background/zentao/client'
 import { submitToZentao } from '@/background/zentao/submit'
@@ -273,6 +275,20 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
           const list = await zentaoListUsers(env)
           if (!list.ok) { sendResponse({ ok: false, error: list.error }); break }
           sendResponse({ ok: true, users: list.data })
+          break
+        }
+        case MSG.ZENTAO_LIST_MODULES: {
+          const { baseUrl, account, password, projectId } = message.payload
+          if (!projectId) { sendResponse({ ok: false, error: 'projectId 必填' }); break }
+          const loginRes = await zentaoLogin(baseUrl, account, password)
+          if (!loginRes.ok) { sendResponse({ ok: false, error: loginRes.error }); break }
+          // 先 discoverProduct 拿 productId，再 listModules
+          const env: ZentaoEnv = { baseUrl, account, password, projectId, moduleId: 0 }
+          const prod = await zentaoDiscoverProduct(env)
+          if (!prod.ok) { sendResponse({ ok: false, error: prod.error }); break }
+          const modules = await zentaoListModules(env, prod.data)
+          if (!modules.ok) { sendResponse({ ok: false, error: modules.error }); break }
+          sendResponse({ ok: true, modules: modules.data })
           break
         }
         case MSG.ZENTAO_PING_COOKIE: {
