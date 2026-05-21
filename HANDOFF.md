@@ -4,6 +4,8 @@
 
 ## 一句话现状
 
+**v0.2.3 已发**（2026-05-21，gitee tag `v0.2.3`，**大重写**）。下载：[moo-chrome-dev-tool-0.2.3.zip](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.2.3/moo-chrome-dev-tool-0.2.3.zip)。用户提醒 v0.2.0 dogfood 用错 v1 / form 路径搞了乌龙；重新完整读 [v2.0 API 文档](https://www.zentao.net/book/api/2142.html) + 实测后重构。最大用户视角变化：**不再需要手动登录禅道页面**（v0.2.0-0.2.2 的硬依赖彻底消除）—— Moo SW 用账号密码自动 v2 login 同时拿 token + 写 cookie。bug 创建改 `POST /api.php/v2/bugs` JSON + Token header（openedBy 自动正确，之前以为只能走 cookie 是误判）。附件仍走 `/file-ajaxUpload.html` cookie 路径（v2 `/files` 端点账号权限 deny，账号没 `file.create` 权限）。**架构事实更新**：HANDOFF「坑 #0 关键架构事实 2」过时了 — 写 bug 现在走 token，只剩附件走 cookie；cookie 由 SW 自动 login 写入 jar，user 不需登录禅道页。
+
 **v0.2.2 已发**（2026-05-21，gitee tag `v0.2.2`，hotfix）。下载：[moo-chrome-dev-tool-0.2.2.zip](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.2.2/moo-chrome-dev-tool-0.2.2.zip)。同事反馈 v0.2.1 的 Response 块视觉跟 curl 块没区分一眼看不出来 → 改成 `<div>` 卡片：左侧 3px 色条按 status 着色（2xx 绿 / 4xx 红 / 5xx 深红）+ 浅灰背景 + 📥 emoji 标头 + body 白底反白。实测禅道 sanitizer 保留 div + background + border-left + padding inline style（9337-9339 验证）。
 
 **v0.2.1 已发**（2026-05-21，gitee tag `v0.2.1`，hotfix）。下载：[moo-chrome-dev-tool-0.2.1.zip](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.2.1/moo-chrome-dev-tool-0.2.1.zip)。两个修：① fetch/xhr 相对路径 `'/api/foo'` 通过 `src/utils/url.ts` 的 `absolutize` 补成完整 URL（URL 构造器 base=`location.href`），让 curl + curl.sh 复制都能直接跑 ② SubmitDialog inline curl 块下方加 Response 块（content-type / 大小 / body 预览，走 redact + ZWS + 截断 1.5KB；binary 不放 body 只放 size）；完整 raw 仍在 `moo-requests.json` 附件。260 单测全绿。
