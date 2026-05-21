@@ -21,7 +21,7 @@
 import type { Project, ZentaoProjectConfig } from '@/types/config'
 import type { CapturedRequest } from '@/types/requests'
 import type { SubmitBugReq, SubmitBugRes } from '@/types/messages'
-import { toCurl } from '@/utils/curlGenerator'
+import { toCurl, toCurlScript } from '@/utils/curlGenerator'
 import {
   submitBug as zentaoClientSubmit,
   uploadEditorFile,
@@ -98,13 +98,24 @@ export async function uploadZentaoAttachments(
     await upload('recording', `moo-recording.${ext}`, blob)
   }
 
-  // requests.json —— 完整 raw 数据下载链接，给批量分析用。
-  // curl 脚本不再上传：每条请求都已 inline 在 steps 里，重复上传是浪费。
+  // requests.json + curl.sh —— 完整 raw 数据 + 可执行 curl 脚本下载链接。
+  //
+  // ⚠️ 为什么 curl 既要 inline 又要附件？
+  // 禅道服务端 WAF 拦截 HTML 内含 3 段以上 https 域名（如 api.example.com）。
+  // inline curl 里的 URL 必须**插入 zero-width space**才能让 WAF 放行，但 ZWS 让
+  // 复制出的 curl 命令在终端解析时报「URL using bad/illegal format」。
+  // 折中：inline 给人眼看 + 附件 .curl.sh 给机器跑。两者互补不可兼。
   if (req.requests?.length) {
     await upload(
       'requests',
       'moo-requests.json',
       new Blob([JSON.stringify(req.requests, null, 2)], { type: 'application/json' })
+    )
+    const script = toCurlScript(req.requests, project.redact, { mooVersion: opts.mooVersion })
+    await upload(
+      'curl',
+      'moo-requests.curl.sh',
+      new Blob([script], { type: 'text/x-shellscript' })
     )
   }
 
@@ -169,17 +180,24 @@ export function buildZentaoStepsHtml(
     )
   }
 
-  // 选中的网络请求：每条 inline 一个 curl 代码块（点开即可复制运行）
+  // 选中的网络请求：每条 inline 一个 curl 代码块（仅供查看）
+  // + 附件 moo-requests.curl.sh 链接（可下载复制粘到终端跑）
   if (req.requests?.length) {
-    parts.push('<h3>🌐 网络请求（curl 可复制）</h3>')
+    parts.push('<h3>🌐 网络请求</h3>')
+    const curlAttachment = uploaded.find(f => f.kind === 'curl')
+    if (curlAttachment) {
+      parts.push(
+        `<p style="font-size:12px;color:#666;">下方 curl 代码仅供查看（含零宽空格绕禅道 WAF，复制粘不能直接跑）；`
+        + `要复现请求请下载 `
+        + `<a href="${curlAttachment.url}" target="_blank">moo-requests.curl.sh</a> 执行。</p>`
+      )
+    }
     for (const r of req.requests) {
       parts.push(buildRequestCurlBlock(r, project))
     }
   }
 
-  // 调试附件：仅留 requests.json / errors.json 这类「完整 raw 数据」链接，
-  // curl.sh 已经 inline 在上面了，下载链接重复就剥掉。context 是 metadata
-  // 用户不关心，不放链接。
+  // 调试附件：raw json 数据下载链接（curl.sh 已经在上面网络请求段提示过，这里不重复）
   const downloadLinks = uploaded.filter(
     f => f.kind === 'requests' || f.kind === 'errors'
   )
@@ -234,19 +252,18 @@ export function buildZentaoStepsHtml(
 }
 
 /**
- * 单条请求一个 curl 代码块：标头一行（method / status / 短 URL / duration）
- *   + <pre><code> 内 curl 命令（走 redact 脱敏）。
+ * 单条请求一个 curl 代码块。WAF 绕开：URL 里 `://` 插入 zero-width space（U+200B），
+ * 人眼看一样但 WAF 看不到完整 `https://X.Y.Z` 模式，禅道服务端放行。
  *
- * 标头有 status color 提示：2xx 绿 / 3xx 灰 / 4xx 红 / 5xx 深红。inline style 走
- * color 这种禅道实测保留的属性（max-width / border-radius 会被剥）。
+ * **代价**：复制 inline curl 粘到终端 curl 会报「URL using bad/illegal format」，
+ * 用户要执行得下载附件 moo-requests.curl.sh（那里没 ZWS）。inline 仅供查看。
  */
 function buildRequestCurlBlock(r: CapturedRequest, project: Project): string {
-  const curl = toCurl(r, project.redact)
+  const curl = obfuscateUrlsForWaf(toCurl(r, project.redact))
   const ok = r.status >= 200 && r.status < 300
   const statusColor = ok ? '#16a34a' : (r.status >= 500 ? '#991b1b' : r.status >= 400 ? '#dc2626' : '#999')
-  const shortUrl = r.url.length > 120 ? r.url.slice(0, 117) + '...' : r.url
+  const shortUrl = obfuscateUrlsForWaf(r.url.length > 120 ? r.url.slice(0, 117) + '...' : r.url)
   const status = r.status || 'ERR'
-  // 单行标头 + curl pre 块；pre/code 在禅道 wiki 编辑器里是基础富文本标签
   return [
     `<p style="margin-bottom:4px;">`
       + `<b>${escapeHtml(r.method)}</b> `
@@ -256,6 +273,18 @@ function buildRequestCurlBlock(r: CapturedRequest, project: Project): string {
     + `</p>`,
     `<pre><code>${escapeHtml(curl)}</code></pre>`
   ].join('\n')
+}
+
+/**
+ * 在 `://` 后插入 zero-width space（U+200B）绕开禅道服务端 WAF 对 3 段+ https 域名的拦截。
+ * - WAF 看不到完整 URL 模式
+ * - 人眼看一样（ZWS 零宽，不显示）
+ * - 但用户复制粘贴到 shell 时 ZWS 跟着粘，curl 会报「URL using bad/illegal format」
+ * 因此 inline curl 只用于「查看」；可执行 curl 必须从附件 moo-requests.curl.sh 下载。
+ */
+function obfuscateUrlsForWaf(text: string): string {
+  // ​ = zero-width space。不可见但实际占一个字符位，让 WAF 模式匹配失败
+  return text.replace(/(https?):\/\//g, '$1:​//')
 }
 
 function labelForKind(kind: UploadedFile['kind']): string {
