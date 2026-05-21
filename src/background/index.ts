@@ -19,6 +19,7 @@ import {
   listProjects as zentaoListProjects,
   type ZentaoEnv
 } from '@/background/zentao/client'
+import { submitToZentao } from '@/background/zentao/submit'
 import type { BugServer, MooConfig, Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
 
@@ -322,6 +323,13 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
     await writeFailureHistory(req, undefined, undefined, err)
     return { ok: false, error: err }
   }
+
+  // v0.2.0：kind='zentao' 走专用分支，避开 webhook 的 server/endpoint 校验。
+  // 提交链路全在 zentao/submit.ts 里 orchestration，本函数仅负责 history + badge。
+  if (project.kind === 'zentao') {
+    return await submitBugViaZentao(req, project)
+  }
+
   const server = project.servers.find((s) => s.id === req.serverId)
   if (!server) {
     const err = '找不到选中的上报服务器（可能刚被删除）。请回到 DevTools → Moo → 环境 重新选择'
@@ -701,6 +709,49 @@ function buildRequestBody(
     return { body: form, headers }
   }
   return { body: rendered, headers: { ...server.headers } }
+}
+
+/**
+ * v0.2.0 禅道路径：调 zentao/submit.ts → 写 history → 刷 badge。
+ * 与 webhook 路径并行，不复用 server 校验那段（zentao 没 server 概念）。
+ */
+async function submitBugViaZentao(req: SubmitBugReq, project: Project): Promise<SubmitBugRes> {
+  const res = await submitToZentao(req, project, dataUrlToBlob, { mooVersion: chrome.runtime?.getManifest?.()?.version })
+
+  // history 字段：zentao 没 server 概念，serverId / serverName 用占位串
+  // 保持 BugHistoryEntry schema 不变（v0.1.x 历史读取不破）
+  const entry: BugHistoryEntry = {
+    id: crypto.randomUUID(),
+    timestamp: Date.now(),
+    projectId: project.id,
+    projectName: project.name,
+    serverId: 'zentao',
+    serverName: `禅道（${project.zentao?.baseUrl ?? ''}）`,
+    title: req.title,
+    description: req.description,
+    image: req.image,
+    hasVideo: !!req.video,
+    videoDuration: req.video?.duration ?? 0,
+    url: req.url,
+    userAgent: req.userAgent,
+    viewport: req.viewport,
+    requests: req.requests,
+    errors: req.errors,
+    result: res.ok
+      ? { ok: true, status: 200, body: res.viewUrl ?? '' }
+      : { ok: false, error: res.error },
+    remoteId: res.remoteId,
+    remoteBase: project.zentao?.baseUrl
+  }
+  try {
+    const writeRes = await addHistoryEntry(entry)
+    if (writeRes.allDropped) res.historyAllDropped = true
+    else if (writeRes.trimmed > 0) res.trimmedHistory = writeRes.trimmed
+  } catch (e) {
+    console.warn('[Moo] failed to save zentao history', e)
+  }
+  void refreshBadge()
+  return res
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {

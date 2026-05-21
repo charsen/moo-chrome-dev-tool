@@ -64,6 +64,8 @@ export interface SubmitBugRes {
   /** storage 整体异常导致连本次新条都没保存到本地（仅服务端收到了）。
    *  UI 必须区别于"丢了几条旧的"——后者新条还在，前者连新条也不在。 */
   historyAllDropped?: boolean
+  /** 仅 zentao kind 路径：成功时返禅道 bug 查看 URL，SubmitDialog 用它显示「禅道里看」 */
+  viewUrl?: string
 }
 
 export interface PreviewPayloadReq {

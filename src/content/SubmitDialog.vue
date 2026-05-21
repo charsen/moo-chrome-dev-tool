@@ -15,6 +15,13 @@
         <div v-if="successInfo.remoteId" class="moo-success-id">
           已记录为 <code>#{{ successInfo.remoteId }}</code>
         </div>
+        <a
+          v-if="successInfo.viewUrl"
+          class="moo-success-link"
+          :href="successInfo.viewUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+        >禅道里看 →</a>
         <div class="moo-success-msg">{{ successInfo.message }}</div>
       </div>
 
@@ -306,7 +313,7 @@ const titleInput = ref<HTMLInputElement | null>(null)
 // 让 trap 不抢初始焦点）。Esc 路径见 MooDialog 的 @close → onMaskClick。
 
 /** 提交成功后的内嵌反馈视图。设值即覆盖 body/footer 展示 ✓ 卡片。 */
-const successInfo = ref<{ message: string; remoteId?: string } | null>(null)
+const successInfo = ref<{ message: string; remoteId?: string; viewUrl?: string } | null>(null)
 const SUCCESS_VIEW_MS = 1500
 let successTimer: number | undefined
 
@@ -597,10 +604,13 @@ async function onSubmit() {
     const { ok, message } = formatSubmitResult(res)
     if (ok) {
       // 成功：展示 1.5s 的 ✓ 内嵌反馈再关闭。比 toast 一闪有更明确的"动作完成"感。
-      successInfo.value = { message, remoteId: res.remoteId }
+      // 禅道路径会带 viewUrl —— 让用户点链接直接跳禅道看（带 viewUrl 时延长展示
+      // 时间到 4s，给用户机会点链接；不带的 webhook 路径保持原 1.5s）。
+      successInfo.value = { message, remoteId: res.remoteId, viewUrl: res.viewUrl }
+      const dur = res.viewUrl ? 4000 : SUCCESS_VIEW_MS
       successTimer = window.setTimeout(() => {
         emit('submitted', true, message)
-      }, SUCCESS_VIEW_MS)
+      }, dur)
     } else {
       // 失败：dialog 不关，弹 toast 同时显示持久横幅。带录像 + 没入重试队列 → 标记
       // cannotAutoRetry，提示用户关窗后只能去 历史 Tab。判断依据是 background 返回的

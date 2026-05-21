@@ -1102,6 +1102,23 @@ export const SHADOW_CSS = `
   font-size: 11px;
   color: var(--c-text-dim);
 }
+.moo-success-link {
+  display: inline-block;
+  margin: 6px 0 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--c-brand, #3b82f6);
+  background: var(--c-bg-elev);
+  border-radius: var(--r-sm);
+  text-decoration: none;
+  border: 1px solid var(--c-border);
+  transition: background 120ms;
+}
+.moo-success-link:hover {
+  background: var(--c-bg);
+  text-decoration: none;
+}
 
 /* 提交失败的内嵌持久横幅：toast 是一闪而过的通知，这里给用户「点击重试 / 知道为什么没成」
    的稳定锚点。带录像的提交（cannotAutoRetry）多一行提示用户去 历史 Tab 重提。 */
