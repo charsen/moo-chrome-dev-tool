@@ -118,7 +118,7 @@
         <!-- ⑤.1 禅道字段：每条 bug 可改的 type / severity / pri / assignedTo -->
         <template v-if="kind === 'zentao' && !zentaoMissingList">
           <div class="moo-form-row moo-zentao-fields">
-            <label>类型 / 严重 / 优先</label>
+            <label>分级</label>
             <div class="moo-zentao-row">
               <select v-model="zentaoType" class="zentao-field">
                 <option v-for="t in ZENTAO_TYPE_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</option>
@@ -147,7 +147,7 @@
                 </option>
               </select>
               <button
-                class="moo-btn small"
+                class="moo-btn zentao-assignee-refresh"
                 type="button"
                 :disabled="zentaoUsersLoading"
                 :title="zentaoUsers.length ? '重新拉用户列表' : '拉禅道用户列表'"

@@ -833,6 +833,15 @@ export const SHADOW_CSS = `
 }
 .zentao-assignee-pick select { flex: 1; min-width: 0; }
 .zentao-assignee-pick .moo-btn { white-space: nowrap; }
+/* ↻ 刷新按钮高度跟 select 对齐（select 实际高 ~32px：font 13px + padding 6+6 + border 1+1）。
+   .moo-btn 默认 30px 跟 small 24px 都对不齐 select，这里手动给跟 select 一样的高 + 紧凑 padding */
+.zentao-assignee-refresh {
+  height: auto;
+  align-self: stretch;
+  padding: 0 12px;
+  font-size: 13px;
+  min-width: 36px;
+}
 .zentao-cookie-row {
   display: flex;
   align-items: center;
