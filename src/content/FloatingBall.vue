@@ -197,21 +197,39 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)
+  // 组件被卸载时如果 drag 还在进行（罕见：state 切到 capturing 那一刻用户正在拖球），
+  // 也走 endDrag 把 listener 摘干净，避免悬挂监听
+  endDrag(false)
 })
+
+/** drag 是否正在进行（防 onDown 重入 + 多渠道 cleanup 走同一次 endDrag 兜底） */
+let dragActive = false
 
 function onDown(e: PointerEvent) {
   if (e.button !== 0) return
+  // 防御：上一次 down 的 pointerup 如果丢了（用户拖出视口/拖到浏览器 chrome 上松手 /
+  // alt-tab 系统通知抢焦），stale 的 pointermove/up/cancel/blur 监听还挂着。这一次
+  // down 前先扫尾，否则 downAt/originPos 被覆盖但 move 监听共用一个 → 球继续跟鼠标跑。
+  endDrag()
+
+  dragActive = true
   downAt = { x: e.clientX, y: e.clientY }
   originPos = { ...pos.value }
   moved = false
   // 不调 setPointerCapture(row)：会把 pointerup 强行送到 row 上，
   // 子按钮的 click 事件就不再派发（down 在 button、up 在 row，target 不一致）。
   // window 监听 pointermove/up 已经能捕获到指针移到 row 外的情况，足够拖动用。
+  // 但 window pointerup 不能保证 100% 送达——用户把球拖出视口外松手 / 浏览器在
+  // 系统通知期间发 pointercancel 不发 pointerup 是真实场景；多挂 cancel + blur 兜底，
+  // 任一渠道触达都走同一个 endDrag(true) 完成最终位置写盘。
   window.addEventListener('pointermove', onMove)
-  window.addEventListener('pointerup', onUp, { once: true })
+  window.addEventListener('pointerup', onUpOrCancel)
+  window.addEventListener('pointercancel', onUpOrCancel)
+  window.addEventListener('blur', onWindowBlur)
 }
 
 function onMove(e: PointerEvent) {
+  if (!dragActive) return
   const dx = e.clientX - downAt.x
   const dy = e.clientY - downAt.y
   if (!moved && Math.hypot(dx, dy) > 4) {
@@ -226,9 +244,32 @@ function onMove(e: PointerEvent) {
   }
 }
 
-function onUp() {
+/** pointerup / pointercancel 共用：拖动结束后落盘 + 清理。idempotent，多渠道触发只跑一次。 */
+function onUpOrCancel() {
+  endDrag(true)
+}
+
+/** window blur：用户拖出视口 / alt-tab → 收尾。不重定位 dragging 标志为 false 因为
+ *  此时焦点不在页面上，等下次 down 时 endDrag 会再彻底重置；不落盘最后位置避免
+ *  blur 抢救时把不完整的 drag 写进 localStorage。 */
+function onWindowBlur() {
+  endDrag(false)
+}
+
+/**
+ * 拖动结束统一收口：移除所有 drag 监听 + 重置内部状态 + 视情况落盘 + 把 dragging 重置。
+ * @param save  true=pointerup/cancel 正常结束（落盘最后位置）；false=blur 抢救（不落盘）
+ *
+ * 必须 idempotent：onDown 起手 + onUpOrCancel + blur 任意路径都会调，多次调用无副作用。
+ */
+function endDrag(save: boolean = false): void {
+  if (!dragActive) return
+  dragActive = false
   window.removeEventListener('pointermove', onMove)
-  if (moved) {
+  window.removeEventListener('pointerup', onUpOrCancel)
+  window.removeEventListener('pointercancel', onUpOrCancel)
+  window.removeEventListener('blur', onWindowBlur)
+  if (save && moved) {
     try { localStorage.setItem(POS_KEY, JSON.stringify(pos.value)) } catch {}
   }
   // dragging 在 next tick 才置回 false，让 click handler 通过 moved 标志早退

@@ -92,6 +92,36 @@ function logEmit(event: string, ...payload: unknown[]): void {
 const caseName = params.get('case') ?? 'submit'
 
 async function bootstrap(): Promise<void> {
+  if (caseName === 'floating-ball') {
+    // FloatingBall 锁拖动行为：onDown / endDrag 多渠道 cleanup（pointerup/cancel/blur）
+    // 验证「lost pointerup」场景下球不会跟着鼠标继续跑
+    const FloatingBall = (await import('./FloatingBall.vue')).default
+    const matches = [{
+      id: 'p1',
+      name: 'harness 项目',
+      matchPatterns: ['<all_urls>'],
+      servers: [],
+      defaultServerId: '',
+      capture: { requests: true, consoleErrors: true, storageKeys: [], requestBufferSize: 50 },
+      redact: { headerKeys: [], bodyKeys: [], maskPasswordInputs: false },
+      enabled: true,
+      token: ''
+    }]
+    const Root = defineComponent({
+      setup() {
+        return () =>
+          h(FloatingBall as unknown as ReturnType<typeof defineComponent>, {
+            hidden: false,
+            matches,
+            onSelectProject: (id: string) => logEmit('select-project', id),
+            onCapture: () => logEmit('capture'),
+            onRecord: () => logEmit('record')
+          })
+      }
+    })
+    createApp(Root).mount(mount)
+    return
+  }
   if (caseName === 'annotator') {
     // 200×200 透明 PNG（pixel-perfect 最小 base64）—— Annotator 拿 naturalWidth/Height
     // 当 canvas 尺寸，足够鼠标画 2 笔 + 不撑爆 1280×800 视口
