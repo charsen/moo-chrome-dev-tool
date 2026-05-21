@@ -275,6 +275,28 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
           sendResponse({ ok: true, users: list.data })
           break
         }
+        case MSG.ZENTAO_PING_COOKIE: {
+          // 直接走 cookie session ping，不用 token 路径 —— 我们就是要看 cookie 是否有效。
+          // baseUrl trim trailing slash 让路径拼接稳定
+          const baseUrl = message.payload.baseUrl.replace(/\/+$/, '')
+          try {
+            const r = await fetch(`${baseUrl}/api.php/v1/user`, {
+              credentials: 'include',
+              headers: new Headers({ 'X-Requested-With': 'XMLHttpRequest' })
+            })
+            const text = await r.text()
+            let body: { profile?: { realname?: string } } | null = null
+            try { body = JSON.parse(text) } catch { /* HTML 错误页 / 跳登录 */ }
+            if (r.ok && body?.profile?.realname) {
+              sendResponse({ ok: true, realname: body.profile.realname })
+            } else {
+              sendResponse({ ok: false, error: '未登录禅道（cookie 失效或没有 session）' })
+            }
+          } catch (e) {
+            sendResponse({ ok: false, error: `网络错误：${(e as Error).message}` })
+          }
+          break
+        }
         default: {
           // 编译期 narrow：如果 IncomingMessage 里漏了某个 case，下面的 `never`
           // 赋值会 TS 错误。这是 discriminated union 的关键保护点。

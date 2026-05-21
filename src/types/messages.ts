@@ -145,7 +145,10 @@ export const MSG = {
   /** devtools → background：login 后拉项目列表给「📋 从禅道拉列表」下拉用 */
   ZENTAO_LIST_PROJECTS: 'ZENTAO_LIST_PROJECTS',
   /** content → background：拉禅道用户列表给 SubmitDialog 「指派给」下拉用 */
-  ZENTAO_LIST_USERS: 'ZENTAO_LIST_USERS'
+  ZENTAO_LIST_USERS: 'ZENTAO_LIST_USERS',
+  /** content → background：ping cookie session 是否有效（提交链路依赖 cookie，
+   *  没登录禅道时整条链路会失败，提交前预检让用户看见「请先登录禅道」而不是失败一脸懵） */
+  ZENTAO_PING_COOKIE: 'ZENTAO_PING_COOKIE'
 } as const
 
 // =================================================================
@@ -196,6 +199,18 @@ export interface ZentaoListUsersRes {
   error?: string
 }
 
+/** ping cookie session 是否有效；payload 只需 baseUrl。
+ *  cookie 有 → 用户已登录禅道；cookie 失效 → 引导用户去 baseUrl 登录。 */
+export interface ZentaoPingCookieReq {
+  baseUrl: string
+}
+export interface ZentaoPingCookieRes {
+  ok: boolean
+  /** 成功时返用户名给「✓ 已登录为 XXX」显示 */
+  realname?: string
+  error?: string
+}
+
 /** background.onMessage 收到的消息。switch (msg.type) 后每条自动 narrow。
  *  注意：source / tabId 是 envelope 字段，未来 caller 侧若加约束可移到这里。 */
 export type IncomingMessage =
@@ -213,6 +228,7 @@ export type IncomingMessage =
   | { type: typeof MSG.ZENTAO_TEST_CONNECTION; payload: ZentaoCredsReq }
   | { type: typeof MSG.ZENTAO_LIST_PROJECTS; payload: ZentaoCredsReq }
   | { type: typeof MSG.ZENTAO_LIST_USERS; payload: ZentaoCredsReq }
+  | { type: typeof MSG.ZENTAO_PING_COOKIE; payload: ZentaoPingCookieReq }
 
 /** type → response 类型映射。background handler 返回对应类型，caller 侧
  *  可以用 `MessageResponse<typeof MSG.X>` 拿到精确返回 shape。 */
@@ -231,5 +247,6 @@ export interface MessageResponseMap {
   [MSG.ZENTAO_TEST_CONNECTION]: ZentaoTestConnectionRes
   [MSG.ZENTAO_LIST_PROJECTS]: ZentaoListProjectsRes
   [MSG.ZENTAO_LIST_USERS]: ZentaoListUsersRes
+  [MSG.ZENTAO_PING_COOKIE]: ZentaoPingCookieRes
 }
 export type MessageResponse<K extends keyof MessageResponseMap> = MessageResponseMap[K]

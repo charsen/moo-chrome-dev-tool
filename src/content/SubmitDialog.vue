@@ -83,6 +83,35 @@
               ⚠ 禅道配置不完整，缺：{{ zentaoMissingList }}。<br>
               请打开 <b>DevTools → Moo → 环境</b>，把缺的字段填上后再回来提交。
             </div>
+            <!-- cookie 预检状态：依赖用户在浏览器登录禅道。失败时给「一键打开禅道」 -->
+            <div
+              v-else-if="zentaoCookieState !== 'unknown'"
+              :class="['zentao-cookie-row', zentaoCookieState === 'ok' ? 'ok' : 'fail']"
+            >
+              <span>{{ zentaoCookieMsg }}</span>
+              <a
+                v-if="zentaoCookieState === 'fail' && project.zentao?.baseUrl"
+                class="moo-btn small"
+                :href="project.zentao.baseUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+              >打开禅道登录</a>
+              <button
+                v-if="zentaoCookieState === 'fail'"
+                type="button"
+                class="moo-btn small ghost"
+                @click="pingZentaoCookie"
+              >重新检查</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ⑤.0 录像太大警告（zentao 50M 上限） -->
+        <div v-if="videoTooBigForZentao" class="moo-form-row">
+          <label></label>
+          <div class="server-warn">
+            ⚠ 录像 {{ (video!.bytes / 1024 / 1024).toFixed(1) }} MB 超过禅道附件上限（{{ ZENTAO_MAX_ATTACHMENT_MB }} MB）。<br>
+            提交后 bug 主体能建，但录像附件会失败上传，禅道里只能看到「⚠️ 附件上传失败」提示。可考虑重录一个短的。
           </div>
         </div>
 
@@ -276,7 +305,10 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import type { Project } from '@/types/config'
 import type { CapturedRequest } from '@/types/requests'
 import type { ConsoleError } from '@/types/errors'
-import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes, type ZentaoListUsersRes } from '@/types/messages'
+import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes, type ZentaoListUsersRes, type ZentaoPingCookieRes } from '@/types/messages'
+
+/** 禅道 maxUploadSize 实测是 50M（manifest 里写死，普通账号无法改），保守取 49 MB */
+const ZENTAO_MAX_ATTACHMENT_MB = 49
 
 /** 禅道 bug type 候选值（biz12 内置），用户每次提交可选 */
 const ZENTAO_TYPE_OPTIONS = [
@@ -582,6 +614,34 @@ const zentaoSeverity = ref<1 | 2 | 3 | 4>((props.project.zentao?.defaultSeverity
 const zentaoPri = ref<1 | 2 | 3 | 4>((props.project.zentao?.defaultPri ?? 3) as 1 | 2 | 3 | 4)
 const zentaoAssignedTo = ref<string>(props.project.zentao?.defaultAssignedTo ?? '')
 
+// cookie 预检：用户在浏览器禅道页面 session 是否有效 —— 提交链路依赖 cookie，
+// 失效时让用户看见「请先登录禅道」+「一键打开」按钮，而不是提交完一脸懵
+const zentaoCookieState = ref<'unknown' | 'ok' | 'fail'>('unknown')
+const zentaoCookieMsg = ref('')
+async function pingZentaoCookie() {
+  const z = props.project.zentao
+  if (!z?.baseUrl) return
+  zentaoCookieState.value = 'unknown'
+  zentaoCookieMsg.value = '检查禅道登录…'
+  try {
+    const res = await safeSendMessage<ZentaoPingCookieRes>({
+      type: MSG.ZENTAO_PING_COOKIE,
+      source: 'content',
+      payload: { baseUrl: z.baseUrl }
+    })
+    if (res?.ok) {
+      zentaoCookieState.value = 'ok'
+      zentaoCookieMsg.value = `✓ 已登录禅道（${res.realname ?? '未知用户'}）`
+    } else {
+      zentaoCookieState.value = 'fail'
+      zentaoCookieMsg.value = res?.error ?? '禅道未登录'
+    }
+  } catch (e) {
+    zentaoCookieState.value = 'fail'
+    zentaoCookieMsg.value = (e as Error).message
+  }
+}
+
 // 用户列表（指派给下拉）：第一次 dialog 打开 + kind=zentao 时懒加载，避免不用禅道时浪费请求
 const zentaoUsers = ref<NonNullable<ZentaoListUsersRes['users']>>([])
 const zentaoUsersLoading = ref(false)
@@ -605,7 +665,10 @@ async function loadZentaoUsers() {
 // dialog 一打开就预拉一次（kind=zentao 时）—— 注意 onMounted 注册在 setup
 // 同步段，回调在 mount 时执行，那时 zentaoMissingList 已经声明 OK
 onMounted(() => {
-  if (kind.value === 'zentao' && !zentaoMissingList.value) void loadZentaoUsers()
+  if (kind.value === 'zentao' && !zentaoMissingList.value) {
+    void pingZentaoCookie()
+    void loadZentaoUsers()
+  }
 })
 
 // 前向引用：zentaoMissingList 在下面声明，但 onMounted callback 在 mount 时才执行
@@ -633,9 +696,20 @@ const zentaoMissingList = computed(() => {
   return missing.join(' / ')
 })
 
+/** 视频超过禅道 maxUploadSize 限制时给警告 + 提交时附件会失败（仍允许提交，bug 主体能建） */
+const videoTooBigForZentao = computed(() => {
+  if (kind.value !== 'zentao' || !props.video) return false
+  return (props.video.bytes / 1024 / 1024) > ZENTAO_MAX_ATTACHMENT_MB
+})
+
 const canSubmit = computed(() => {
   if (!title.value.trim()) return false
-  if (kind.value === 'zentao') return !zentaoMissingList.value
+  if (kind.value === 'zentao') {
+    if (zentaoMissingList.value) return false
+    // 提交前 cookie 必须有效；预检中状态 'unknown' 也允许（避免 race，BG 会再校验）
+    if (zentaoCookieState.value === 'fail') return false
+    return true
+  }
   return !!serverId.value && !serverEndpointMissing.value
 })
 

@@ -833,6 +833,25 @@ export const SHADOW_CSS = `
 }
 .zentao-assignee-pick select { flex: 1; min-width: 0; }
 .zentao-assignee-pick .moo-btn { white-space: nowrap; }
+.zentao-cookie-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: var(--r-md);
+}
+.zentao-cookie-row.ok {
+  background: var(--c-bg-elev);
+  color: var(--c-ok-fg, #16a34a);
+}
+.zentao-cookie-row.fail {
+  background: var(--c-warn-soft);
+  color: var(--c-warn-fg);
+  border: 1px solid var(--c-warn-soft);
+}
+.zentao-cookie-row .moo-btn { margin-left: auto; }
+.zentao-cookie-row .moo-btn + .moo-btn { margin-left: 4px; }
 .moo-preview {
   background: var(--c-bg-soft);
   border: 1px solid var(--c-border);
