@@ -172,9 +172,11 @@
           <div class="row">
             <label>项目 ID</label>
             <input v-model.number="activeProject.zentao.projectId" type="number" min="1" class="narrow" />
+          </div>
+          <div class="row">
             <label>模块 ID</label>
             <input v-model.number="activeProject.zentao.moduleId" type="number" min="0" class="narrow" />
-            <span class="tpl-hint">模块 ID 通常填 0（默认）</span>
+            <span class="tpl-hint">通常填 0（默认模块）</span>
           </div>
 
           <div class="zentao-defaults">
@@ -191,6 +193,8 @@
               <select v-model.number="activeProject.zentao.defaultSeverity" class="narrow">
                 <option v-for="s in ZENTAO_SEVERITY_OPTIONS" :key="s.value" :value="s.value">{{ s.label }}</option>
               </select>
+            </div>
+            <div class="row">
               <label>优先级</label>
               <select v-model.number="activeProject.zentao.defaultPri" class="narrow">
                 <option v-for="p in ZENTAO_PRI_OPTIONS" :key="p.value" :value="p.value">{{ p.label }}</option>
