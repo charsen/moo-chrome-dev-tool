@@ -28,7 +28,7 @@
     </div>
 
     <!-- 三按钮常驻：M（拖动 / 项目入口） + 截图 + 录屏 -->
-    <div :class="['moo-ball-row', { dragging, hidden }]" @pointerdown="onDown">
+    <div ref="rowEl" :class="['moo-ball-row', { dragging, hidden }]" @pointerdown="onDown">
       <button
         class="moo-ball-btn moo-ball-btn--logo"
         :title="logoTitle"
@@ -85,6 +85,9 @@ type PendingAction = 'capture' | 'record' | null
 const POS_KEY = 'moo-ball-pos'
 const pos = ref({ x: window.innerWidth - 200, y: window.innerHeight - 70 })
 const dragging = ref(false)
+const rowEl = ref<HTMLDivElement>()
+/** drag 时 setPointerCapture 用的 pointerId，记下来好在 endDrag 里 release */
+let activePointerId: number | null = null
 const phase = ref<Phase>('menu')
 /** 会话内记住已选项目，避免每次点 📷/🎥 都被 picker 打断 */
 const activeProjectId = ref<string>('')
@@ -216,12 +219,15 @@ function onDown(e: PointerEvent) {
   downAt = { x: e.clientX, y: e.clientY }
   originPos = { ...pos.value }
   moved = false
-  // 不调 setPointerCapture(row)：会把 pointerup 强行送到 row 上，
-  // 子按钮的 click 事件就不再派发（down 在 button、up 在 row，target 不一致）。
-  // window 监听 pointermove/up 已经能捕获到指针移到 row 外的情况，足够拖动用。
-  // 但 window pointerup 不能保证 100% 送达——用户把球拖出视口外松手 / 浏览器在
-  // 系统通知期间发 pointercancel 不发 pointerup 是真实场景；多挂 cancel + blur 兜底，
-  // 任一渠道触达都走同一个 endDrag(true) 完成最终位置写盘。
+  activePointerId = e.pointerId
+  // ⚠ pointerdown 阶段**不**调 setPointerCapture：纯点击（move < 4px）时如果先 capture，
+  // 子按钮的 click 派发会被 row 接走（target 移到 row 上）。延迟到 onMove 触发 dragging
+  // 阈值之后再 capture——这时已经是真拖动，本来就不该触发 child click。
+  //
+  // 多渠道挂监听：window pointermove/up 兜常规情况；pointercancel 兜系统抢焦；
+  // blur 兜 alt-tab；并在 onMove 跨阈值时 capture pointer 兜 **iframe 跨界吞事件**
+  // 场景（用户在禅道这类 iframe layout 页拖球，鼠标跨过 iframe 区域时 pointermove
+  // 路由到 iframe 的 window，主框架收不到事件——球卡住跟随鼠标，正是用户的报障）。
   window.addEventListener('pointermove', onMove)
   window.addEventListener('pointerup', onUpOrCancel)
   window.addEventListener('pointercancel', onUpOrCancel)
@@ -235,6 +241,12 @@ function onMove(e: PointerEvent) {
   if (!moved && Math.hypot(dx, dy) > 4) {
     moved = true
     dragging.value = true
+    // 跨过 drag 阈值才 setPointerCapture：纯点击（< 4px）走原 click 路径不被 capture 拦；
+    // 真拖动后 capture 强制所有 pointermove/up/cancel 送到 row 上，**跨 iframe 也不丢**。
+    // 这是禅道这类 iframe layout 页（pageHasIframe > 0）拖球卡住的根治。
+    if (rowEl.value && activePointerId !== null) {
+      try { rowEl.value.setPointerCapture(activePointerId) } catch { /* 某些浏览器对 closed shadow 内 capture 有限制，忽略 */ }
+    }
   }
   if (moved) {
     pos.value = {
@@ -269,6 +281,12 @@ function endDrag(save: boolean = false): void {
   window.removeEventListener('pointerup', onUpOrCancel)
   window.removeEventListener('pointercancel', onUpOrCancel)
   window.removeEventListener('blur', onWindowBlur)
+  // release pointer capture（如果有 set 过）。pointerup 会自动 release，但 blur 兜底路径
+  // 这里得显式 release——避免 capture 残留导致下次 pointerdown 行为错乱
+  if (rowEl.value && activePointerId !== null) {
+    try { rowEl.value.releasePointerCapture(activePointerId) } catch {}
+  }
+  activePointerId = null
   if (save && moved) {
     try { localStorage.setItem(POS_KEY, JSON.stringify(pos.value)) } catch {}
   }

@@ -165,6 +165,63 @@ test('FloatingBall · F3 · pointercancel 等同 pointerup：清理 listener + �
   expect(afterStray.y).toBe(afterCancel.y)
 })
 
+test('FloatingBall · F5 · 跨 4px drag 阈值后 setPointerCapture 被调（修 iframe 跨界吞事件）', async ({ context, extensionId, sw }) => {
+  const page = await setupBall(context, extensionId, sw)
+  const start = await readBallPos(page)
+
+  // 装一个 spy：覆盖 row.setPointerCapture，记录调用
+  await page.evaluate(() => {
+    const shadow = document.getElementById('__moo_dev_tool_host__')?.shadowRoot
+    const row = shadow?.querySelector('.moo-ball-row') as HTMLElement | null
+    if (!row) throw new Error('no row')
+    const calls: Array<{ id: number }> = []
+    ;(window as unknown as { __captureCalls: typeof calls }).__captureCalls = calls
+    const orig = row.setPointerCapture.bind(row)
+    row.setPointerCapture = function(id: number) {
+      calls.push({ id })
+      try { return orig(id) } catch { /* ignore capture errors in shadow */ }
+    } as typeof row.setPointerCapture
+  })
+
+  // down + move >4px → 应该触发 setPointerCapture
+  await pointerDownAtBall(page, start.x + 85, start.y + 28)
+  await pointerMoveOnWindow(page, start.x + 85 + 30, start.y + 28 + 30) // 30px >> 4px 阈值
+
+  const captureCalls = await page.evaluate(() => (window as unknown as { __captureCalls: Array<{ id: number }> }).__captureCalls)
+  expect(captureCalls.length).toBeGreaterThan(0)
+  expect(captureCalls[0].id).toBe(1) // pointerId 1（我们 dispatch 时设的）
+
+  // 收尾
+  await pointerEventOnWindow(page, 'pointerup', start.x + 85 + 30, start.y + 28 + 30)
+})
+
+test('FloatingBall · F6 · 纯点击（<4px 移动）不 capture：保子按钮 click 派发', async ({ context, extensionId, sw }) => {
+  const page = await setupBall(context, extensionId, sw)
+  const start = await readBallPos(page)
+
+  // 装同款 spy
+  await page.evaluate(() => {
+    const shadow = document.getElementById('__moo_dev_tool_host__')?.shadowRoot
+    const row = shadow?.querySelector('.moo-ball-row') as HTMLElement | null
+    if (!row) throw new Error('no row')
+    const calls: Array<{ id: number }> = []
+    ;(window as unknown as { __captureCalls: typeof calls }).__captureCalls = calls
+    const orig = row.setPointerCapture.bind(row)
+    row.setPointerCapture = function(id: number) {
+      calls.push({ id })
+      try { return orig(id) } catch {}
+    } as typeof row.setPointerCapture
+  })
+
+  // down + move <4px + up — 纯点击场景
+  await pointerDownAtBall(page, start.x + 85, start.y + 28)
+  await pointerMoveOnWindow(page, start.x + 85 + 2, start.y + 28 + 2) // 2px << 4px 阈值
+  await pointerEventOnWindow(page, 'pointerup', start.x + 85 + 2, start.y + 28 + 2)
+
+  const captureCalls = await page.evaluate(() => (window as unknown as { __captureCalls: Array<{ id: number }> }).__captureCalls)
+  expect(captureCalls.length).toBe(0) // 无 capture 调用 → 子按钮 click 派发不受干扰
+})
+
 test('FloatingBall · F4 · window blur 兜底：清理 listener', async ({ context, extensionId, sw }) => {
   const page = await setupBall(context, extensionId, sw)
   const start = await readBallPos(page)
