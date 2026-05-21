@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Dialog Harness</title>
+    <style>
+      /* 跟 content 注入到宿主页同款 host 设定：fixed inset 0 + pointer-events: none，
+         shadow 内 mount 元素再 pointer-events: auto。harness 不叠在宿主页上，
+         但保持同款外壳能让 dialog 的 CSS 定位（fixed 等）行为一致。 */
+      html, body { margin: 0; padding: 0; height: 100vh; background: #fff; }
+      /* 给一个低调的"宿主页占位"内容，让点 mask 行为有真实的 z-index 上下文 */
+      .host-stub { padding: 24px; font: 14px system-ui; color: #999; }
+    </style>
+  </head>
+  <body>
+    <div class="host-stub">[harness] dialog 测试用宿主页占位</div>
+    <!-- shadow host：跟 content/index.ts 同款外壳 -->
+    <div id="__moo_dev_tool_host__" style="all: initial; position: fixed; inset: 0; pointer-events: none; z-index: 2147483600;"></div>
+    <script type="module" src="./dialog-harness.ts"></script>
+  </body>
+</html>
