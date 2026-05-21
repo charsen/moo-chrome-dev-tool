@@ -21,7 +21,9 @@ import {
   listModules as zentaoListModules,
   discoverProduct as zentaoDiscoverProduct,
   ensureCookieSession as zentaoEnsureCookie,
-  type ZentaoEnv
+  getBug as zentaoGetBug,
+  type ZentaoEnv,
+  type ZentaoBugDetail
 } from '@/background/zentao/client'
 import { submitToZentao } from '@/background/zentao/submit'
 import { dataUrlToBlob } from '@/utils/dataUrl'
@@ -687,36 +689,67 @@ async function refreshHistoryStatus(): Promise<number> {
   const config = await loadConfig()
   let updated = 0
   for (const entry of list) {
-    if (!entry.remoteId || !entry.remoteBase) continue
+    if (!entry.remoteId) continue
+    const project = config.projects.find((p) => p.id === entry.projectId)
     try {
-      // 后端鉴权一律从 POST body 取 token（webhook 风格，URL 不沾 token 避免落 access log）。
-      // 项目被删 / token 没填时拿到空串，后端会 401，catch 吞掉。
-      const token = pickToken(entry, config)
-      const url = `${entry.remoteBase}/${entry.remoteId}/status-public`
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token })
-      })
-      if (!resp.ok) continue
-      const data = await resp.json()
-      if (data && data.ok && data.status) {
-        const prev = entry.remoteStatus
-        entry.remoteStatus = data.status
+      let newStatus: BugHistoryEntry['remoteStatus'] | undefined
+      // v0.3：禅道路径走 v1/bugs/{id} 详情，按 status 字段映射
+      if (project?.kind === 'zentao' && project.zentao?.baseUrl) {
+        newStatus = await fetchZentaoBugStatus(project, entry.remoteId)
+      } else if (entry.remoteBase) {
+        // 老 webhook 路径：POST {remoteBase}/{id}/status-public 走 body.token 鉴权
+        newStatus = await fetchWebhookBugStatus(entry, project)
+      }
+      if (newStatus && newStatus !== entry.remoteStatus) {
+        entry.remoteStatus = newStatus
         entry.remoteStatusUpdatedAt = new Date().toISOString()
-        if (prev !== data.status) updated++
         await updateHistoryEntry(entry.id, entry)
+        updated++
       }
     } catch {
-      // ignore single failure
+      // ignore single failure；继续下一条
     }
   }
   return updated
 }
 
-function pickToken(entry: BugHistoryEntry, config: MooConfig): string {
-  const project = config.projects.find((p) => p.id === entry.projectId)
-  return project?.token?.trim() ?? ''
+/** 禅道 bug 状态字段 → Moo 的统一枚举（兼容 webhook 路径的 v0.1.x 老 remoteStatus 值） */
+function mapZentaoStatus(bug: ZentaoBugDetail): BugHistoryEntry['remoteStatus'] {
+  if (bug.deleted) return 'deleted'
+  switch (bug.status) {
+    case 'active': return 'open'
+    case 'resolved': return 'in_progress'
+    case 'closed': return 'done'
+    default: return undefined
+  }
+}
+
+async function fetchZentaoBugStatus(project: Project, remoteId: string): Promise<BugHistoryEntry['remoteStatus']> {
+  const z = project.zentao
+  if (!z?.baseUrl || !z.account || !z.password) return undefined
+  const bugId = Number(remoteId)
+  if (!Number.isFinite(bugId) || bugId <= 0) return undefined
+  const env: ZentaoEnv = {
+    baseUrl: z.baseUrl, account: z.account, password: z.password,
+    projectId: z.projectId, moduleId: z.moduleId
+  }
+  const r = await zentaoGetBug(env, bugId)
+  if (!r.ok) return undefined
+  return mapZentaoStatus(r.data)
+}
+
+async function fetchWebhookBugStatus(entry: BugHistoryEntry, project: Project | undefined): Promise<BugHistoryEntry['remoteStatus']> {
+  if (!entry.remoteBase) return undefined
+  const token = project?.token?.trim() ?? ''
+  const url = `${entry.remoteBase}/${entry.remoteId}/status-public`
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token })
+  })
+  if (!resp.ok) return undefined
+  const data = await resp.json() as { ok?: boolean; status?: BugHistoryEntry['remoteStatus'] }
+  return (data && data.ok && data.status) || undefined
 }
 
 function deriveRemoteBase(endpoint: string): string {

@@ -2,6 +2,31 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.3.0
+
+**feature · 历史 Tab 显示禅道 bug 实时状态**。提了 bug 后 Moo 里直接能看到禅道里这条 bug 的当前处理结果，闭环完整。**无 BREAKING**。
+
+### 用户视角
+
+- 「历史」Tab 每条 bug 显示状态 badge：**待处理 / 处理中 / 已完成 / 已删除**
+- 进 Tab 时如果有禅道项目的 history，自动同步一次状态（webhook 项目仍要手动点「同步远端状态」按钮）
+- 状态显示后 Moo 跟禅道流程闭环：「提一条 → 看到禅道里处理状态」不用切到禅道
+
+### 实现
+
+- `src/background/zentao/client.ts` 新增 `getBug(env, bugId)` → `GET /api.php/v1/bugs/{id}` 返 `{status, subStatus, deleted, assignedTo, resolution, ...}`（v1 平铺字段，v2 嵌套一层 `{status, bug}` 不必要绕）
+- `src/background/index.ts` `refreshHistoryStatus` 加 kind 分支：zentao 走 `fetchZentaoBugStatus` 调 `getBug` + `mapZentaoStatus`；webhook 走原 `fetchWebhookBugStatus`（POST `/{remoteId}/status-public` body.token 鉴权）
+- 状态映射 `mapZentaoStatus(bug)`：active → open / resolved → in_progress / closed → done / deleted → deleted（兼容 v0.1.x webhook 路径的 remoteStatus 枚举）
+- `src/devtools/tabs/History.vue` onMounted：检测到 kind=zentao 项目的 history 时自动调一次 `syncRemoteStatus`（避免对未配的 webhook 后端做无意义 ping）
+
+### 端到端实测
+
+用户真实 bug 9279/9285（status="active"）→ 映射 → mooStatus="open" → label「待处理」✓
+
+### 测试统计
+
+260 单测 + type-check + vite build 全绿。
+
 ## v0.2.3
 
 **hotfix · 大重写**：用户提醒 v0.2.0 dogfood 时**用错 v1 / form 端点**，应该用 v2 REST API。彻底重新探完 v2 API 文档（zentao.net/book/api/2142）+ 实测后重构。**无 BREAKING**。

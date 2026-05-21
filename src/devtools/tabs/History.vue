@@ -174,6 +174,10 @@ async function reload() {
 onMounted(async () => {
   await reload()
   dispose = onHistoryChanged(() => reload())
+  // v0.3：进 Tab 时如果有 zentao kind 项目的 history，自动同步一次状态。
+  // webhook 路径仍要用户点「同步远端状态」（避免对未配的后端做无意义 ping）。
+  const hasZentao = projects.value.some(p => p.kind === 'zentao' && list.value.some(e => e.projectId === p.id && e.remoteId))
+  if (hasZentao) void syncRemoteStatus()
 })
 
 onBeforeUnmount(() => {

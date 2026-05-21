@@ -323,6 +323,60 @@ export async function listUsers(env: ZentaoEnv, limit = 200): Promise<ZentaoResu
   })
 }
 
+// ────────────────────────── getBug ──────────────────────────
+
+export interface ZentaoBugDetail {
+  id: number
+  status: string             // 'active' / 'resolved' / 'closed'
+  subStatus?: string
+  deleted: boolean
+  assignedTo?: string        // account
+  assignedToName?: string    // realname（v1 返 {id, account, realname} 对象）
+  resolution?: string        // 'fixed' / 'wontfix' / 'duplicate' / ...
+  resolvedBy?: string
+  closedBy?: string
+  lastEditedDate?: string
+}
+
+/**
+ * 拉单条 bug 详情 —— 历史 Tab 状态回查用。v0.3 新增。
+ * 走 v1 端点（v2 嵌套一层 `{status, bug}` 没必要多绕，v1 直接平铺所有字段）。
+ */
+export async function getBug(env: ZentaoEnv, bugId: number): Promise<ZentaoResult<ZentaoBugDetail>> {
+  return withAuth(env, async (token) => {
+    const url = `${trimBase(env.baseUrl)}/api.php/v1/bugs/${bugId}`
+    const res = await fetch(url, {
+      credentials: 'omit',
+      headers: buildHeaders({ 'Token': token })
+    })
+    if (res.status === 401) return { _retry: true as const }
+    if (res.status === 404) return { ok: false as const, error: 'bug 不存在或已彻底删除' }
+    if (!res.ok) return { ok: false as const, error: `HTTP ${res.status}` }
+    const body = await readJson(res) as {
+      id?: number; status?: string; subStatus?: string; deleted?: boolean | string
+      assignedTo?: string | { account?: string; realname?: string }
+      resolution?: string; resolvedBy?: string; closedBy?: string; lastEditedDate?: string
+    } | null
+    if (!body || typeof body.id !== 'number') return { ok: false as const, error: 'bug 详情响应格式不对' }
+    const assignedToObj = typeof body.assignedTo === 'object' ? body.assignedTo : null
+    return {
+      ok: true as const,
+      data: {
+        id: body.id,
+        status: body.status ?? 'unknown',
+        subStatus: body.subStatus || undefined,
+        deleted: body.deleted === true || body.deleted === '1' || body.deleted === 'true',
+        assignedTo: assignedToObj?.account || (typeof body.assignedTo === 'string' ? body.assignedTo : undefined),
+        assignedToName: assignedToObj?.realname,
+        resolution: body.resolution || undefined,
+        resolvedBy: body.resolvedBy || undefined,
+        closedBy: body.closedBy || undefined,
+        lastEditedDate: body.lastEditedDate || undefined
+      }
+    }
+  })
+}
+
 // ────────────────────────── listModules ──────────────────────────
 
 /**
