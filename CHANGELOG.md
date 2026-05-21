@@ -40,15 +40,25 @@
 
 **Annotator** cancel-guard 整块换成 `<MooAlert>`，移除本地 `useFocusTrap` 调用 + `cancelGuardEl` ref。
 
-### E2E 80 case（v0.1.13 是 77 → +3）
+### E2E 91 case（v0.1.13 是 77 → +14）
+
+**panel-settings 跟齐重试队列明细 +3**：
 
 - panel-settings G5：展开重试队列 chevron → 列表渲染 N 条 + method/endpoint/attempts/lastError 文案
 - panel-settings G6：单条「×」删除 → mooRetryQueue 减 1 + 列表条数减 1
 - panel-settings G7：队列为空时 chevron 禁用 + 无明细列表
 
+**dialog-harness 解锁 content 世界 dialog 行为 +11**（**替代原本写在「v0.1.14 必须手摸」的 checklist 第 2+3 步**）：
+
+- `src/content/dialog-harness.{html,ts}`：仿 panel-harness 模式，在 chrome-extension:// 页内复现同款 shadow root + mock `chrome.runtime.sendMessage`。`?case=submit&fail=true/?case=submit&success=true/?case=annotator` 切场景。emit 收集到 `window.__mooHarnessEmits` 给 spec 断言用
+- SubmitDialog D1-D7（7 case）：初始焦点在标题输入框 / ESC → cancel / mask click → cancel / Tab 在 dialog 内循环 / 成功 1.5s 保护期 ESC 不关 / 同保护期 mask click 不关 / 失败横幅 × 只关横幅 dialog 仍在
+- Annotator cancel-guard A1-A4（4 case）：画 2 笔后点取消 → MooAlert 含「已有 2 处」 / ESC → dismiss + 不 emit cancel / mask click → 等同 ESC / 点「放弃标注」红按钮 → emit cancel
+
+工程要点：harness 用 `mode: 'open'` shadow（Playwright locator 不穿透 closed shadow）；ESC 走 useFocusTrap 的 case 通过 `pressKeyInShadow` helper 用 `dispatchEvent` 绕过 CDP 路由到 shadow host 的限制（注释里写明 why）。
+
 单测 170 case（v0.1.13 是 161 → +9）：retryQueue 加 5xx/网络错 lastError 写入 / statusText 空兜底 / 老数据兼容 / getQueueItems / removeQueueItem 找到 + 找不到 / storage 异常返空。
 
-**MooDialog / MooAlert 不补单测**：项目惯例 Vue 组件走 E2E + 手摸（SubmitDialog / Annotator 当前也无单测），加 happy-dom + @vue/test-utils 是测试架构变动超出本版范围。两个壳子的行为收口到发版 checklist 手摸。
+**MooDialog / MooAlert 不补单测**：项目惯例 Vue 组件走 E2E（SubmitDialog / Annotator 当前也无单测），加 happy-dom + @vue/test-utils 是测试架构变动超出本版范围。dialog-harness 那 11 个 E2E case 已经把 MooDialog/MooAlert 的所有公开行为（mask close / ESC / focus trap / Tab 循环 / consumer 决定真关）锁住了，相当于壳子的契约测试。
 
 ## v0.1.13
 
