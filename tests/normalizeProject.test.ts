@@ -233,7 +233,7 @@ describe('normalizeProject — zentao 字段（v0.2.0）', () => {
         defaultSeverity: 2,
         defaultPri: 4,
         defaultType: 'designdefect',
-        defaultAssignedTo: 'colorfulhome'
+        defaultKeywords: 'Moo,前端bug'
       }
     }).zentao!
     expect(z.baseUrl).toBe('https://yourcompany.chandao.net')
@@ -244,7 +244,7 @@ describe('normalizeProject — zentao 字段（v0.2.0）', () => {
     expect(z.defaultSeverity).toBe(2)
     expect(z.defaultPri).toBe(4)
     expect(z.defaultType).toBe('designdefect')
-    expect(z.defaultAssignedTo).toBe('colorfulhome')
+    expect(z.defaultKeywords).toBe('Moo,前端bug')
   })
 })
 
@@ -410,15 +410,30 @@ describe('normalizeProject — zentao.defaultType', () => {
   })
 })
 
-describe('normalizeProject — zentao.defaultAssignedTo', () => {
-  it('合法账号保留', () => {
-    expect(normalizeProject({ zentao: { defaultAssignedTo: 'alice' } }).zentao?.defaultAssignedTo).toBe('alice')
+describe('normalizeProject — zentao.defaultKeywords', () => {
+  it('合法字符串保留', () => {
+    expect(normalizeProject({ zentao: { defaultKeywords: 'Moo,前端bug' } }).zentao?.defaultKeywords).toBe('Moo,前端bug')
   })
 
-  it('未指派 / 空串 / 非法 → undefined（避免 multipart 里出现空 assignedTo 字段）', () => {
-    expect(normalizeProject({ zentao: {} }).zentao?.defaultAssignedTo).toBeUndefined()
-    expect(normalizeProject({ zentao: { defaultAssignedTo: '' } }).zentao?.defaultAssignedTo).toBeUndefined()
-    expect(normalizeProject({ zentao: { defaultAssignedTo: '张三' } }).zentao?.defaultAssignedTo).toBeUndefined()
+  it('空 / 缺字段 / 非字符串 → 兜底 "Moo"', () => {
+    expect(normalizeProject({ zentao: {} }).zentao?.defaultKeywords).toBe('Moo')
+    expect(normalizeProject({ zentao: { defaultKeywords: '' } }).zentao?.defaultKeywords).toBe('Moo')
+    expect(normalizeProject({ zentao: { defaultKeywords: '   ' } }).zentao?.defaultKeywords).toBe('Moo')
+    expect(normalizeProject({ zentao: { defaultKeywords: 123 } }).zentao?.defaultKeywords).toBe('Moo')
+  })
+
+  it('含 CRLF / 控制符 → 兜底 "Moo"（防 multipart 字段注入）', () => {
+    expect(normalizeProject({ zentao: { defaultKeywords: 'a\r\nb' } }).zentao?.defaultKeywords).toBe('Moo')
+    expect(normalizeProject({ zentao: { defaultKeywords: 'a\x00b' } }).zentao?.defaultKeywords).toBe('Moo')
+  })
+
+  it('长度 >200 截断到 200', () => {
+    const big = 'x'.repeat(300)
+    expect(normalizeProject({ zentao: { defaultKeywords: big } }).zentao?.defaultKeywords.length).toBe(200)
+  })
+
+  it('中文 / 标点 / 数字混合都保留', () => {
+    expect(normalizeProject({ zentao: { defaultKeywords: 'Moo, 前端 bug, 紧急' } }).zentao?.defaultKeywords).toBe('Moo, 前端 bug, 紧急')
   })
 })
 

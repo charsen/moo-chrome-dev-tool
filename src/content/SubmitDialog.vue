@@ -121,19 +121,13 @@
             <label>分级</label>
             <div class="moo-zentao-row">
               <select v-model="zentaoType" class="zentao-field">
-                <option v-for="t in ZENTAO_TYPE_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</option>
+                <option v-for="t in ZENTAO_TYPE_OPTIONS" :key="t.value" :value="t.value">类型：{{ t.label }}</option>
               </select>
               <select v-model.number="zentaoSeverity" class="zentao-field">
-                <option :value="1">严重度 1（致命）</option>
-                <option :value="2">严重度 2（严重）</option>
-                <option :value="3">严重度 3（一般）</option>
-                <option :value="4">严重度 4（提示）</option>
+                <option v-for="s in ZENTAO_SEVERITY_OPTIONS" :key="s.value" :value="s.value">严重度 {{ s.label }}</option>
               </select>
               <select v-model.number="zentaoPri" class="zentao-field">
-                <option :value="1">优先级 1（紧急）</option>
-                <option :value="2">优先级 2（高）</option>
-                <option :value="3">优先级 3（中）</option>
-                <option :value="4">优先级 4（低）</option>
+                <option v-for="p in ZENTAO_PRI_OPTIONS" :key="p.value" :value="p.value">优先级 {{ p.label }}</option>
               </select>
             </div>
           </div>
@@ -325,24 +319,11 @@ import type { CapturedRequest } from '@/types/requests'
 import type { ConsoleError } from '@/types/errors'
 import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes, type ZentaoListUsersRes, type ZentaoListModulesRes, type ZentaoPingCookieRes } from '@/types/messages'
 
+import { ZENTAO_TYPE_OPTIONS, ZENTAO_SEVERITY_OPTIONS, ZENTAO_PRI_OPTIONS } from '@/utils/zentaoOptions'
+
 /** 禅道 maxUploadSize 实测是 50M（manifest 里写死，普通账号无法改），保守取 49 MB */
 const ZENTAO_MAX_ATTACHMENT_MB = 49
 
-/** 禅道 bug type 候选值（biz12 内置），用户每次提交可选 */
-const ZENTAO_TYPE_OPTIONS = [
-  { value: 'codeerror', label: '类型：代码错误' },
-  { value: 'designdefect', label: '类型：设计缺陷' },
-  { value: 'config', label: '类型：配置相关' },
-  { value: 'install', label: '类型：安装部署' },
-  { value: 'security', label: '类型：安全相关' },
-  { value: 'performance', label: '类型：性能问题' },
-  { value: 'standard', label: '类型：标准规范' },
-  { value: 'automation', label: '类型：自动化' },
-  { value: 'designchange', label: '类型：设计变更' },
-  { value: 'newfeature', label: '类型：新需求' },
-  { value: 'improvement', label: '类型：改进建议' },
-  { value: 'others', label: '类型：其他' }
-]
 import { formatSubmitResult } from '@/utils/submitMessage'
 import { safeSendMessage } from '@/utils/messaging'
 // ElementPicker 只在用户点"选元素"按钮（picking=true）才挂载，默认根本不渲染。
@@ -630,7 +611,8 @@ const kind = computed(() => props.project.kind ?? 'webhook')
 const zentaoType = ref<string>(props.project.zentao?.defaultType || 'codeerror')
 const zentaoSeverity = ref<1 | 2 | 3 | 4>((props.project.zentao?.defaultSeverity ?? 3) as 1 | 2 | 3 | 4)
 const zentaoPri = ref<1 | 2 | 3 | 4>((props.project.zentao?.defaultPri ?? 3) as 1 | 2 | 3 | 4)
-const zentaoAssignedTo = ref<string>(props.project.zentao?.defaultAssignedTo ?? '')
+// 指派给：每条 bug 由用户在 SubmitDialog 单独选；环境配置不再有项目级默认（用户反馈每条情况不同）
+const zentaoAssignedTo = ref<string>('')
 /** 所属模块 id；0 = 根「/」。初值来自 project.zentao.moduleId（项目级默认） */
 const zentaoModuleId = ref<number>(props.project.zentao?.moduleId ?? 0)
 const zentaoModules = ref<NonNullable<ZentaoListModulesRes['modules']>>([])

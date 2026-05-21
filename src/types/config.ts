@@ -21,8 +21,8 @@ export interface ZentaoProjectConfig {
   defaultSeverity: 1 | 2 | 3 | 4
   defaultPri: 1 | 2 | 3 | 4
   defaultType: string
-  /** 可空；留空则禅道按项目规则自己分派 */
-  defaultAssignedTo?: string
+  /** 默认 keywords —— 团队按它在禅道搜索框搜出所有 Moo 提的 bug。默认 'Moo' */
+  defaultKeywords: string
 }
 
 export const DEFAULT_ZENTAO: ZentaoProjectConfig = {
@@ -33,7 +33,8 @@ export const DEFAULT_ZENTAO: ZentaoProjectConfig = {
   moduleId: 0,
   defaultSeverity: 3,
   defaultPri: 3,
-  defaultType: 'codeerror'
+  defaultType: 'codeerror',
+  defaultKeywords: 'Moo'
 }
 
 export interface BugServer {
@@ -236,10 +237,18 @@ function normalizeZentao(raw: unknown): ZentaoProjectConfig | undefined {
     defaultSeverity: sanitizeSeverityOrPri(r.defaultSeverity, DEFAULT_ZENTAO.defaultSeverity),
     defaultPri: sanitizeSeverityOrPri(r.defaultPri, DEFAULT_ZENTAO.defaultPri),
     defaultType: sanitizeBugType(r.defaultType),
-    defaultAssignedTo: typeof r.defaultAssignedTo === 'string'
-      ? (sanitizeZentaoAccount(r.defaultAssignedTo) || undefined)
-      : undefined
+    defaultKeywords: sanitizeKeywords(r.defaultKeywords)
   }
+}
+
+/** keywords：用户可见 ASCII / 中文 / 数字 / 标点（,-_ 空格）。最长 200。空兜 'Moo' */
+function sanitizeKeywords(raw: unknown): string {
+  if (typeof raw !== 'string') return DEFAULT_ZENTAO.defaultKeywords
+  const s = raw.trim().slice(0, 200)
+  if (!s) return DEFAULT_ZENTAO.defaultKeywords
+  // 拒 CRLF + 控制符（防 multipart 字段注入），其他都允许（中文搜索常用）
+  if (/[\r\n\x00-\x1F]/.test(s)) return DEFAULT_ZENTAO.defaultKeywords
+  return s
 }
 
 /** baseUrl: 必须 http(s):// + trim trailing slash + 长度 ≤ 256 */

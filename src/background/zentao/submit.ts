@@ -331,18 +331,19 @@ export async function submitToZentao(
   const ua = parseUserAgent(req.userAgent || '')
 
   // SubmitDialog 里用户每次可改的字段，优先于 project 默认值（项目级默认是兜底）
+  // 指派给：环境配置不再有 defaultAssignedTo（用户反馈每条 bug 情况不同），SubmitDialog
+  // 提交时单条选；未选则空 → 禅道按项目规则自动分派
   const fields: ZentaoSubmitFields = {
     title: req.title,
     steps: buildZentaoStepsHtml(req, project, uploaded, failed),
     severity: req.zentaoSeverity ?? z.defaultSeverity,
     pri: req.zentaoPri ?? z.defaultPri,
     type: req.zentaoType ?? z.defaultType,
-    assignedTo: req.zentaoAssignedTo || z.defaultAssignedTo,
+    assignedTo: req.zentaoAssignedTo || undefined,
     os: ua.os,
     browser: ua.browser,
-    // 默认 'Moo' 让团队能按关键词搜出所有 Moo 上报的 bug —— 项目级 / 用户级目前不开放
-    // 配置（保持 UX 简洁）；后续如需自定义再加 zentao.defaultKeywords 字段
-    keywords: 'Moo'
+    // 环境配置里用户可自定义默认 keywords（兜底 'Moo'）
+    keywords: z.defaultKeywords
   }
 
   try {

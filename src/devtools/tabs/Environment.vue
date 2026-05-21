@@ -177,39 +177,34 @@
             <span class="tpl-hint">模块 ID 通常填 0（默认）</span>
           </div>
 
-          <details class="zentao-advanced">
-            <summary>提交默认值（每条 bug 提交时可单独改）</summary>
+          <div class="zentao-defaults">
+            <div class="zentao-defaults-title">提交默认值（每条 bug 提交时可单独改）</div>
             <div class="row">
               <label>类型</label>
-              <input v-model="activeProject.zentao.defaultType" class="narrow" placeholder="codeerror" />
-              <span class="tpl-hint">禅道 bug type 字段（codeerror / designdefect / config / ...）</span>
+              <select v-model="activeProject.zentao.defaultType" class="narrow">
+                <option v-for="t in ZENTAO_TYPE_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</option>
+              </select>
+              <span class="tpl-hint">禅道 bug type 字段</span>
             </div>
             <div class="row">
               <label>严重度</label>
               <select v-model.number="activeProject.zentao.defaultSeverity" class="narrow">
-                <option :value="1">1 致命</option>
-                <option :value="2">2 严重</option>
-                <option :value="3">3 一般</option>
-                <option :value="4">4 提示</option>
+                <option v-for="s in ZENTAO_SEVERITY_OPTIONS" :key="s.value" :value="s.value">{{ s.label }}</option>
               </select>
               <label>优先级</label>
               <select v-model.number="activeProject.zentao.defaultPri" class="narrow">
-                <option :value="1">1 紧急</option>
-                <option :value="2">2 高</option>
-                <option :value="3">3 中</option>
-                <option :value="4">4 低</option>
+                <option v-for="p in ZENTAO_PRI_OPTIONS" :key="p.value" :value="p.value">{{ p.label }}</option>
               </select>
             </div>
             <div class="row">
-              <label>指派给</label>
+              <label>默认关键词</label>
               <input
-                :value="activeProject.zentao.defaultAssignedTo ?? ''"
-                @input="activeProject.zentao!.defaultAssignedTo = ($event.target as HTMLInputElement).value || undefined"
-                placeholder="禅道账号；留空则按项目规则自动分派"
+                v-model="activeProject.zentao.defaultKeywords"
+                placeholder="禅道搜索框输此字符可找到所有 Moo 上报的 bug"
                 class="grow"
               />
             </div>
-          </details>
+          </div>
         </template>
 
         <!-- ────────────── Webhook 表单（kind=webhook，原有 UI） ────────────── -->
@@ -362,6 +357,7 @@ import {
 } from '@/types/config'
 import { MSG, type ZentaoCredsReq, type ZentaoTestConnectionRes, type ZentaoListProjectsRes } from '@/types/messages'
 import { safeSendMessage } from '@/utils/messaging'
+import { ZENTAO_TYPE_OPTIONS, ZENTAO_SEVERITY_OPTIONS, ZENTAO_PRI_OPTIONS } from '@/utils/zentaoOptions'
 import { clone } from '@/utils/clone'
 import { confirmDialog } from '../components/confirm'
 import PayloadEditorModal from '../components/PayloadEditorModal.vue'
@@ -1166,21 +1162,17 @@ function truncate(s: string, n: number): string {
 }
 .zentao-status.ok { color: var(--moo-c-ok-fg, #16a34a); }
 .zentao-status.err { color: var(--moo-c-err-fg, #dc2626); }
-.zentao-advanced {
+.zentao-defaults {
   margin-top: 12px;
-  padding: 8px 10px;
+  padding: 10px 12px 4px;
   border: 1px solid var(--moo-c-border);
   border-radius: var(--moo-r-md);
   background: var(--moo-c-bg-elev);
 }
-.zentao-advanced > summary {
-  cursor: pointer;
+.zentao-defaults-title {
   font-size: var(--moo-fs-sm);
-  color: var(--moo-c-text-muted);
-  user-select: none;
-}
-.zentao-advanced[open] > summary {
-  margin-bottom: 8px;
   color: var(--moo-c-text);
+  margin-bottom: 8px;
+  font-weight: 500;
 }
 </style>
