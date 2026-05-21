@@ -45,6 +45,20 @@ function shouldSkip(url: string): boolean {
   return /^(chrome-extension|data|blob|chrome|moz-extension):/i.test(url)
 }
 
+/**
+ * 把 fetch/xhr 传入的 url 补成完整 URL（带 origin）。
+ * 修 v0.2.0 坑：用户 `fetch('/api/foo')` 相对路径让 curl 缺 origin 复制不能跑。
+ *
+ * **本文件 IIFE 注入 MAIN world 不能 import @/ 模块**，所以内联实现；
+ * 同份逻辑的权威实现 + 单测在 src/utils/url.ts，改一处记得两处同步。
+ */
+function absolutize(url: string): string {
+  if (!url) return url
+  // 已含 scheme（https / http / ws / file ...）—— 不动
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) return url
+  try { return new URL(url, location.href).toString() } catch { return url }
+}
+
 function headersToObj(h: Headers | Record<string, string> | string[][] | undefined): Record<string, string> {
   const out: Record<string, string> = {}
   if (!h) return out
@@ -101,6 +115,13 @@ window.fetch = async function (input: RequestInfo | URL, init?: RequestInit): Pr
     if (init?.method) method = init.method
     if (init?.headers) reqHeaders = { ...reqHeaders, ...headersToObj(init.headers as any) }
     reqBody = await bodyToString(init?.body)
+    // 关键：用户 fetch('/api/foo') 用相对路径时 url 是 '/api/foo'，curl 命令复制出来
+    // 不带 origin 不能跑。用 location.href 当 base 让 URL 构造器 normalize 成完整 URL。
+    // - 绝对 URL（https://...）：原样保留
+    // - 相对路径（/foo 或 foo）：补 location.origin
+    // - protocol-relative（//host/path）：补 location.protocol
+    // 解析失败时回落到原 url 字符串保证不丢请求。
+    url = absolutize(url)
   } catch {}
 
   if (shouldSkip(url)) return origFetch.call(this, input as any, init)
@@ -160,6 +181,9 @@ XMLHttpRequest.prototype.open = function (this: MooXHR, method: string, url: str
   try {
     safeUrl = url == null ? '' : String(url as unknown)
   } catch { /* Symbol 等不可 String 化的极端情况 */ }
+  // 与 fetch hook 同等处理：xhr.open('/api/foo') 相对路径 → 补 origin，
+  // 让 curl 命令拿到完整 URL 复制即可跑
+  safeUrl = absolutize(safeUrl)
   this.__moo = {
     id: uid(),
     method: (method || 'GET').toUpperCase(),

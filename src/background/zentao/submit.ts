@@ -22,6 +22,7 @@ import type { Project, ZentaoProjectConfig } from '@/types/config'
 import type { CapturedRequest } from '@/types/requests'
 import type { SubmitBugReq, SubmitBugRes } from '@/types/messages'
 import { toCurl, toCurlScript } from '@/utils/curlGenerator'
+import { redactBody } from '@/utils/redact'
 import { parseUserAgent } from '@/utils/ua'
 import {
   submitBug as zentaoClientSubmit,
@@ -253,11 +254,14 @@ export function buildZentaoStepsHtml(
 }
 
 /**
- * 单条请求一个 curl 代码块。WAF 绕开：URL 里 `://` 插入 zero-width space（U+200B），
- * 人眼看一样但 WAF 看不到完整 `https://X.Y.Z` 模式，禅道服务端放行。
+ * 单条请求一个 curl 代码块 + response 代码块。
  *
- * **代价**：复制 inline curl 粘到终端 curl 会报「URL using bad/illegal format」，
- * 用户要执行得下载附件 moo-requests.curl.sh（那里没 ZWS）。inline 仅供查看。
+ * WAF 绕开：URL 里 `://` 插入 zero-width space（U+200B），人眼看一样但 WAF 看不到完整
+ * `https://X.Y.Z` 模式，禅道服务端放行。**代价**：复制 inline curl 粘到终端 curl 会报
+ * 「URL using bad/illegal format」，用户要执行得下载附件 moo-requests.curl.sh（那里没 ZWS）。
+ *
+ * Response：body 走 redact 脱敏 + ZWS + 截断 1.5KB。完整 raw 在 moo-requests.json 附件。
+ * binary（image/* / video/* / application/octet-stream）只显示 size 不放 body。
  */
 function buildRequestCurlBlock(r: CapturedRequest, project: Project): string {
   const curl = obfuscateUrlsForWaf(toCurl(r, project.redact))
@@ -272,8 +276,53 @@ function buildRequestCurlBlock(r: CapturedRequest, project: Project): string {
       + `<code>${escapeHtml(shortUrl)}</code> `
       + `<small>${Math.round(r.duration)}ms</small>`
     + `</p>`,
-    `<pre><code>${escapeHtml(curl)}</code></pre>`
+    `<pre><code>${escapeHtml(curl)}</code></pre>`,
+    buildResponseBlock(r, project)
+  ].filter(Boolean).join('\n')
+}
+
+/** Response 代码块 —— 没 body 时返空串（buildRequestCurlBlock 用 filter 跳） */
+function buildResponseBlock(r: CapturedRequest, project: Project): string {
+  if (!r.responseBody && !r.responseSizeBytes) return ''
+  const ct = (headerCI(r.responseHeaders, 'content-type').split(';')[0] ?? '').trim()
+  const sizeStr = formatBytes(r.responseSizeBytes || (r.responseBody?.length ?? 0))
+  const isBinary = /^(image|video|audio)\//.test(ct) || ct === 'application/octet-stream'
+
+  // 标头一行：内容类型 + 大小（让用户一眼判断该不该看 body）
+  const headerLine = `<p style="font-size:12px;color:#666;margin:8px 0 4px;">`
+    + `↓ Response${ct ? ` · <code>${escapeHtml(ct)}</code>` : ''} · ${escapeHtml(sizeStr)}`
+
+  if (isBinary) {
+    return headerLine + ` · 二进制响应（不 inline，请查附件）</p>`
+  }
+  if (!r.responseBody) {
+    return headerLine + ` · 空响应体</p>`
+  }
+
+  // body 走 project.redact 脱敏 → 截断到 1.5KB（防 steps 太长）→ ZWS 绕 WAF
+  const RESP_MAX_INLINE = 1500
+  const redacted = redactBody(r.responseBody, project.redact.bodyKeys) ?? r.responseBody
+  let preview = redacted
+  let truncated = false
+  if (preview.length > RESP_MAX_INLINE) {
+    preview = preview.slice(0, RESP_MAX_INLINE)
+    truncated = true
+  }
+  preview = obfuscateUrlsForWaf(preview)
+
+  return [
+    headerLine + (truncated ? '（已截断 1.5KB，完整见 moo-requests.json）' : '') + `</p>`,
+    `<pre><code>${escapeHtml(preview)}</code></pre>`
   ].join('\n')
+}
+
+/** Header key 大小写不敏感取值（HTTP/2 全小写，HTTP/1 可能首字母大写） */
+function headerCI(headers: Record<string, string>, key: string): string {
+  const lc = key.toLowerCase()
+  for (const [k, v] of Object.entries(headers)) {
+    if (k.toLowerCase() === lc) return v
+  }
+  return ''
 }
 
 /**

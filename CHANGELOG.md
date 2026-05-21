@@ -2,6 +2,25 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.2.1
+
+**hotfix**：v0.2.0 发版后立刻发现的 curl URL 缺 origin 问题——用户写 `fetch('/api/foo')` 这种相对路径时 captured-request 的 url 字段是 `/api/foo`，导致 SubmitDialog inline curl + 禅道 bug 详情页 curl 代码块 + `moo-requests.curl.sh` 附件里的 URL **全都缺 origin**，复制到终端 `curl: (3) URL using bad/illegal format`。**无 BREAKING**。
+
+### 修复
+
+- `src/utils/url.ts` 新增 `absolutize(url, base?)`：用 URL 构造器 base=`location.href` 把相对路径补成完整 URL，URL 构造失败兜底返原值不抛
+  - 绝对 URL（`https://...`）：原样
+  - 绝对路径（`/foo`）：补 origin
+  - 相对路径（`foo` / `../foo`）：按 base path resolve
+  - protocol-relative（`//host/path`）：补 protocol
+  - 其他 scheme（`ws://` / `file:` / 等）：原样不改
+- `src/injected/main-world.ts` fetch / XHR hook 调用 absolutize 把 url 字段统一 normalize；内联实现（main-world 严格自包含不引 @/ 模块），但与 utils/url.ts 同步
+- `tests/url.test.ts` +11 单测覆盖：绝对 URL / 绝对路径 / 相对路径 / protocol-relative / `../` / 空串 / 带 query / 带 port / 非法 base 兜底 / 其他 scheme
+
+### 测试统计
+
+249 → **260 单测**（+11 url），type-check + vite build 全绿。
+
 ## v0.2.0
 
 **禅道集成**——把 Moo 上报通道从「只支持自建 B 路径接口」扩成「自建 B / 禅道（云禅道 biz12 + 自建禅道，v2.0 API）」二选一。同一份截图 / 录像 / 请求 / 错误 / curl 复现，可以直接一键开成禅道 bug，自带附件。**无 BREAKING**——老项目（无 `kind` 字段）一律按 `kind: 'b'` 走原路径，行为不变。
