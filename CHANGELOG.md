@@ -4,7 +4,24 @@
 
 ## v0.1.14
 
-待重试队列可见性 + content 世界 dialog 壳子抽象。**无 BREAKING**——后端无需配套升级。
+待重试队列可见性 + content 世界 dialog 壳子抽象 + 悬浮球拖动 lost-pointerup race 修。**无 BREAKING**——后端无需配套升级。
+
+**发版决策小记**：用户报「悬浮球不好拖动 / 跟着鼠标跑 / 乱跑」明确严重 bug，需 hotfix。dialog 行为通过 E2E 95 case 等同手摸（含新加的 dialog-harness 11 case + 悬浮球 4 case）。三条跳 checklist 标准前两条满足（非 BREAKING + 全绿），第 3 条 dogfood ≥ 几天**主动跳过**——bug 修复有时效压力且改动局部（FloatingBall + dialog 行为锁），不动 submit / 网络 / 数据契约。
+
+### 悬浮球 lost-pointerup race 修（用户报「跟鼠标跑 / 乱跑」）
+
+根因：`onDown` 只挂 window `pointermove` + `pointerup({once:true})`，三个场景下 pointerup 不送达 window：
+1. 用户把球拖出视口外松手（指针离开浏览器窗口）
+2. 浏览器在系统通知 / alt-tab 期间发 `pointercancel` 不发 `pointerup`
+3. 上一次 pointerup 丢了，pointermove 一直挂着继续跟鼠标；下一次 `onDown` 把 `downAt/originPos` 覆盖但 stale move 监听共用一个 → 球乱跳
+
+修复 4 个口子兜底（`src/content/FloatingBall.vue`）：
+- 抽 `endDrag(save)` 统一收口，idempotent，移除所有 drag 监听 + 重置内部状态
+- `pointerup / pointercancel` 走同一个 `onUpOrCancel` → `endDrag(true)` 落盘
+- `window blur` 兜底：alt-tab 时 `endDrag(false)` 清 listener 不落盘
+- `onDown` 起手先 `endDrag()` 防御性扫尾，即使前一轮丢了 pointerup 这一轮也能恢复
+
+E2E 锁 F1-F4 case：正常路径 / lost pointerup + 下次 down 起手扫尾 / pointercancel 等同 pointerup / window blur 兜底。
 
 ### Settings「待重试列表」可见性
 
@@ -40,7 +57,7 @@
 
 **Annotator** cancel-guard 整块换成 `<MooAlert>`，移除本地 `useFocusTrap` 调用 + `cancelGuardEl` ref。
 
-### E2E 91 case（v0.1.13 是 77 → +14）
+### E2E 95 case（v0.1.13 是 77 → +18）
 
 **panel-settings 跟齐重试队列明细 +3**：
 
@@ -53,6 +70,7 @@
 - `src/content/dialog-harness.{html,ts}`：仿 panel-harness 模式，在 chrome-extension:// 页内复现同款 shadow root + mock `chrome.runtime.sendMessage`。`?case=submit&fail=true/?case=submit&success=true/?case=annotator` 切场景。emit 收集到 `window.__mooHarnessEmits` 给 spec 断言用
 - SubmitDialog D1-D7（7 case）：初始焦点在标题输入框 / ESC → cancel / mask click → cancel / Tab 在 dialog 内循环 / 成功 1.5s 保护期 ESC 不关 / 同保护期 mask click 不关 / 失败横幅 × 只关横幅 dialog 仍在
 - Annotator cancel-guard A1-A4（4 case）：画 2 笔后点取消 → MooAlert 含「已有 2 处」 / ESC → dismiss + 不 emit cancel / mask click → 等同 ESC / 点「放弃标注」红按钮 → emit cancel
+- FloatingBall 拖动 F1-F4（4 case，**对应悬浮球 lost-pointerup race 修**）：正常 down/move/up / lost pointerup + 下次 down 起手扫尾 / pointercancel 等同 pointerup / window blur 兜底
 
 工程要点：harness 用 `mode: 'open'` shadow（Playwright locator 不穿透 closed shadow）；ESC 走 useFocusTrap 的 case 通过 `pressKeyInShadow` helper 用 `dispatchEvent` 绕过 CDP 路由到 shadow host 的限制（注释里写明 why）。
 
