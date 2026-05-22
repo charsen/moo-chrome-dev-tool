@@ -75,20 +75,34 @@ export interface ZentaoModuleSummary {
 
 const tokenCache = new Map<string, string>()
 const productCache = new Map<string, { productId: number; cachedAt: number }>()
+/**
+ * v0.4.0 新增：login 时解析响应里的 user 对象写入此缓存。
+ * 用途：v2 没有「ping 当前会话用户」无参端点，只有 `GET /v2/users/{userid}`（按 ID 拿详情），
+ * 所以必须在 login 成功的同一调用里把 user.id 缓存住，后续 ping / probeCookieSession 才能查。
+ * 缓存 key 跟 tokenCache 一致：`${baseUrl}::${account}`。
+ */
+const userCache = new Map<string, { id: number; account: string; realname: string }>()
 const PRODUCT_TTL = 24 * 60 * 60 * 1000
 
 function envKey(env: ZentaoEnv): string {
-  return `${env.baseUrl}::${env.account}`
+  // trimBase 必须跟 loginKey 一致 —— login 时写 userCache 用 trimBase(baseUrl)，envKey 不 trim
+  // 会导致 ensureCookieSession 内 `userCache.get(envKey(env))` 拿不到 login 存的值（v0.4.0 修）
+  return `${trimBase(env.baseUrl)}::${env.account}`
+}
+
+function loginKey(baseUrl: string, account: string): string {
+  return `${trimBase(baseUrl)}::${account}`
 }
 
 function projectKey(env: ZentaoEnv): string {
-  return `${env.baseUrl}::${env.projectId}`
+  return `${trimBase(env.baseUrl)}::${env.projectId}`
 }
 
 /** 测试钩子：单测 / 退出时清干净 */
 export function _clearZentaoCaches(): void {
   tokenCache.clear()
   productCache.clear()
+  userCache.clear()
 }
 
 // ─────────────────────────── 底层 fetch helper ───────────────────────────
@@ -103,6 +117,28 @@ function buildHeaders(extra: Record<string, string> = {}): Headers {
   return h
 }
 
+/**
+ * 检测禅道 v2 endpoint 鉴权失效的非标响应（v0.4.0 实测发现，在某真禅道实例 biz12 上）。
+ *
+ * 现象：v2 endpoint 未带 token 或 token 失效时，**不返 401**，而是：
+ *   - HTTP 200
+ *   - content-type: text/html; charset=UTF-8（不是 application/json）
+ *   - body: `{"result":false,"message":"登录已超时，请重新登入!"}`
+ *
+ * 国产 API 应用层错误码风格（不依赖 HTTP 状态码）。Moo 所有 v2 endpoint 解析里
+ * 都必须先过这个 helper，命中就让 withAuth 触发 retry login（清 token 重 login 一次）。
+ *
+ * v1 endpoint 返标准 401 不走这里，原 `if (res.status === 401) return { _retry }` 即可。
+ */
+function isV2AuthExpired(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false
+  const b = body as { result?: unknown; message?: unknown }
+  if (b.result !== false) return false
+  const msg = typeof b.message === 'string' ? b.message : ''
+  // 中英文 token 失效关键词全兜
+  return /登录已超时|请重新登入|请重新登录|未登录|未授权|unauthor|token.*(expir|invalid|missing)/i.test(msg)
+}
+
 async function readJson(res: Response): Promise<unknown> {
   const text = await res.text()
   if (!text) return null
@@ -113,16 +149,19 @@ async function readJson(res: Response): Promise<unknown> {
 // ─────────────────────────────── login ────────────────────────────────
 
 /**
- * 用 account+password 换 token。无副作用（不写缓存）。
+ * 用 account+password 换 token。
  *
- * 走 v2 端点（2026-05 实测 yourcompany.chandao.net biz12）：
+ * 走 v2 端点（2026-05 实测 真禅道实例 biz12）：
  *   POST /api.php/v2/users/login
  *   body: {account, password}
  *   成功（HTTP 200）: {status:'success', token:'...', user:{id, account, realname, ...}}
  *   失败（HTTP 200）: {status:'failed', reason:'登录失败...'}
  *
- * 注意 v2 失败也返 200，必须看 status 字段；v2 token 在 v1 的其他端点
- * (/user /products form 端点) 完全兼容，所以其他方法不用动。
+ * v0.4.0 改：把响应里的 user 对象写入 userCache（key 跟 tokenCache 共用）。
+ *   动机：v2 没有「ping 当前会话用户」无参端点，所有 v2 用户查询都要 userid 路径参数。
+ *   login 是唯一拿 userid 的地方（响应自带），错过这次就只能再 login。
+ *
+ * 注意 v2 失败也返 200，必须看 status 字段。
  */
 export async function login(baseUrl: string, account: string, password: string): Promise<ZentaoResult<string>> {
   const url = `${trimBase(baseUrl)}/api.php/v2/users/login`
@@ -142,8 +181,22 @@ export async function login(baseUrl: string, account: string, password: string):
   } catch (e) {
     return { ok: false, error: `网络错误：${(e as Error).message}` }
   }
-  const body = await readJson(res) as { status?: string; token?: string; reason?: string; error?: string } | null
+  const body = await readJson(res) as {
+    status?: string
+    token?: string
+    user?: { id?: number | string; account?: string; realname?: string }
+    reason?: string
+    error?: string
+  } | null
   if (res.ok && body?.status === 'success' && typeof body.token === 'string' && body.token) {
+    // v0.4.0：把 user 对象写 userCache，给 ping / probeCookieSession 用
+    const u = body.user
+    if (u && (typeof u.id === 'number' || typeof u.id === 'string') && u.account && u.realname) {
+      const uid = typeof u.id === 'number' ? u.id : Number(u.id)
+      if (Number.isFinite(uid)) {
+        userCache.set(loginKey(baseUrl, account), { id: uid, account: u.account, realname: u.realname })
+      }
+    }
     return { ok: true, data: body.token }
   }
   const errMsg = body?.reason || body?.error
@@ -168,48 +221,35 @@ function _clearToken(env: ZentaoEnv): void {
 // ──────────────────────────── ensureCookieSession ────────────────────────────
 
 /**
- * 确保 cookie session 在。先 ping `/api.php/v1/user`，未登录就调 login 自动登录。
+ * 确保有可用的 session + 拿到用户真名（给 SubmitDialog 状态条 / 「测试连接」按钮用）。
  *
- * 设计动机（v0.2.3）：v0.2.0-0.2.2 要求用户「先在浏览器手动登录禅道页面」才能用 Moo。
- * 实测发现 v2 API `POST /api.php/v2/users/login` 用账号密码登录时**同时也 set cookie**
- * （v0.2.x 一直用了 credentials:'omit' 把 cookie 扔了 → 浪费）。改成 credentials:'include'
- * 即可让 Chrome 接收 Set-Cookie 写入 jar，后续 SW 跨 origin fetch credentials:'include' 自带 cookie，
- * 附件上传 + bug 提交都工作。
+ * **v0.4.0 dogfood 后重构 — 完全 v2 化「正规路径」**：
+ * 删除 probeCookieSession 主动探测路径，因为：
+ *   1. v2 RESTful API 设计上**只接受 token header 鉴权**（dogfood 实测：v2 endpoint 即使带 cookie
+ *      也只看 token，没 token 就返 200 + result:false 登录已超时）
+ *   2. v2 没有「拿当前会话用户」无参 endpoint（只有 /users/{userid} 按 ID 详情）
+ *   3. 唯一能探 cookie 的 v1 `/user` 无参魔法端点，跟 v2 RESTful 风格冲突 —— 不走兜底
  *
- * 副作用提示：login 成功后**用户在禅道页面也是登录态**（共享 cookie jar），跟用户手动登录效果一样。
+ * **正规路径**：trust login 一次（v2 login credentials:'include' 实测同时 set cookie 进 jar），
+ * 直接从 userCache 拿 realname 返。token cache 命中跳 login（说明上次 login 还在 SW 内存）；
+ * 附件上传真挂了让 uploadEditorFile 报具体错（cookie 真没在 jar 时 zui editor 端点返空 body）。
  *
- * caller（submitToZentao / SubmitDialog cookie 预检）都调它，让用户完全无感 ——
- * 没登录就自动登录，登录态在就直接用，cookie 失效也自动恢复。
+ * 副作用：login 成功后用户在禅道页面也是登录态（共享 cookie jar）。
  */
 export async function ensureCookieSession(env: ZentaoEnv): Promise<ZentaoResult<{ realname: string }>> {
-  const probe = await probeCookieSession(env.baseUrl)
-  if (probe.ok) return probe
-  // cookie 不在 —— 用账号密码自动 login（同时拿 token 进 cache + 写 cookie 进 jar）
+  // ensureToken 内部：token cache 命中 → 复用；不命中 → login（同时写 token + userCache + cookie jar）
+  const t = await ensureToken(env)
+  if (!t.ok) return t
+  const cached = userCache.get(envKey(env))
+  if (cached?.realname) return { ok: true, data: { realname: cached.realname } }
+  // 罕见：token 在但 userCache 空（比如别处单独清了 user cache）—— 强制重 login 拿完整 user
+  _clearToken(env)
   const loginRes = await login(env.baseUrl, env.account, env.password)
   if (!loginRes.ok) return { ok: false, error: loginRes.error }
   tokenCache.set(envKey(env), loginRes.data)
-  // 再 probe 确认 cookie 真的写入了
-  const reprobe = await probeCookieSession(env.baseUrl)
-  if (reprobe.ok) return reprobe
-  return { ok: false, error: 'login 成功但 cookie 未写入 jar（请检查 host_permissions 或浏览器 cookie 设置）' }
-}
-
-async function probeCookieSession(baseUrl: string): Promise<ZentaoResult<{ realname: string }>> {
-  try {
-    const res = await fetch(`${trimBase(baseUrl)}/api.php/v1/user`, {
-      credentials: 'include',
-      headers: new Headers({ 'X-Requested-With': 'XMLHttpRequest' })
-    })
-    if (!res.ok) return { ok: false, error: `cookie 未登录（HTTP ${res.status}）` }
-    const text = await res.text()
-    try {
-      const body = JSON.parse(text) as { profile?: { realname?: string } }
-      if (body.profile?.realname) return { ok: true, data: { realname: body.profile.realname } }
-    } catch { /* HTML 错误页 */ }
-    return { ok: false, error: 'cookie 未登录（profile 缺失）' }
-  } catch (e) {
-    return { ok: false, error: `网络错误：${(e as Error).message}` }
-  }
+  const reCached = userCache.get(envKey(env))
+  if (reCached?.realname) return { ok: true, data: { realname: reCached.realname } }
+  return { ok: false, error: 'login 成功但响应里缺 user.realname 字段（v2 login 响应 shape 异常）' }
 }
 
 // ──────────────────────────── uploadEditorFile ────────────────────────────
@@ -267,33 +307,75 @@ export async function uploadEditorFile(
 
 // ──────────────────────────────── ping ────────────────────────────────
 
-/** 验 token 有效性 + 拿用户信息。Settings「测试连接」按钮用。 */
+/**
+ * 验 token 有效性 + 拿用户信息。Settings「测试连接」按钮用。
+ *
+ * v0.4.0 改走 v2 `GET /api.php/v2/users/{userid}`。v1 无参 `/user` 端点 v2 没等价 —— 必须用
+ * cached userId 当路径参数。userCache 在 login 成功时写入，ensureToken 内若 token 未缓存会
+ * 自动 login → 顺便填 userCache。所以正常路径下 ping 调用前 userCache 必有值。
+ */
 export async function ping(env: ZentaoEnv): Promise<ZentaoResult<ZentaoProfile>> {
   return withAuth(env, async (token) => {
-    const url = `${trimBase(env.baseUrl)}/api.php/v1/user`
+    const cached = userCache.get(envKey(env))
+    if (!cached) {
+      // 罕见：ensureToken 复用了已有 token cache 但 userCache 被清（比如别处单独 _clearZentaoCaches）
+      // 强制重 login 拿 user
+      _clearToken(env)
+      return { _retry: true as const }
+    }
+    const url = `${trimBase(env.baseUrl)}/api.php/v2/users/${cached.id}`
     const res = await fetch(url, {
       credentials: 'omit',
       headers: buildHeaders({ 'Token': token })
     })
     if (res.status === 401) return { _retry: true as const }
-    const body = await readJson(res) as { profile?: ZentaoProfile } | null
-    if (res.ok && body?.profile) return { ok: true as const, data: body.profile }
-    return { ok: false as const, error: `HTTP ${res.status}` }
+    if (!res.ok) return { ok: false as const, error: `HTTP ${res.status}` }
+    // v2 详情端点平铺响应（实测 + 文档惯例：v2 detail endpoint 直接返对象字段，不嵌套）
+    const body = await readJson(res) as {
+      result?: boolean; message?: string
+      id?: number | string; account?: string; realname?: string
+      profile?: { id?: number; account?: string; realname?: string }
+    } | null
+    if (isV2AuthExpired(body)) return { _retry: true as const }
+    // 双兜底：v2 平铺 / 万一禅道版本变化嵌套 profile
+    const idRaw = body?.id ?? body?.profile?.id
+    if (idRaw == null) {
+      // 没 id 字段说明响应根本不是用户详情（可能是业务错响应如「用户不存在」）—— 不要拿 cached fallback
+      const errMsg = typeof body?.message === 'string' && body.message ? body.message : 'v2 用户详情响应格式不对'
+      return { ok: false as const, error: errMsg }
+    }
+    const account = body?.account || body?.profile?.account || cached.account
+    const realname = body?.realname || body?.profile?.realname || cached.realname
+    const id = typeof idRaw === 'number' ? idRaw : Number(idRaw)
+    if (Number.isFinite(id) && account && realname) {
+      // 更新 cache（万一禅道侧改名）
+      userCache.set(envKey(env), { id, account, realname })
+      return { ok: true as const, data: { id, account, realname } }
+    }
+    return { ok: false as const, error: 'v2 用户详情响应格式不对' }
   })
 }
 
 // ─────────────────────────── listProjects ────────────────────────────
 
-/** Settings「从禅道拉列表」用。 */
+/**
+ * Settings「从禅道拉列表」用。
+ *
+ * v0.4.0 改走 v2：`GET /api.php/v2/projects?browseType=all&recPerPage=N&pageID=1`
+ *   - browseType=all 必须显式传（v2 默认 undone 会漏掉已完成项目，用户视角丢条目是陷阱）
+ *   - 分页参数从 v1 的 `limit` 改成 v2 的 `recPerPage`（v2 不认 limit）
+ *   - 响应仍是 `{projects:[...]}`（实测；v2 可能多包一层 status:'success'，解析里兼容）
+ */
 export async function listProjects(env: ZentaoEnv, limit = 50): Promise<ZentaoResult<ZentaoProjectSummary[]>> {
   return withAuth(env, async (token) => {
-    const url = `${trimBase(env.baseUrl)}/api.php/v1/projects?limit=${limit}`
+    const url = `${trimBase(env.baseUrl)}/api.php/v2/projects?browseType=all&recPerPage=${limit}&pageID=1`
     const res = await fetch(url, {
       credentials: 'omit',
       headers: buildHeaders({ 'Token': token })
     })
     if (res.status === 401) return { _retry: true as const }
-    const body = await readJson(res) as { projects?: ZentaoProjectSummary[] } | null
+    const body = await readJson(res) as { projects?: ZentaoProjectSummary[]; status?: string; result?: boolean; message?: string } | null
+    if (isV2AuthExpired(body)) return { _retry: true as const }
     if (res.ok && Array.isArray(body?.projects)) return { ok: true as const, data: body.projects }
     return { ok: false as const, error: `HTTP ${res.status}` }
   })
@@ -302,20 +384,24 @@ export async function listProjects(env: ZentaoEnv, limit = 50): Promise<ZentaoRe
 // ────────────────────────── listUsers ──────────────────────────
 
 /**
- * 拉禅道全公司用户列表。SubmitDialog「指派给」下拉用 —— 实测 v1 项目成员 endpoint 404，
- * 列全公司用户是 next-best：前端搜索过滤即可。
+ * 拉禅道全公司用户列表。SubmitDialog「指派给」下拉用 —— 实测 v1/v2 都没有「按项目过滤的项目成员」
+ * 端点（v1 试过 404），列全公司用户是 next-best：前端搜索过滤即可。
  *
- * limit 默认 200 —— 中小公司一般 < 200 人单页拉完。total > 200 时分页留给将来。
+ * v0.4.0 改走 v2：`GET /api.php/v2/users?recPerPage=N&pageID=1`
+ *   - 分页改用 recPerPage + pageID（v1 的 limit 不认）
+ *   - recPerPage 上限 1000（v2 文档明示），中小公司 < 200 单页够
+ *   - 响应 `{status:'success', users:[...]}`（v2 列表端点统一外层 status，解析里兼容）
  */
 export async function listUsers(env: ZentaoEnv, limit = 200): Promise<ZentaoResult<ZentaoUserSummary[]>> {
   return withAuth(env, async (token) => {
-    const url = `${trimBase(env.baseUrl)}/api.php/v1/users?limit=${limit}`
+    const url = `${trimBase(env.baseUrl)}/api.php/v2/users?recPerPage=${limit}&pageID=1`
     const res = await fetch(url, {
       credentials: 'omit',
       headers: buildHeaders({ 'Token': token })
     })
     if (res.status === 401) return { _retry: true as const }
-    const body = await readJson(res) as { users?: ZentaoUserSummary[] } | null
+    const body = await readJson(res) as { users?: ZentaoUserSummary[]; status?: string; result?: boolean; message?: string } | null
+    if (isV2AuthExpired(body)) return { _retry: true as const }
     if (res.ok && Array.isArray(body?.users)) {
       return { ok: true as const, data: body.users.map(u => ({ id: u.id, account: u.account, realname: u.realname, role: u.role })) }
     }
@@ -339,12 +425,17 @@ export interface ZentaoBugDetail {
 }
 
 /**
- * 拉单条 bug 详情 —— 历史 Tab 状态回查用。v0.3 新增。
- * 走 v1 端点（v2 嵌套一层 `{status, bug}` 没必要多绕，v1 直接平铺所有字段）。
+ * 拉单条 bug 详情 —— 历史 Tab 状态回查用。v0.3.0 新增，v0.4.0 改走 v2。
+ *
+ * v2 端点：`GET /api.php/v2/bugs/{bugid}`
+ *   - 响应嵌套一层 `{status:'success', bug:{...}}`（v1 是顶层平铺，v2 多包一层）
+ *   - 字段集跟 v1 完全一致（subStatus / resolution / resolvedBy / closedBy / lastEditedDate
+ *     全部都在），v1 → v2 只是 shape 变化，没新字段
+ *   - 同样 token 鉴权
  */
 export async function getBug(env: ZentaoEnv, bugId: number): Promise<ZentaoResult<ZentaoBugDetail>> {
   return withAuth(env, async (token) => {
-    const url = `${trimBase(env.baseUrl)}/api.php/v1/bugs/${bugId}`
+    const url = `${trimBase(env.baseUrl)}/api.php/v2/bugs/${bugId}`
     const res = await fetch(url, {
       credentials: 'omit',
       headers: buildHeaders({ 'Token': token })
@@ -352,26 +443,37 @@ export async function getBug(env: ZentaoEnv, bugId: number): Promise<ZentaoResul
     if (res.status === 401) return { _retry: true as const }
     if (res.status === 404) return { ok: false as const, error: 'bug 不存在或已彻底删除' }
     if (!res.ok) return { ok: false as const, error: `HTTP ${res.status}` }
+    // v2: 嵌套 {status:'success', bug:{...}}；万一禅道实例返平铺（v1 兼容模式），也兜住
     const body = await readJson(res) as {
-      id?: number; status?: string; subStatus?: string; deleted?: boolean | string
+      status?: string
+      result?: boolean; message?: string
+      bug?: {
+        id?: number; status?: string; subStatus?: string; deleted?: boolean | string
+        assignedTo?: string | { account?: string; realname?: string }
+        resolution?: string; resolvedBy?: string; closedBy?: string; lastEditedDate?: string
+      }
+      // 平铺兜底（v1 风格）
+      id?: number; subStatus?: string; deleted?: boolean | string
       assignedTo?: string | { account?: string; realname?: string }
       resolution?: string; resolvedBy?: string; closedBy?: string; lastEditedDate?: string
     } | null
-    if (!body || typeof body.id !== 'number') return { ok: false as const, error: 'bug 详情响应格式不对' }
-    const assignedToObj = typeof body.assignedTo === 'object' ? body.assignedTo : null
+    if (isV2AuthExpired(body)) return { _retry: true as const }
+    const bug = body?.bug ?? (body && typeof body.id === 'number' ? body : null)
+    if (!bug || typeof bug.id !== 'number') return { ok: false as const, error: 'bug 详情响应格式不对' }
+    const assignedToObj = typeof bug.assignedTo === 'object' ? bug.assignedTo : null
     return {
       ok: true as const,
       data: {
-        id: body.id,
-        status: body.status ?? 'unknown',
-        subStatus: body.subStatus || undefined,
-        deleted: body.deleted === true || body.deleted === '1' || body.deleted === 'true',
-        assignedTo: assignedToObj?.account || (typeof body.assignedTo === 'string' ? body.assignedTo : undefined),
+        id: bug.id,
+        status: bug.status ?? 'unknown',
+        subStatus: bug.subStatus || undefined,
+        deleted: bug.deleted === true || bug.deleted === '1' || bug.deleted === 'true',
+        assignedTo: assignedToObj?.account || (typeof bug.assignedTo === 'string' ? bug.assignedTo : undefined),
         assignedToName: assignedToObj?.realname,
-        resolution: body.resolution || undefined,
-        resolvedBy: body.resolvedBy || undefined,
-        closedBy: body.closedBy || undefined,
-        lastEditedDate: body.lastEditedDate || undefined
+        resolution: bug.resolution || undefined,
+        resolvedBy: bug.resolvedBy || undefined,
+        closedBy: bug.closedBy || undefined,
+        lastEditedDate: bug.lastEditedDate || undefined
       }
     }
   })
@@ -381,6 +483,12 @@ export async function getBug(env: ZentaoEnv, bugId: number): Promise<ZentaoResul
 
 /**
  * 拉 product 的 bug 模块列表。SubmitDialog「所属模块」下拉用。
+ *
+ * **此函数保留 v1 端点**（v0.4.0 决策）：禅道 v2 RESTful API 21 个章节里**没有 Module 章节**
+ * （2026-05-22 实测查证 + 两次独立 WebFetch 互证），既不在 Product 也不在 Project 子端点下。
+ * 全 v2 化在此点 hard-stop —— 强行下线「所属模块」下拉会丢功能，强行从 bug 列表推断又拿不到
+ * path/parent 层级。**这是禅道架构层的局限**，不是 Moo 偷懒。等禅道补 v2 module 章节再收口。
+ *
  * 实测端点：GET /api.php/v1/modules?id={productId}&type=bug
  *   - 返回 {modules:[{id, name, path, parent, ...}]}
  *   - 没建过模块的 product 返 {modules:[]}（此时下拉只显示「根模块（/）」）
@@ -406,13 +514,17 @@ export async function listModules(env: ZentaoEnv, productId: number): Promise<Ze
 /**
  * 拿 project 关联的 product id。
  *
- * 旧设计是抓 form HTML 解析 hidden input —— 实测 2026-05 yourcompany.chandao.net
- * 用的是 zin 框架 SPA 渲染，form 在 JS state 里 hydrate，server 给的 72KB HTML
- * 里根本没 `<form>` 标签，纯 zin 路由配置。改走 REST：
+ * v0.4.0 改走 v2 项目详情：`GET /api.php/v2/projects/{projectid}`
+ *   - 期望响应里有 `products` 字段（v2 创建项目接口请求体里有 `"products":[1]` 是强信号，
+ *     创建时传得进去意味着对象里持有 products 数组）
+ *   - 字段可能是 number[]（ID 列表）也可能是 Array<{id, name}>（对象列表），两种都兼容
+ *   - dogfood 实测验证；若禅道实例返不出 products 字段，报「未关联」让用户去禅道里绑
  *
- *   GET /api.php/v1/products?project={pid}  →  {products:[{id, name, ...}]}
+ * 为啥不用 v2 `/v2/products?project=`：v2 product 列表端点**不支持** `project` 过滤参数，
+ * 响应里 `projects` 字段是「关联项目**数量**」数字（实测查证），筛不出来。
+ * v2 「项目集 → 项目 → 产品」是单向 RESTful nested，不允许从产品反查项目。
  *
- * 单条返回，干净。结果按 baseUrl+projectId 缓存 24h（避免每次 submit 都 fetch）。
+ * 结果按 baseUrl+projectId 缓存 24h（避免每次 submit 都 fetch）。
  */
 export async function discoverProduct(env: ZentaoEnv): Promise<ZentaoResult<number>> {
   const pk = projectKey(env)
@@ -421,20 +533,37 @@ export async function discoverProduct(env: ZentaoEnv): Promise<ZentaoResult<numb
     return { ok: true, data: cached.productId }
   }
   return withAuth(env, async (token) => {
-    const url = `${trimBase(env.baseUrl)}/api.php/v1/products?project=${env.projectId}`
+    const url = `${trimBase(env.baseUrl)}/api.php/v2/projects/${env.projectId}`
     const res = await fetch(url, {
       credentials: 'omit',
       headers: buildHeaders({ 'Token': token })
     })
     if (res.status === 401) return { _retry: true as const }
+    if (res.status === 404) return { ok: false as const, error: `项目 ${env.projectId} 不存在` }
     if (!res.ok) return { ok: false as const, error: `HTTP ${res.status}` }
-    const body = await readJson(res) as { products?: Array<{ id: number; name: string }> } | null
-    const first = body?.products?.[0]
-    if (!first || typeof first.id !== 'number') {
+    // v2 项目详情可能嵌套 {status, project:{...}} 也可能平铺，两种都兜
+    const body = await readJson(res) as {
+      status?: string
+      result?: boolean; message?: string
+      project?: { id?: number; products?: Array<number | { id?: number }> }
+      id?: number
+      products?: Array<number | { id?: number }>
+    } | null
+    if (isV2AuthExpired(body)) return { _retry: true as const }
+    const proj = body?.project ?? (body && typeof body.id === 'number' ? body : null)
+    const products = proj?.products
+    if (!Array.isArray(products) || products.length === 0) {
       return { ok: false as const, error: '该项目未关联任何 product；请先在禅道里给项目绑定 product' }
     }
-    productCache.set(pk, { productId: first.id, cachedAt: Date.now() })
-    return { ok: true as const, data: first.id }
+    const firstRaw = products[0]
+    const productId = typeof firstRaw === 'number'
+      ? firstRaw
+      : (firstRaw && typeof firstRaw.id === 'number' ? firstRaw.id : NaN)
+    if (!Number.isFinite(productId)) {
+      return { ok: false as const, error: 'v2 项目详情响应里 products 字段格式不识别' }
+    }
+    productCache.set(pk, { productId, cachedAt: Date.now() })
+    return { ok: true as const, data: productId }
   })
 }
 
@@ -452,7 +581,7 @@ export interface SubmitSuccess {
  * v0.2.0-0.2.2 用 form 端点 `POST /bug-create-...html` + cookie session。
  * dogfood 时本以为 v2 token 路径下 bug.openedBy 会落 system，
  * 但其实是 form 端点的 quirk，**v2 REST `/api.php/v2/bugs` 用 Token header 时
- * openedBy 自动绑到 token 对应用户**（实测 9340/9342：openedBy="13800000000"）。
+ * openedBy 自动绑到 token 对应用户**（实测 9340/9342：openedBy="真账号"）。
  *
  * 字段：JSON body 一次传全部 — productID（用 discoverProduct 反查）/ title /
  * openedBuild=['trunk'] / project / module / severity / pri / type / steps /
@@ -505,8 +634,13 @@ export async function submitBug(
     return { ok: false, error: `网络错误：${(e as Error).message}` }
   }
 
-  if (res.status === 401) {
-    // token 失效，清缓存重试一次
+  // 566 是禅道 WAF 拦截（含 3 段以上 https URL 等违规字串）；上层应该已经做 ZWS 绕开
+  if (res.status === 566) {
+    return { ok: false, error: '禅道服务端 WAF 拦截（HTTP 566）。可能 steps 含违规 URL；Moo 已经做 ZWS 绕开，若仍触发说明该禅道实例 WAF 规则更严格' }
+  }
+  // v0.4.0：retry 由 res.status === 401 OR v2 非标 (200 + {result:false, message:'登录已超时'}) 触发
+  let parsed = await interpretV2BugResponse(env, res)
+  if ('_retry' in parsed && parsed._retry) {
     _clearToken(env)
     const t2 = await ensureToken(env)
     if (!t2.ok) return t2
@@ -516,17 +650,18 @@ export async function submitBug(
       headers: buildHeaders({ 'Content-Type': 'application/json', 'token': t2.data }),
       body: JSON.stringify(body)
     })
-    return interpretV2BugResponse(env, retryRes)
+    parsed = await interpretV2BugResponse(env, retryRes)
+    if ('_retry' in parsed && parsed._retry) {
+      return { ok: false, error: '认证持续失败（submitBug 重 login 后 v2 仍返 token 失效）' }
+    }
   }
-  // 566 是禅道 WAF 拦截（含 3 段以上 https URL 等违规字串）；上层应该已经做 ZWS 绕开
-  if (res.status === 566) {
-    return { ok: false, error: '禅道服务端 WAF 拦截（HTTP 566）。可能 steps 含违规 URL；Moo 已经做 ZWS 绕开，若仍触发说明该禅道实例 WAF 规则更严格' }
-  }
-  return interpretV2BugResponse(env, res)
+  return parsed as ZentaoResult<SubmitSuccess>
 }
 
-async function interpretV2BugResponse(env: ZentaoEnv, res: Response): Promise<ZentaoResult<SubmitSuccess>> {
-  const body = await readJson(res) as { status?: string; id?: number; message?: unknown; error?: unknown; reason?: string } | null
+async function interpretV2BugResponse(env: ZentaoEnv, res: Response): Promise<ZentaoResult<SubmitSuccess> | { _retry: true }> {
+  if (res.status === 401) return { _retry: true }
+  const body = await readJson(res) as { status?: string; id?: number; message?: unknown; error?: unknown; reason?: string; result?: boolean } | null
+  if (isV2AuthExpired(body)) return { _retry: true }
   if (body?.status === 'success' && typeof body.id === 'number') {
     return {
       ok: true,

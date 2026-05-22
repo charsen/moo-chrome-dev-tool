@@ -387,10 +387,12 @@ describe('retryQueue — v0.2.0 zentao 路径', () => {
       projectId: 'proj-zentao', req: makeZentaoReq()
     }]
     const fetchMock = vi.fn(async (url: string) => {
-      if (url.includes('/users/login')) return new Response(JSON.stringify({ status: 'success', token: 't' }), { status: 200, headers: { 'content-type': 'application/json' } })
-      // v0.2.3 写操作的 cookie 预检：probeCookieSession 先 ping /user
-      if (url.includes('/api.php/v1/user') && !url.includes('/users')) return new Response(JSON.stringify({ profile: { realname: '张三' } }), { status: 200, headers: { 'content-type': 'application/json' } })
-      if (url.includes('/products')) return new Response(JSON.stringify({ products: [{ id: 14 }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      // v0.4.0：login 响应里带 user 对象（id/account/realname）写入 userCache
+      if (url.includes('/users/login')) return new Response(JSON.stringify({ status: 'success', token: 't', user: { id: 99, account: 'alice', realname: '张三' } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      // v0.4.0：probeCookieSession 改走 /api.php/v2/users/{cachedUserId}
+      if (url.includes('/api.php/v2/users/99')) return new Response(JSON.stringify({ id: 99, account: 'alice', realname: '张三' }), { status: 200, headers: { 'content-type': 'application/json' } })
+      // v0.4.0：discoverProduct 改走 /api.php/v2/projects/{projectId} 拿 products 字段
+      if (url.includes('/api.php/v2/projects/26')) return new Response(JSON.stringify({ id: 26, products: [14] }), { status: 200, headers: { 'content-type': 'application/json' } })
       if (url.includes('/file-ajaxUpload')) return new Response(JSON.stringify({ error: 0, url: '/file-read-1.png' }), { status: 200, headers: { 'content-type': 'application/json' } })
       // v0.2.3：bug 创建走 v2 REST API JSON POST
       if (url.includes('/api.php/v2/bugs')) return new Response(JSON.stringify({ status: 'success', id: 9999, message: '保存成功' }), { status: 200, headers: { 'content-type': 'application/json' } })

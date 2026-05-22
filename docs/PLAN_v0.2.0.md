@@ -1,7 +1,7 @@
 # v0.2.0 计划 · 禅道集成
 
 > 2026-05-21 探测会话产出 +（同日）P1 接手会话事实纠正。下一个会话直接读本文档接手即可。
-> 测试用禅道实例：https://yourcompany.chandao.net
+> 测试用禅道实例：https://真禅道实例
 > 测试用项目：**ID 26**（用户已建好）
 
 ## 用户拍板的决策（2026-05-21 P1 接手会话更新版）
@@ -9,7 +9,7 @@
 | # | 决策 | 含义 |
 |---|---|---|
 | 1 | **只做禅道**（不抽 Tracker adapter interface） | 单分支 if/else 即可，未来加 Jira/GitHub 时再抽象 |
-| 2 | ~~Token 直配（不存密码）~~ → **B'：account+password 换 token** | **重要纠正**：禅道**没有**「在 UI 里点按钮自助生成永久 token」这条路（官方文档 zentao.net/book/api/2309 + 实测 yourcompany.chandao.net 顶栏用户菜单 11 项无 token 入口）。所谓「Token」是 `POST /api.php/v1/tokens` 或 `/api.php/v2/users/login` 用 account+password 换的临时 session token。用户拍板：接受存密码代价走 B'，密码本地 chrome.storage 存储（加密策略 P2 阶段定）|
+| 2 | ~~Token 直配（不存密码）~~ → **B'：account+password 换 token** | **重要纠正**：禅道**没有**「在 UI 里点按钮自助生成永久 token」这条路（官方文档 zentao.net/book/api/2309 + 实测 真禅道实例 顶栏用户菜单 11 项无 token 入口）。所谓「Token」是 `POST /api.php/v1/tokens` 或 `/api.php/v2/users/login` 用 account+password 换的临时 session token。用户拍板：接受存密码代价走 B'，密码本地 chrome.storage 存储（加密策略 P2 阶段定）|
 | 3 | **请求 / 错误转禅道附件 + curl** | 上传 `requests.json` + `requests.curl.sh` + `errors.json` 三个附件，附 `moo-screenshot.png` + 可选 `moo-recording.webm` |
 | 4 | **一个 Moo 环境绑一个禅道项目**，**product 不让用户配** —— 自动从禅道 form HTML 解析 | 用户只配 projectId |
 | 5 | ~~Token header 走路径 A~~ → **B' 单骑**：account+password → SW 内缓存 token → 401 自动重换 | 详见下方「B' 路径流程」 |
@@ -150,7 +150,7 @@ Header: Token: {user_token}
 
 ### 验证 #2：Token 入口（结论：禅道无自助生成 token UI）
 
-实测穷举：yourcompany.chandao.net 顶栏用户菜单完整 11 项 menu = [个人档案 / 修改密码 / 使用教程 / 帮助 / 个性化设置 / 主题 / Language / 下载移动端 / 关于禅道 / 艾体验设计 / 签退]。**无 Token / 应用 / API 入口**。普通账号访问 `/admin-index.html` 显示「在此登记」即无管理员权限。
+实测穷举：真禅道实例 顶栏用户菜单完整 11 项 menu = [个人档案 / 修改密码 / 使用教程 / 帮助 / 个性化设置 / 主题 / Language / 下载移动端 / 关于禅道 / 艾体验设计 / 签退]。**无 Token / 应用 / API 入口**。普通账号访问 `/admin-index.html` 显示「在此登记」即无管理员权限。
 
 官方文档（zentao.net/book/api/2309）+ v2.0 详细文档（post-users-login-2142）确认：禅道的 token 一律走 `POST /api.php/vN/users/login` 用 account+password 换。无 PAT 概念，无 UI 自助生成入口。这是决策 2 改成 B' 的根因。
 
@@ -162,7 +162,7 @@ interface Project {
   kind: 'webhook' | 'zentao'     // 新增；normalize 时无 kind 默认 'webhook' 兼容老数据
   servers: Server[]              // kind='webhook' 时用
   zentao?: {
-    baseUrl: string              // e.g. "https://yourcompany.chandao.net"
+    baseUrl: string              // e.g. "https://真禅道实例"
     account: string              // B' 路径：用户禅道账号
     password: string             // B' 路径：禅道密码（chrome.storage.local，不进 sync）
     projectId: number            // 必填
@@ -254,7 +254,7 @@ SubmitBugReq (Moo)
    **关于密码存储**：Chrome 扩展用 chrome.storage.local 存配置（按用户隔离 + 不上 Chrome Sync），跟其他扩展隔离开，外部代码读不到。Moo 选择不再做二次加密 —— 加密了真没说不存还是存了，对实际安全没改善，反而让用户以为更安全；坦白告诉你「就存本地明文」更诚实。
 
 ## 3. 第一次提交时会弹权限申请
-   - Chrome 会问你是否允许 Moo 访问 yourcompany.chandao.net（或你填的禅道地址）
+   - Chrome 会问你是否允许 Moo 访问 真禅道实例（或你填的禅道地址）
    - 点「允许」就好。这是 Chrome MV3 的最小权限模型，扩展不会偷偷访问其他网站
 
 ## 4. 提交一条 bug 试试

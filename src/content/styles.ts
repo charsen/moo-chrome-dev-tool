@@ -1013,6 +1013,68 @@ export const SHADOW_CSS = `
   border-left: 3px solid var(--c-danger-fg);
   padding-left: 7px;
 }
+/* 同事 dogfood 反馈：每条请求 inline 展开看 body/response 对照字段 */
+.req-row { display: block; }
+.req-expand-btn {
+  flex: 0 0 22px;
+  height: 20px;
+  padding: 0;
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--c-border, transparent);
+  border-radius: 3px;
+  color: var(--c-text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 1;
+}
+.req-expand-btn:hover { background: var(--c-bg-soft); color: var(--c-text); }
+.req-detail {
+  padding: 8px 10px 10px;
+  background: var(--c-bg-soft);
+  border-bottom: 1px solid var(--c-divider);
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.req-detail-row { display: flex; flex-direction: column; gap: 3px; }
+.req-detail-label {
+  font-weight: 600;
+  font-size: 10px;
+  color: var(--c-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.req-detail-label em { font-style: normal; font-weight: 400; color: var(--c-text-dim); }
+.req-detail-value {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--c-text);
+  word-break: break-all;
+}
+.req-detail-body {
+  margin: 0;
+  padding: 6px 8px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  background: var(--c-bg, #fff);
+  border: 1px solid var(--c-divider);
+  border-radius: 3px;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--c-text);
+}
+.req-detail-error {
+  color: var(--c-danger-fg);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+.req-detail-empty {
+  color: var(--c-text-dim);
+  font-style: italic;
+}
 .req-empty {
   padding: 16px;
   font-size: 11px;

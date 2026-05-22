@@ -77,6 +77,7 @@
           rows="3"
           :value="activeProject.matchPatterns.join('\n')"
           @input="onPatternsChange($event)"
+          @blur="onPatternsBlur"
           placeholder="* （所有页面）&#10;https://*.example.com/*"
         />
         <div class="tpl-hint">
@@ -577,11 +578,19 @@ async function removeProject(id: string) {
   }
 }
 
+// v0.4.0：同事反馈「想输入两个 URL，怎么换行不了」—— 原来 @input 立即 filter(Boolean)
+// 把用户刚 enter 出来的空行吃掉，:value 反应式重算不含换行 → textarea 看着没换行。
+// 修：编辑过程中保留空行（split('\n') 不 trim 不 filter），blur 时再 normalize。
 function onPatternsChange(e: Event) {
   if (!activeProject.value) return
   const text = (e.target as HTMLTextAreaElement).value
-  activeProject.value.matchPatterns = text
-    .split('\n')
+  activeProject.value.matchPatterns = text.split('\n')
+}
+
+function onPatternsBlur() {
+  if (!activeProject.value) return
+  // blur 时 normalize：trim 每行 + 去掉空行（提交时不希望落空字符串到 matchPatterns）
+  activeProject.value.matchPatterns = activeProject.value.matchPatterns
     .map((s) => s.trim())
     .filter(Boolean)
 }

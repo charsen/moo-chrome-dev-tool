@@ -225,7 +225,7 @@ describe('normalizeProject — zentao 字段（v0.2.0）', () => {
   it('合法 zentao 全字段保留', () => {
     const z = normalizeProject({
       zentao: {
-        baseUrl: 'https://yourcompany.chandao.net',
+        baseUrl: 'https://z.example.com',
         account: '13800000000',
         password: 'fcs9909',
         projectId: 26,
@@ -236,7 +236,7 @@ describe('normalizeProject — zentao 字段（v0.2.0）', () => {
         defaultKeywords: 'Moo,前端bug'
       }
     }).zentao!
-    expect(z.baseUrl).toBe('https://yourcompany.chandao.net')
+    expect(z.baseUrl).toBe('https://z.example.com')
     expect(z.account).toBe('13800000000')
     expect(z.password).toBe('fcs9909')
     expect(z.projectId).toBe(26)
@@ -267,7 +267,7 @@ describe('normalizeProject — zentao.baseUrl sanitize', () => {
   })
 
   it('裸字符串（无协议）→ 空串（强校验，导入时立即让用户看见格式错误）', () => {
-    expect(normalizeProject({ zentao: { baseUrl: 'yourcompany.chandao.net' } }).zentao?.baseUrl).toBe('')
+    expect(normalizeProject({ zentao: { baseUrl: 'z.example.com' } }).zentao?.baseUrl).toBe('')
   })
 
   it('长度 >256 → 空串', () => {

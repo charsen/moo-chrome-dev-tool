@@ -2,6 +2,26 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.4.0
+
+2026-05-22 发版。无 BREAKING。
+
+### 改了什么
+
+- **禅道 API 全面 v2 化**：6 个读 endpoint 中 5 个收口到 v2.0（`ping` / `listProjects` / `listUsers` / `getBug` / `discoverProduct`）。`listModules` 保留 v1（禅道 v2 RESTful 21 章节无 Module 章节）。新增 `userCache` 让 ping 走 v2 详情端点
+- **v2 鉴权失效非标响应处理**：实测发现 v2 endpoint 未授权返 HTTP 200 + `{result:false, message:"登录已超时"}`（不是 401），新增 `isV2AuthExpired` helper 命中触发 retry login
+- **删除 probeCookieSession + ensureCookieSession 简化**：v2 RESTful 设计只接受 token 鉴权，改 trust login + userCache 取 realname 的正规路径
+- **`envKey` trim 一致性 bug 修**：baseUrl 末尾 `/` 导致 userCache miss 的潜在严重 bug
+- **SubmitDialog 4 改**（同事反馈）：附带请求 / 错误默认只勾最新一条（之前 14/14 偷偷全选）+ 请求 row inline 可展开看 request/response body 对照字段 + Environment URL 匹配 textarea 换行被吃 bug 修
+
+### 测试
+
+290 单测（266 → +24 v2 路径 + v2 鉴权失效 retry / login user 解析 / getBug 嵌套响应 / discoverProduct products shape / listModules 保留 v1）+ 97 playwright e2e + type-check + vite build + chrome-devtools MCP 真机 SW 0 error 全绿。
+
+### 发版决策
+
+重型重构按规矩不能跳 checklist。实际：① 非 BREAKING ② 全绿 ③ 同事 dogfood 截图证明核心路径 work + 用户明示放行 → 跳过「dogfood ≥ 几天」时间要求。
+
 ## v0.3.1
 
 **质量补强 + 文档优化**。v0.3.0 发版后全面验收发现 4 个真问题一捆修，**无 BREAKING + 无生产行为变更**（P3 时间窗对真用户操作 0 影响，仅自动化测试受益）。
@@ -90,7 +110,7 @@ step3_cookieWritten: true        // cookie 真的在 jar 里
 step4_attachmentUploaded: true   // /file-ajaxUpload.html cookie 路径工作
 step5_bugCreated: true           // v2 /bugs token 路径 200 + id
 step6_fields: {
-  openedBy: '13800000000',       // ✓ 真账号不是 system
+  openedBy: '真账号',       // ✓ 真账号不是 system
   assignedTo: 'uicml', severity: 1, pri: 2,
   type: 'performance', os: 'osx', browser: 'chrome', keywords: 'Moo',
   stepsHasImg: true, stepsHasZWS: true, stepsHasResponseCard: true
@@ -143,7 +163,7 @@ allPass: true
 
 **禅道集成**——把 Moo 上报通道从「只支持自建 B 路径接口」扩成「自建 B / 禅道（云禅道 biz12 + 自建禅道，v2.0 API）」二选一。同一份截图 / 录像 / 请求 / 错误 / curl 复现，可以直接一键开成禅道 bug，自带附件。**无 BREAKING**——老项目（无 `kind` 字段）一律按 `kind: 'b'` 走原路径，行为不变。
 
-**发版决策小记**（2026-05-21）：v0.2.0 是 feature 大版本，**主动跳过 dogfood ≥ 几天**——禅道集成已在 yourcompany.chandao.net 真实环境 dogfood 过完整流程（用户实测发现并修复 7+4 个 dogfood fix，见下文），全部场景闭环。3 条跳 checklist 标准只满足前 2（① 无 BREAKING ② 249 单测 + type-check + vite build 全绿），第 3 条 dogfood ≥ 几天**用户明示放行**。后续如有其他禅道版本回归，hotfix 走 v0.2.1。
+**发版决策小记**（2026-05-21）：v0.2.0 是 feature 大版本，**主动跳过 dogfood ≥ 几天**——禅道集成已在 真禅道实例 真实环境 dogfood 过完整流程（用户实测发现并修复 7+4 个 dogfood fix，见下文），全部场景闭环。3 条跳 checklist 标准只满足前 2（① 无 BREAKING ② 249 单测 + type-check + vite build 全绿），第 3 条 dogfood ≥ 几天**用户明示放行**。后续如有其他禅道版本回归，hotfix 走 v0.2.1。
 
 ### 关键架构（接下来的会话要直接看懂）
 
@@ -227,7 +247,7 @@ allPass: true
 - 249 单测全绿（v0.1.14 是 170 → +79：zentao client 71 + retryQueue multipart 11 + UA parser 11 + sanitizeKeywords 5 -19 老 mock 调整 + 拆 assignedTo）
 - type-check 全绿
 - vite build 全绿
-- 真实环境 dogfood 通过：yourcompany.chandao.net 项目 26（测试项目，已清干净）
+- 真实环境 dogfood 通过：真禅道实例 项目 26（测试项目，已清干净）
 
 ## v0.1.14
 

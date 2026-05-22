@@ -206,13 +206,42 @@
                 <button class="moo-btn small" @click="selectNone">清空</button>
               </div>
               <div class="req-list" v-if="filtered.length">
-                <label v-for="r in filtered" :key="r.id" :class="['req-item', failClass(r.status)]">
-                  <input type="checkbox" :checked="selectedIds.has(r.id)" @change="toggle(r.id)" />
-                  <span :class="['method', String(r.method ?? '').toLowerCase()]">{{ r.method }}</span>
-                  <span :class="['status', statusClass(r.status)]">{{ r.status || 'ERR' }}</span>
-                  <span class="url" :title="r.url">{{ shortUrl(r.url) }}</span>
-                  <span :class="['dur', durClass(r.duration)]">{{ Math.round(r.duration) }}ms</span>
-                </label>
+                <div v-for="r in filtered" :key="r.id" class="req-row">
+                  <label :class="['req-item', failClass(r.status)]">
+                    <input type="checkbox" :checked="selectedIds.has(r.id)" @change="toggle(r.id)" />
+                    <span :class="['method', String(r.method ?? '').toLowerCase()]">{{ r.method }}</span>
+                    <span :class="['status', statusClass(r.status)]">{{ r.status || 'ERR' }}</span>
+                    <span class="url" :title="r.url">{{ shortUrl(r.url) }}</span>
+                    <span :class="['dur', durClass(r.duration)]">{{ Math.round(r.duration) }}ms</span>
+                    <button
+                      type="button"
+                      class="req-expand-btn"
+                      :title="expandedReqIds.has(r.id) ? '收起详情' : '展开请求/响应详情'"
+                      @click.prevent.stop="toggleExpand(r.id)"
+                    >{{ expandedReqIds.has(r.id) ? '▾' : '▸' }}</button>
+                  </label>
+                  <div v-if="expandedReqIds.has(r.id)" class="req-detail">
+                    <div class="req-detail-row">
+                      <span class="req-detail-label">URL</span>
+                      <span class="req-detail-value">{{ r.url }}</span>
+                    </div>
+                    <div class="req-detail-row" v-if="r.requestBody">
+                      <span class="req-detail-label">Request Body</span>
+                      <pre class="req-detail-body">{{ previewBody(r.requestBody) }}</pre>
+                    </div>
+                    <div class="req-detail-row" v-if="r.responseBody">
+                      <span class="req-detail-label">Response Body <em>({{ fmtBytes(r.responseSizeBytes) }})</em></span>
+                      <pre class="req-detail-body">{{ previewBody(r.responseBody) }}</pre>
+                    </div>
+                    <div class="req-detail-row" v-if="r.error">
+                      <span class="req-detail-label">Error</span>
+                      <span class="req-detail-error">{{ r.error }}</span>
+                    </div>
+                    <div v-if="!r.requestBody && !r.responseBody && !r.error" class="req-detail-empty">
+                      （无 body / 错误信息可显示 —— 可能是 GET 请求 / 二进制响应 / 仍在进行中）
+                    </div>
+                  </div>
+                </div>
               </div>
               <div v-else class="req-empty">
                 <div>当前时间窗口内没有可附带的请求。</div>
@@ -430,6 +459,22 @@ const urlFilter = ref('')
 const openedAt = performance.now()
 const selectedIds = ref<Set<string>>(new Set())
 const selectedErrIds = ref<Set<string>>(new Set())
+// 同事 dogfood 反馈：「光通过 url 来分辨有点难，我的使用习惯还要看请求和返回，用来对照字段情况」
+// → 每个请求 row 可单独展开看 request/response body 详情卡片，不影响 checkbox 操作
+const expandedReqIds = ref<Set<string>>(new Set())
+
+function toggleExpand(id: string) {
+  const next = new Set(expandedReqIds.value)
+  if (next.has(id)) next.delete(id); else next.add(id)
+  expandedReqIds.value = next
+}
+
+// 大 body 渲染会卡死 closed shadow（曾有同事截到 1 MB JSON 响应）—— 截到 1500 字符够看字段对照
+function previewBody(s: string | null): string {
+  if (!s) return ''
+  if (s.length > 1500) return s.slice(0, 1500) + `\n\n… (前 1500 字, 共 ${s.length} 字)`
+  return s
+}
 
 // element picker
 const picking = ref(false)
@@ -510,32 +555,48 @@ const filtered = computed(() => {
 
 const reversedErrors = computed(() => props.errors.slice().reverse())
 
-// 默认勾选范围跟时间窗口同步：用户看到 N 条就有 N 条被勾选。
-// 但**不覆盖**用户主动取消勾选的状态——用 prevFilteredIds 跟踪上次见过的 id 集合，
-// 只把**真新增**的 id 自动勾上；不在新 filtered 里的 id（被过滤掉）保留勾选状态
-// （即使在 dialog 内不可见，buildContext 时也会被纳入提交）
-let prevFilteredIds = new Set<string>()
+// 默认勾选策略（同事 dogfood 反馈）：
+//   - dialog 打开瞬间：**只勾最新一条**（不偷偷全选 → 不污染 bug 描述、不影响判断）
+//   - dialog 打开期间新进来：自动勾上（很可能跟当前 bug 余波相关）
+//   - 用户主动 toggle / selectAll / selectNone：照 UI 操作
+// 改前是「filtered 内全部默认勾选」，同事反馈这让人疑惑「14/14 偷偷默认全选」
+let prevRequestIds = new Set<string>()
+let isFirstRequestWatch = true
 watch(
-  () => filtered.value,
+  () => props.requests,
   (arr) => {
+    if (isFirstRequestWatch) {
+      // 首次：只勾最新一条（props.requests 末尾是最新）
+      const latest = arr[arr.length - 1]
+      if (latest) selectedIds.value = new Set([latest.id])
+      prevRequestIds = new Set(arr.map((r) => r.id))
+      isFirstRequestWatch = false
+      return
+    }
+    // 后续 dialog 打开期间新进来的请求 → 自动勾
     const next = new Set(selectedIds.value)
     for (const r of arr) {
-      if (!prevFilteredIds.has(r.id)) next.add(r.id)
+      if (!prevRequestIds.has(r.id)) next.add(r.id)
     }
-    prevFilteredIds = new Set(arr.map((r) => r.id))
+    prevRequestIds = new Set(arr.map((r) => r.id))
     selectedIds.value = next
   },
   { immediate: true }
 )
 
-// 跟随 props.errors 变化：dialog 打开后新进来的 error 也自动勾选
-// （之前是一次性赋值，新 error 不会被默认勾上，跟 selectedIds 的 watch 行为不一致）
-// 用 prevErrorIds 记住"上次看到的 id"，只把**真新增**的 id 加入勾选，
-// 不会覆盖用户主动取消勾选的状态
+// 错误同款策略：首次只勾最新一条 + 后续 dialog 期间新出错自动勾
 let prevErrorIds = new Set<string>()
+let isFirstErrorWatch = true
 watch(
   () => props.errors,
   (arr) => {
+    if (isFirstErrorWatch) {
+      const latestErr = arr[arr.length - 1]
+      if (latestErr) selectedErrIds.value = new Set([latestErr.id])
+      prevErrorIds = new Set(arr.map((e) => e.id))
+      isFirstErrorWatch = false
+      return
+    }
     const next = new Set(selectedErrIds.value)
     for (const e of arr) {
       if (!prevErrorIds.has(e.id)) next.add(e.id)
