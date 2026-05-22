@@ -1039,6 +1039,10 @@ export const SHADOW_CSS = `
   gap: 6px;
 }
 .req-detail-row { display: flex; flex-direction: column; gap: 3px; }
+/* URL 这种短文本横排 label + value 同行（其他长 body row 保持竖排）。
+   长 URL 用 word-break 折行不溢出 */
+.req-detail-row--inline { flex-direction: row; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.req-detail-row--inline .req-detail-value { flex: 1 1 auto; min-width: 0; }
 .req-detail-label-row {
   display: flex;
   align-items: center;

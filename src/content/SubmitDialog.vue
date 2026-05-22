@@ -227,7 +227,7 @@
                     >{{ expandedReqIds.has(r.id) ? '▾' : '▸' }}</button>
                   </label>
                   <div v-if="expandedReqIds.has(r.id)" class="req-detail">
-                    <div class="req-detail-row">
+                    <div class="req-detail-row req-detail-row--inline">
                       <span class="req-detail-label">URL</span>
                       <span class="req-detail-value">{{ r.url }}</span>
                     </div>
