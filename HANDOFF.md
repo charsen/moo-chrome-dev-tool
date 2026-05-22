@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.4.2 已发**（2026-05-22，dogfood hotfix）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.2/moo-chrome-dev-tool-0.4.2.zip)（sha256 待回填）。修同事在禅道「测试连接」卡的「v2 用户详情响应格式不对」—— v2 `/users/{id}` 返非标 schema 时 fallback cached。无 BREAKING。292 单测 + 100 e2e 全绿。
+**v0.4.2 已发**（2026-05-22，dogfood hotfix）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.2/moo-chrome-dev-tool-0.4.2.zip)（sha256 `e92e848994e21faa5eb0f3e11710c7195f394be3fa063363ac16be8d0d4bb77b`）。修同事在禅道「测试连接」卡的「v2 用户详情响应格式不对」—— v2 `/users/{id}` 返非标 schema 时 fallback cached。无 BREAKING。292 单测 + 100 e2e 全绿。
 
 **v0.4.1 已发**（2026-05-22）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.1/moo-chrome-dev-tool-0.4.1.zip)（sha256 `cca58491fd3d0c82d694c432bde312b2bc62b87d1fdabfa56faa63fa57e2199e`）。发版工程化（pre-flight 黑名单 + 模式扫描 + filter-repo 5 轮清 history）+ SubmitDialog 复制 / 收起全部按钮 + 禅道手册 v2 陷阱章节。
 
