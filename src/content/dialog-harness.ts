@@ -141,6 +141,29 @@ async function bootstrap(): Promise<void> {
   } else {
     // submit case
     const SubmitDialog = (await import('./SubmitDialog.vue')).default
+    // 注入 mock requests，方便测试展开 row / 复制按钮 / 收起全部
+    // ?requests=N → 生成 N 条 mock 请求，requestBody 是一段长文本（用于断言复制原文）
+    const reqCount = Number(params.get('requests') ?? '0') || 0
+    const mockRequests = Array.from({ length: reqCount }, (_, i) => {
+      const longBody = `LONG_BODY_${i}_` + 'x'.repeat(2000)  // 2000+ 字符，超过 previewBody 1500 截断阈值
+      const respBody = JSON.stringify({ id: i, payload: 'response-' + i, fill: 'y'.repeat(2000) })
+      return {
+        id: `req-${i}`,
+        kind: 'fetch' as const,
+        method: 'POST',
+        url: `https://api.example.com/endpoint-${i}`,
+        requestHeaders: { 'Content-Type': 'application/json' },
+        requestBody: longBody,
+        status: 200,
+        ok: true,
+        responseHeaders: { 'Content-Type': 'application/json' },
+        responseBody: respBody,
+        responseSizeBytes: respBody.length,
+        startTime: performance.now() - (i * 100),
+        duration: 50 + i * 5,
+        startedAt: new Date().toISOString()
+      }
+    })
     const project = {
       id: 'p1',
       name: '示例项目',
@@ -170,7 +193,7 @@ async function bootstrap(): Promise<void> {
             project,
             image: '',
             video: null,
-            requests: [],
+            requests: mockRequests,
             errors: [],
             onCancel: () => logEmit('cancel'),
             onSubmitted: (ok: boolean, message: string) => logEmit('submitted', ok, message),
