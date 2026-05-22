@@ -2,6 +2,19 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.4.2
+
+2026-05-22 发版。无 BREAKING。**dogfood hotfix**。
+
+- **fix(zentao)**: `ping()` 在 v2 `/users/{id}` 返非标 schema 时 fallback cached（不再 abort 报「v2 用户详情响应格式不对」）。
+  - 起因：dogfood 同事在真禅道实例点「测试连接」卡在此报错。本地复现：禅道 v2 `/users/{id}` 在某些 instance 返简化对象（缺 id / realname 字段名不同），但 token 真有效。
+  - 修法：解析成功 → 更新 cache 返新数据；解析失败 + token 有效（res.ok + 非 v2AuthExpired）→ 用 cached（login 拿的 user 必齐）返成功。
+  - 不影响：v2 鉴权失效 retry 链不变；listProjects / listUsers / getBug / submitBug 严格 schema 不变（只放宽 ping）
+
+加 2 单测覆盖 fallback 路径（缺 id 字段 / 业务错响应）+ 1 旧用例从「strict 报错」改成「fallback 成功」。292 单测全绿。
+
+**发版决策小记**：dogfood hotfix 紧急程度高（同事卡在测试连接用不了），3 条 checklist ① ② 满足 ③ 用户明示放行立即发。
+
 ## v0.4.1
 
 2026-05-22 发版。无 BREAKING。

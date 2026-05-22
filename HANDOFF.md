@@ -4,9 +4,9 @@
 
 ## 一句话现状
 
-**v0.4.1 已发**（2026-05-22）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.1/moo-chrome-dev-tool-0.4.1.zip)（sha256 `cca58491fd3d0c82d694c432bde312b2bc62b87d1fdabfa56faa63fa57e2199e`）。发版工程化（pre-flight 黑名单 + 模式扫描 + filter-repo 5 轮清 history）+ SubmitDialog 复制 / 收起全部按钮 + 禅道手册 v2 陷阱章节。无 BREAKING。290 单测 + 100 e2e 全绿。技术细节见 [CHANGELOG.md](CHANGELOG.md)。
+**v0.4.2 已发**（2026-05-22，dogfood hotfix）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.2/moo-chrome-dev-tool-0.4.2.zip)（sha256 待回填）。修同事在禅道「测试连接」卡的「v2 用户详情响应格式不对」—— v2 `/users/{id}` 返非标 schema 时 fallback cached。无 BREAKING。292 单测 + 100 e2e 全绿。
 
-**发版决策小记**（2026-05-22）：3 条跳 checklist 前 2 条满足（① 非 BREAKING ② 全绿），第 3 条「dogfood ≥ 几天」用户明示放行（D 改动 UI 体感不影响行为；pre-flight 是发版工具）。同事 dogfood v0.4.0 时碰的 HTTP 403 留到 v0.4.2 等 SW log 诊断。
+**v0.4.1 已发**（2026-05-22）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.1/moo-chrome-dev-tool-0.4.1.zip)（sha256 `cca58491fd3d0c82d694c432bde312b2bc62b87d1fdabfa56faa63fa57e2199e`）。发版工程化（pre-flight 黑名单 + 模式扫描 + filter-repo 5 轮清 history）+ SubmitDialog 复制 / 收起全部按钮 + 禅道手册 v2 陷阱章节。
 
 **v0.4.0 已发**（2026-05-22）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.0/moo-chrome-dev-tool-0.4.0.zip)（sha256 `09712c5eadd63c8836a296e2de83aa428a56d78d0b815b64b377be21b179d71f`）。禅道 API 全面 v2 化 + 同事反馈 4 改。
 
