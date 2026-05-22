@@ -38,17 +38,48 @@
 - git commit message 含真名 → 必须 force push 改写 history（破坏其他人的 clone）
 - 测试 mock 含真账号 → 把人手机号写进 public repo 永远在 git log 里搜得到
 
-**实操检查（已自动化）**：
+**实操检查（已自动化，2 段）**：
 
-- 每次 `pnpm release`（dry-run + --publish）都跑 pre-flight 脱敏 grep
-- 黑名单词列表放在 **`.release-pii-deny`**（**gitignored，不入仓库**——内容本身就是要脱的真 PII）
-- 模板见仓库自带的 **`.release-pii-deny.example`**。第一次配：
+每次 `pnpm release`（dry-run + --publish）先跑 ① **黑名单扫描**（命中即 abort），再跑 ② **模式扫描**（手机号 / 邮箱 / 私网 IP / 身份证 4 类 regex，命中仅 warn 让你审）。
+
+- 黑名单词放在 `.release-pii-deny`（**gitignored，不入仓库**——内容本身就是要脱的真 PII）
+- 模板见仓库自带的 `.release-pii-deny.example`。第一次配：
   ```bash
   cp .release-pii-deny.example .release-pii-deny
-  # 编辑 .release-pii-deny 加入你需要脱敏的真名 / 真账号 / 真公司域名 / 真手机号
+  # 编辑加入你需要脱敏的真名 / 真账号 / 真公司域名 / 真手机号
   ```
-- 命中即 abort。紧急绕过：`MOO_RELEASE_SKIP_PII_CHECK=1 pnpm release ...`
-- **重要：不要把黑名单词写进任何 tracked 文件**（包括 CLAUDE.md / release.mjs 自身）—— 那等于把要脱的内容塞进公开仓库
+- 紧急绕过：`MOO_RELEASE_SKIP_PII_CHECK=1 pnpm release ...`（跳黑名单）/ `MOO_RELEASE_SKIP_PII_PATTERN=1` 跳模式扫描
+- 模式扫描看完整命中：`MOO_RELEASE_PII_VERBOSE=1 pnpm release`
+
+**重要：不要把黑名单词写进任何 tracked 文件**（包括 CLAUDE.md / release.mjs 自身）——那等于把要脱的内容塞进公开仓库。
+
+---
+
+**🔍 发版前 PII 自检 10 问**（自动化拦不住的，靠人脑过一遍）：
+
+| # | 问 |
+|---|---|
+| 1 | commit message body 含真名 / 真账号吗？（`git log --all --pretty=format:'%B' \| grep ...`）|
+| 2 | tag annotation message 含真名吗？（`git tag -l --format='%(contents)'`）|
+| 3 | docs/ 任何 .md 含未脱的实测描述（「实测 X 公司...」「同事 X 反馈...」）吗？|
+| 4 | tests/ mock data 用真账号 / 真手机号吗？（即使是测试 mock，public repo 也公开）|
+| 5 | src/ 代码注释含「实测 yourapp.example.com 9343」之类真业务 URL 吗？|
+| 6 | 仓库新加的图片 / 截图 / PDF 含真界面 / 真姓名吗？（git ls-files \| grep -iE '\\.(png\|jpg\|gif\|pdf)$'）|
+| 7 | manifest.json / package.json 等配置文件含内部 host / 公司域吗？|
+| 8 | Gitee release page description 已脱敏吗？|
+| 9 | 同事在用 dogfood 的截图里有他真名，**他的真名**有没有加进 `.release-pii-deny`？|
+| 10 | 公司业务系统域名（gy.xxx.com / wn.xxx.com / api.xxx.com）有没有加进黑名单？|
+
+如果有任意一条 yes → 先脱敏 + 走 `git filter-repo --replace-text + --replace-message` 双管清 history + force push master + tags。
+
+---
+
+**🛠 复盘工具：filter-repo 关键陷阱**
+
+- `git filter-repo --replace-text <file>` **只动 file content，不动 commit message** —— 必须**同时**传 `--replace-message <file>`（同样格式）才完整
+- filter-repo 跑完会**自动删 origin remote**（safety）—— 跑完手动 `git remote add origin <url>` + `git fetch` + `git push --force-with-lease`
+- tag SHA 跟着 commit SHA 变 —— 需要 `git push origin --tags --force` 单独覆盖（不能用 force-with-lease，没 baseline）
+- 最后 `git reflog expire --expire=now --all && git gc --prune=now --aggressive` 本地深度 GC，让 unreachable old objects 也清干净
 
 ---
 

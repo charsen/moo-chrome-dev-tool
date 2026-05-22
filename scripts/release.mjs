@@ -169,6 +169,78 @@ function preFlightPiiCheck() {
 }
 preFlightPiiCheck()
 
+// ---------- pre-flight 模式扫描（warn-only，找潜在未知 PII）----------
+// 起因：v0.4.0 复盘 — 黑名单只能拦「已知」，遇到没列进词表的真名/手机号/内部 IP 漏网。
+// 这段扫常见 PII 模式，命中只 warn 不 abort（假阳率高，靠人工审）。
+// MOO_RELEASE_SKIP_PII_PATTERN=1 完全跳过；MOO_RELEASE_PII_VERBOSE=1 打印每条命中细节。
+const PII_PATTERN_CHECKS = [
+  {
+    name: '可疑手机号（11 位 1[3-9] 开头）',
+    regex: '\\b1[3-9][0-9]{9}\\b',
+    // 整行包含占位号即跳过（138/139 + 全 0 / 全 1）
+    allowlistRegex: '(138|139)(00000000|11111111)'
+  },
+  {
+    name: '可疑邮箱（@非 example/gmail/anthropic/noreply/gitee）',
+    regex: '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.(com|cn|net|org|edu)',
+    // 整行包含 allowlist 模式即跳过
+    allowlistRegex: '@(example\\.|gmail\\.|anthropic\\.|noreply|huawei\\.|sentry\\.io|gitee\\.com|github\\.com|qq\\.com|163\\.com|sina\\.com|126\\.com)|(user|alice|bob|admin|test)@'
+  },
+  {
+    name: '私网 IP（192.168 / 10.x / 172.16-31）',
+    regex: '\\b(192\\.168|10\\.[0-9]+|172\\.(1[6-9]|2[0-9]|3[01]))\\.[0-9]+\\.[0-9]+\\b'
+  },
+  {
+    name: '身份证号（18 位）',
+    regex: '\\b[1-9][0-9]{16}[0-9Xx]\\b'
+  }
+]
+
+function runPiiPatternScan() {
+  if (process.env.MOO_RELEASE_SKIP_PII_PATTERN) {
+    console.warn('⚠ MOO_RELEASE_SKIP_PII_PATTERN=1 已设，跳过模式扫描')
+    console.warn('')
+    return
+  }
+  const verbose = !!process.env.MOO_RELEASE_PII_VERBOSE
+  const exts = PII_INCLUDE_EXTS.map((e) => `--include=*.${e}`).join(' ')
+  const summaries = []
+  for (const check of PII_PATTERN_CHECKS) {
+    let raw = ''
+    try {
+      raw = execSync(
+        `grep -rEn ${exts} "${check.regex}" . 2>/dev/null || true`,
+        { cwd: root, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }
+      )
+    } catch {}
+    let lines = raw.split('\n').filter(Boolean)
+      .filter((line) => !PII_EXCLUDE_PATH_PATTERNS.some((p) => line.includes(p)))
+    if (check.allowlistRegex) {
+      // grep 整行 + matched 部分二次 regex；为简化，只对整行做 allowlist match（false-negative 风险低）
+      const allow = new RegExp(check.allowlistRegex)
+      lines = lines.filter((l) => !allow.test(l))
+    }
+    if (lines.length > 0) summaries.push({ name: check.name, lines })
+  }
+  if (summaries.length === 0) {
+    console.log('✓ pre-flight 模式扫描通过（4 类潜在 PII 模式无可疑命中）')
+    console.log('')
+    return
+  }
+  const total = summaries.reduce((sum, s) => sum + s.lines.length, 0)
+  console.warn(`⚠ pre-flight 模式扫描命中 ${total} 条潜在 PII（仅 warn 不 abort，假阳率高人工审）`)
+  for (const s of summaries) {
+    console.warn(`  ✦ ${s.name}: ${s.lines.length} 处`)
+    const show = verbose ? s.lines : s.lines.slice(0, 2)
+    for (const l of show) console.warn(`    | ${l}`)
+    if (!verbose && s.lines.length > 2) console.warn(`    | ...（共 ${s.lines.length} 条，MOO_RELEASE_PII_VERBOSE=1 看全部）`)
+  }
+  console.warn('  如果都是占位 / 已知假阳，照常发版。')
+  console.warn('  确认是真 PII：加进 .release-pii-deny + 走 filter-repo 清 history。')
+  console.warn('')
+}
+runPiiPatternScan()
+
 // ---------- --publish 模式 token 预检（fail-fast，省得 build 完才发现）----------
 const token = process.env.GITEE_TOKEN || ''
 if (publish && !token) {
