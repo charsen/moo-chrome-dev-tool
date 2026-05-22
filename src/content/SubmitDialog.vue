@@ -204,6 +204,12 @@
                 <input v-model="urlFilter" placeholder="按 URL 过滤" class="req-filter" />
                 <button class="moo-btn small" @click="selectAll">全选</button>
                 <button class="moo-btn small" @click="selectNone">清空</button>
+                <button
+                  v-if="expandedReqIds.size > 0"
+                  class="moo-btn small"
+                  type="button"
+                  @click="collapseAll"
+                >收起全部 ({{ expandedReqIds.size }})</button>
               </div>
               <div class="req-list" v-if="filtered.length">
                 <div v-for="r in filtered" :key="r.id" class="req-row">
@@ -226,11 +232,27 @@
                       <span class="req-detail-value">{{ r.url }}</span>
                     </div>
                     <div class="req-detail-row" v-if="r.requestBody">
-                      <span class="req-detail-label">Request Body</span>
+                      <div class="req-detail-label-row">
+                        <span class="req-detail-label">Request Body</span>
+                        <button
+                          type="button"
+                          class="req-copy-btn"
+                          :title="`复制完整 Request Body（${r.requestBody.length} 字符）`"
+                          @click.prevent.stop="copyBody(r.requestBody, r.id, 'req')"
+                        >{{ copyHint.id === r.id && copyHint.kind === 'req' ? '✓ 已复制' : '📋 复制' }}</button>
+                      </div>
                       <pre class="req-detail-body">{{ previewBody(r.requestBody) }}</pre>
                     </div>
                     <div class="req-detail-row" v-if="r.responseBody">
-                      <span class="req-detail-label">Response Body <em>({{ fmtBytes(r.responseSizeBytes) }})</em></span>
+                      <div class="req-detail-label-row">
+                        <span class="req-detail-label">Response Body <em>({{ fmtBytes(r.responseSizeBytes) }})</em></span>
+                        <button
+                          type="button"
+                          class="req-copy-btn"
+                          :title="`复制完整 Response Body（${r.responseBody.length} 字符）`"
+                          @click.prevent.stop="copyBody(r.responseBody, r.id, 'res')"
+                        >{{ copyHint.id === r.id && copyHint.kind === 'res' ? '✓ 已复制' : '📋 复制' }}</button>
+                      </div>
                       <pre class="req-detail-body">{{ previewBody(r.responseBody) }}</pre>
                     </div>
                     <div class="req-detail-row" v-if="r.error">
@@ -469,11 +491,46 @@ function toggleExpand(id: string) {
   expandedReqIds.value = next
 }
 
+function collapseAll() {
+  expandedReqIds.value = new Set()
+}
+
 // 大 body 渲染会卡死 closed shadow（曾有同事截到 1 MB JSON 响应）—— 截到 1500 字符够看字段对照
 function previewBody(s: string | null): string {
   if (!s) return ''
   if (s.length > 1500) return s.slice(0, 1500) + `\n\n… (前 1500 字, 共 ${s.length} 字)`
   return s
+}
+
+// 复制按钮：copy 完整原文（不是 previewBody 截断版）。
+// closed shadow + content script 用 navigator.clipboard 一般能 work；
+// 失败 fallback 给 textarea + execCommand（旧 chromium / 权限边缘场景）。
+const copyHint = ref<{ id: string | null; kind: 'req' | 'res' | null }>({ id: null, kind: null })
+let copyHintTimer: ReturnType<typeof setTimeout> | null = null
+async function copyBody(text: string, id: string, kind: 'req' | 'res') {
+  let ok = false
+  try {
+    await navigator.clipboard.writeText(text)
+    ok = true
+  } catch {
+    // fallback：临时 textarea + execCommand
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.left = '-9999px'
+    ta.style.top = '-9999px'
+    document.body.appendChild(ta)
+    ta.select()
+    try { ok = document.execCommand('copy') } catch {}
+    document.body.removeChild(ta)
+  }
+  if (!ok) return
+  copyHint.value = { id, kind }
+  if (copyHintTimer) clearTimeout(copyHintTimer)
+  copyHintTimer = setTimeout(() => {
+    copyHint.value = { id: null, kind: null }
+    copyHintTimer = null
+  }, 1500)
 }
 
 // element picker

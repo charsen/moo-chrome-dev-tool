@@ -1039,6 +1039,24 @@ export const SHADOW_CSS = `
   gap: 6px;
 }
 .req-detail-row { display: flex; flex-direction: column; gap: 3px; }
+.req-detail-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.req-copy-btn {
+  font-size: 10px;
+  padding: 2px 8px;
+  border: 1px solid var(--c-divider);
+  background: var(--c-bg, #fff);
+  color: var(--c-text-muted);
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: color 120ms, background 120ms, border-color 120ms;
+}
+.req-copy-btn:hover { color: var(--c-text); background: var(--c-bg-soft); border-color: var(--c-text-dim); }
 .req-detail-label {
   font-weight: 600;
   font-size: 10px;
