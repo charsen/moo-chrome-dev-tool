@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.4.0 已发**（2026-05-22）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.0/moo-chrome-dev-tool-0.4.0.zip)（sha256 待回填）。禅道 API 全面 v2 化 + 同事反馈 4 改：附带请求/错误默认只勾最新一条、请求 row inline 可展开看 body、URL 匹配 textarea 换行修。无 BREAKING。290 单测 + 97 e2e 全绿。技术细节见 [CHANGELOG.md](CHANGELOG.md)。
+**v0.4.0 已发**（2026-05-22）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.0/moo-chrome-dev-tool-0.4.0.zip)（sha256 `09712c5eadd63c8836a296e2de83aa428a56d78d0b815b64b377be21b179d71f`）。禅道 API 全面 v2 化 + 同事反馈 4 改：附带请求/错误默认只勾最新一条、请求 row inline 可展开看 body、URL 匹配 textarea 换行修。无 BREAKING。290 单测 + 97 e2e 全绿。技术细节见 [CHANGELOG.md](CHANGELOG.md)。
 
 **发版决策小记**（2026-05-22）：重型重构本不能跳 checklist。实际：① 非 BREAKING ✅ ② 全绿 ✅ ③ 同事 dogfood 截图证明核心路径 work + 用户明示放行 → 跳过「dogfood ≥ 几天」时间要求。
 
