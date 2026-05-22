@@ -4,9 +4,11 @@
 
 ## 一句话现状
 
-**v0.4.0 已发**（2026-05-22）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.0/moo-chrome-dev-tool-0.4.0.zip)（sha256 `09712c5eadd63c8836a296e2de83aa428a56d78d0b815b64b377be21b179d71f`）。禅道 API 全面 v2 化 + 同事反馈 4 改：附带请求/错误默认只勾最新一条、请求 row inline 可展开看 body、URL 匹配 textarea 换行修。无 BREAKING。290 单测 + 97 e2e 全绿。技术细节见 [CHANGELOG.md](CHANGELOG.md)。
+**v0.4.1 已发**（2026-05-22）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.1/moo-chrome-dev-tool-0.4.1.zip)（sha256 待回填）。发版工程化（pre-flight 黑名单 + 模式扫描 + filter-repo 5 轮清 history）+ SubmitDialog 复制 / 收起全部按钮 + 禅道手册 v2 陷阱章节。无 BREAKING。290 单测 + 100 e2e 全绿。技术细节见 [CHANGELOG.md](CHANGELOG.md)。
 
-**发版决策小记**（2026-05-22）：重型重构本不能跳 checklist。实际：① 非 BREAKING ✅ ② 全绿 ✅ ③ 同事 dogfood 截图证明核心路径 work + 用户明示放行 → 跳过「dogfood ≥ 几天」时间要求。
+**发版决策小记**（2026-05-22）：3 条跳 checklist 前 2 条满足（① 非 BREAKING ② 全绿），第 3 条「dogfood ≥ 几天」用户明示放行（D 改动 UI 体感不影响行为；pre-flight 是发版工具）。同事 dogfood v0.4.0 时碰的 HTTP 403 留到 v0.4.2 等 SW log 诊断。
+
+**v0.4.0 已发**（2026-05-22）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.0/moo-chrome-dev-tool-0.4.0.zip)（sha256 `09712c5eadd63c8836a296e2de83aa428a56d78d0b815b64b377be21b179d71f`）。禅道 API 全面 v2 化 + 同事反馈 4 改。
 
 **v0.3.1 已发**（2026-05-21，gitee tag `v0.3.1`，质量补强）。下载：[moo-chrome-dev-tool-0.3.1.zip](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.3.1/moo-chrome-dev-tool-0.3.1.zip)。v0.3.0 发版后全面验收发现 4 个真问题一捆修：① **P1 文档误导**：`docs/ZENTAO_SETUP.md` 反复写 `⌘⇧B` / `Ctrl+Shift+B` 快捷键但 manifest 没注册（只有 `Alt+Shift+R` / `Alt+Shift+M`），改成「悬浮球截图按钮 / popup 触发截图」 ② **P2 v0.3.0 核心函数零单测**：抽 `mapZentaoStatus` 到 `src/background/zentaoStatus.ts` 独立模块（background/index.ts 副作用让原 file 无法 vitest import），加 `tests/zentaoStatus.test.ts` 6 用例覆盖 5 分支（deleted 优先 / active→open / resolved→in_progress / closed→done / 未知→undefined）—— 单测 260 → **266** ③ **P3 悬浮球 click 自动化不可达**：`FloatingBall.vue` 3 个 click handler（onLogoClick / onTriggerCapture / onTriggerRecord）的 `if (moved) return` 改成 `if (Date.now() - dragEndedAt < 250) return`，新加 `dragEndedAt` 时间戳在 `endDrag` 末尾记 → drag 后 250ms 内合成 click 仍拦（防御不破），250ms 之外（含 CDP / playwright 自动化合成 click）放过 ④ **P4 dogfood 装扩展流程文档化**：`docs/RELEASE_TEST_CHECKLIST.md` 加「dogfood 装扩展两条路」(release zip 长期 vs dist/ 短期+陷阱) + 「自动化测试 caveat」（pointer-only click 兼容 + closed shadow fill v-model 不通）。**bonus**：ZENTAO_SETUP.md 额外 4 处用户体验优化（悬浮球位置 + 3 图标布局说明 / inline curl ZWS 解释从「零宽空格」改成「禅道 XSS 防护改字符」白话版 / 「悬浮球被挡 / 跑屏幕外」Q&A 含清 `moo-ball-pos` localStorage 兜底 / **v0.3.0 状态回查 Q&A** 4 状态对应表）。`.gitignore` 加 `.test-output/` + `.playwright-mcp/` 防 MCP 测试残留误入仓库。**非 BREAKING + 无生产行为变更**（P3 的时间窗 250ms 对真用户操作 0 影响，仅自动化测试受益）。
 

@@ -2,6 +2,22 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.4.1
+
+2026-05-22 发版。无 BREAKING。
+
+发版工程化 + 体感小改：
+
+- **feat(submit)**: SubmitDialog 附带请求 inline body 旁加 📋 复制按钮（复完整原文，不是 1500 字截断版）+ req-controls 加「收起全部 (N)」按钮（v-if expandedReqIds.size > 0）
+- **chore(release)**: pre-flight 改读 `.release-pii-deny`（gitignored，本地词表）+ 加模式扫描 warn 段（手机号 / 邮箱 / 私网 IP / 身份证 4 类 regex）。env 控制：`MOO_RELEASE_SKIP_PII_CHECK=1` 跳黑名单 / `MOO_RELEASE_SKIP_PII_PATTERN=1` 跳模式 / `MOO_RELEASE_PII_VERBOSE=1` 看完整命中
+- **chore(history)**: `git filter-repo` 5 轮清整 git history（file content + commit message + tag annotation + reflog + unreachable objects，22 类系统扫 0 PII 命中）+ 21 个 tag SHA 重指（Gitee zip / 下载链接 / sha256 不动）
+- **docs**: 禅道手册加 v2 鉴权失效非标响应陷阱章节（HTTP 200 + `{result:false}` 不是 401）+ CLAUDE.md 加「发版前 PII 自检 10 问」+「filter-repo 关键陷阱（--replace-text 不动 commit message 必须 --replace-message 同跑）」
+- **test**: 加 3 个 e2e 覆盖复制 / 收起（COPY-1 完整原文 + COPY-2 req/res 独立 + COLLAPSE-1 v-if 出现消失），harness 加 `?requests=N` 注入 mock。100 e2e 全绿
+
+无 BREAKING。290 单测 + 100 e2e 全绿。
+
+**发版决策小记**（2026-05-22）：3 条跳 checklist 标准前 2 条满足（① 非 BREAKING ② 全绿），第 3 条「dogfood ≥ 几天」**用户明示放行**——D 改动是 UI 体感不影响行为，pre-flight 是发版工具不影响 production。同事 dogfood v0.4.0 时碰的 HTTP 403 留到 v0.4.2 等 SW log 诊断。
+
 ## v0.4.0
 
 2026-05-22 发版。无 BREAKING。
