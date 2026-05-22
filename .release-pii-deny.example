@@ -11,9 +11,9 @@
 #
 # 紧急绕过：MOO_RELEASE_SKIP_PII_CHECK=1 pnpm release ...
 #
-# 示例（请替换成你项目里的真值）：
+# ── 下面是占位演示词（用 __MOO_PII_DEMO_xxx__ 前缀避免和正常代码冲突）──
+# 把它们替换成你项目里的真值后保存。
 
-张三
-李四
-13800000000
-yourcompany.chandao.net
+__MOO_PII_DEMO_NAME_REPLACE_ME__
+__MOO_PII_DEMO_PHONE_REPLACE_ME__
+__MOO_PII_DEMO_COMPANY_REPLACE_ME__
