@@ -14,23 +14,23 @@
 - Gitee / GitHub release 页面的 description
 - release zip 内容
 
-**必须脱敏的内容**：
+**必须脱敏的类型 + 占位写法**：
 
-| 类型 | 真实例 | 脱敏写法 |
-|---|---|---|
-| 同事真名 | 「同事反馈」 | 「同事反馈」 |
-| 自己真名 | 「张三」 | 「张三」 / 「XXX」通用占位 |
-| 真实手机号 | `13800000000` | `13800000000` 占位号（138/139 全 0 / 全 1）|
-| 真实邮箱 | `someone@example.com` | `user@example.com` |
-| 公司禅道实例 | `yourcompany.chandao.net` | `真禅道实例`（叙述）/ `yourcompany.chandao.net`（手册示例）/ `z.example.com`（测试 mock）|
-| 内部 IP / 内部域名 | 任何 `*.内部域名` | `internal.example.com` |
-| 真账号 token / key | 实际值 | 永远不写进文档/commit |
+| 类型 | 占位写法 |
+|---|---|
+| 同事真名 | `同事` / `同事乙` / `同事丙` |
+| 自己真名 | `张三` / `XXX` 通用占位 |
+| 真实手机号 | `13800000000`（138/139 全 0/全 1 约定占位号）|
+| 真实邮箱 | `user@example.com` |
+| 公司禅道实例 | `yourcompany.chandao.net`（手册示例）/ `z.example.com`（测试 mock）/ 叙述时写「真禅道实例」 |
+| 内部 IP / 内部域名 | `internal.example.com` |
+| 真账号 token / key | 永远不写进文档/commit |
 
 **约束**：
 
 - 即使是历史归档文档（`docs/handoff-archive/**`）也要脱敏 —— git clone 后任何人都能看到
 - 即使是 test mock data —— public repo 的 tests/ 也是公开的
-- 即使是代码注释里举例「实测 yourcompany.chandao.net 9343」—— 改成「实测真禅道实例 N」
+- 即使是代码注释举例「实测 N 号 bug」—— 不要写公司禅道实例名
 
 **违反代价**：
 
@@ -38,16 +38,17 @@
 - git commit message 含真名 → 必须 force push 改写 history（破坏其他人的 clone）
 - 测试 mock 含真账号 → 把人手机号写进 public repo 永远在 git log 里搜得到
 
-**实操检查清单**（每次发版前 grep 一遍）：
+**实操检查（已自动化）**：
 
-```bash
-grep -rEn "同事|同事乙|张三|yourcompany|13800000000" \
-  --include="*.md" --include="*.ts" --include="*.vue" --include="*.json" --include="*.mjs" \
-  . 2>/dev/null | grep -v "node_modules\|dist/\|\.test-output"
-# 期望：无输出
-```
-
-把这条 grep 加进 `pnpm release --publish` 的 pre-flight check 也行（暂未做）。
+- 每次 `pnpm release`（dry-run + --publish）都跑 pre-flight 脱敏 grep
+- 黑名单词列表放在 **`.release-pii-deny`**（**gitignored，不入仓库**——内容本身就是要脱的真 PII）
+- 模板见仓库自带的 **`.release-pii-deny.example`**。第一次配：
+  ```bash
+  cp .release-pii-deny.example .release-pii-deny
+  # 编辑 .release-pii-deny 加入你需要脱敏的真名 / 真账号 / 真公司域名 / 真手机号
+  ```
+- 命中即 abort。紧急绕过：`MOO_RELEASE_SKIP_PII_CHECK=1 pnpm release ...`
+- **重要：不要把黑名单词写进任何 tracked 文件**（包括 CLAUDE.md / release.mjs 自身）—— 那等于把要脱的内容塞进公开仓库
 
 ---
 

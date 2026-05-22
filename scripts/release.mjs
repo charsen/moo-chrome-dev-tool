@@ -83,6 +83,92 @@ if (!process.env.MOO_RELEASE_FORCE) {
   }
 }
 
+// ---------- pre-flight 脱敏检查（dry-run + publish 都跑）----------
+// 起因：v0.4.0 发版时把同事真名写进 commit / CHANGELOG / Gitee release page，用户要求撤回重发。
+// 规则见 CLAUDE.md「🔴 发版信息脱敏」。命中即 abort；紧急时可 MOO_RELEASE_SKIP_PII_CHECK=1 绕过。
+//
+// 黑名单词来源：`.release-pii-deny`（gitignored，本地维护，不入仓库）。
+// 没设词表 fallback `.release-pii-deny.example`（占位演示，仓库自带）。
+// 设计原因：黑名单词本身就是真 PII，写进 release.mjs 等于把要脱的内容塞进公开仓库。
+const PII_DENY_FILE = resolve(root, '.release-pii-deny')
+const PII_DENY_EXAMPLE_FILE = resolve(root, '.release-pii-deny.example')
+const PII_INCLUDE_EXTS = ['md', 'ts', 'tsx', 'vue', 'json', 'mjs', 'js']
+const PII_EXCLUDE_PATH_PATTERNS = [
+  'node_modules/',
+  'dist/',
+  'release/',
+  '.test-output',
+  '/.git/',
+  // example 文件含占位演示词，自身不算命中
+  './.release-pii-deny.example'
+]
+
+function loadPiiDenyTerms() {
+  const candidate = existsSync(PII_DENY_FILE)
+    ? PII_DENY_FILE
+    : existsSync(PII_DENY_EXAMPLE_FILE)
+      ? PII_DENY_EXAMPLE_FILE
+      : null
+  if (!candidate) return { terms: [], source: null }
+  const text = readFileSync(candidate, 'utf8')
+  const terms = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !l.startsWith('#'))
+  return { terms, source: candidate }
+}
+
+function preFlightPiiCheck() {
+  if (process.env.MOO_RELEASE_SKIP_PII_CHECK) {
+    console.warn('⚠ MOO_RELEASE_SKIP_PII_CHECK=1 已设，跳过脱敏检查（紧急通道）')
+    console.warn('')
+    return
+  }
+  const { terms, source } = loadPiiDenyTerms()
+  if (terms.length === 0) {
+    console.warn('⚠ 未找到 .release-pii-deny 或 .release-pii-deny.example，跳过脱敏检查')
+    console.warn('  建议：cp .release-pii-deny.example .release-pii-deny ，加入你需要脱敏的真词')
+    console.warn('')
+    return
+  }
+  const relSource = source.replace(root + '/', '')
+  if (source === PII_DENY_EXAMPLE_FILE) {
+    console.warn(`⚠ 正在用 ${relSource} 作为脱敏词表（fallback）`)
+    console.warn('  建议：cp .release-pii-deny.example .release-pii-deny  然后加入你需要脱敏的真词')
+    console.warn('')
+  }
+  const includeArgs = PII_INCLUDE_EXTS.map((e) => `--include=*.${e}`).join(' ')
+  // 词里若含 grep ERE 元字符，转义掉
+  const grepPattern = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+  let raw = ''
+  try {
+    raw = execSync(
+      `grep -rEn ${includeArgs} "${grepPattern}" . 2>/dev/null || true`,
+      { cwd: root, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }
+    )
+  } catch {
+    // grep 找不到时已通过 || true 兜底，这里再 catch 一次保险
+  }
+  const hits = raw
+    .split('\n')
+    .filter(Boolean)
+    .filter((line) => !PII_EXCLUDE_PATH_PATTERNS.some((p) => line.includes(p)))
+  if (hits.length > 0) {
+    console.error('━━━ ⛔ pre-flight 脱敏检查命中 ━━━')
+    console.error(`词表来源: ${relSource}（${terms.length} 词）`)
+    console.error('以下文件含黑名单词，发版前必须脱敏：')
+    console.error('')
+    for (const l of hits) console.error('  ' + l)
+    console.error('')
+    console.error('脱敏对照表见 CLAUDE.md「🔴 发版信息脱敏」。')
+    console.error('真要跳（不推荐），重跑：MOO_RELEASE_SKIP_PII_CHECK=1 pnpm release ...')
+    process.exit(1)
+  }
+  console.log(`✓ pre-flight 脱敏检查通过（词表 ${relSource}, ${terms.length} 词，无命中）`)
+  console.log('')
+}
+preFlightPiiCheck()
+
 // ---------- --publish 模式 token 预检（fail-fast，省得 build 完才发现）----------
 const token = process.env.GITEE_TOKEN || ''
 if (publish && !token) {

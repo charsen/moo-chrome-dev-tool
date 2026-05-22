@@ -1,0 +1,19 @@
+# Moo release pre-flight 脱敏黑名单（模板）
+#
+# 用法：
+#   cp .release-pii-deny.example .release-pii-deny
+#   编辑 .release-pii-deny 加入你需要脱敏的真名 / 真账号 / 真公司域名 / 真手机号
+#   pnpm release（dry-run 或 --publish）会自动 grep 整仓库，命中即 abort
+#
+# 每行一个词，# 开头是注释，空行忽略。
+# 词里若含 grep ERE 元字符（. * + ? ^ $ { } ( ) | [ ] \）会自动转义。
+# .release-pii-deny 自身已 .gitignore，不会进仓库。
+#
+# 紧急绕过：MOO_RELEASE_SKIP_PII_CHECK=1 pnpm release ...
+#
+# 示例（请替换成你项目里的真值）：
+
+张三
+李四
+13800000000
+yourcompany.chandao.net

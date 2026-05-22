@@ -252,6 +252,47 @@ Moo 跟禅道之间的所有对话都走这套 API。文档按禅道功能模块
 | Build / Release 管理 | 3.3 Build / 3.12 Release |
 | Execution（迭代）相关 | 3.5.x |
 
+### v2 API 隐藏陷阱（dogfood 实测踩出来的，下次别重踩）
+
+#### 1. v2 endpoint 鉴权失效**不**返 401，返 HTTP 200 + `{result:false}` 非标响应
+
+v0.4.0 dogfood 实测踩到。token 过期 / 被禁 / 账号被锁时，v2 endpoint 不像标准 RESTful 那样返 `401 Unauthorized`，而是这样：
+
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{ "result": false, "message": "登录已超时，请重新登入" }
+```
+
+`res.ok === true`、`res.status === 200`，常规 `if (!res.ok) retryLogin()` 完全捕不到。必须**解析 body** 才能识别。
+
+应对：`src/background/zentao/client.ts` 里有 `isV2AuthExpired(body)` helper，6 个 v2 read endpoint 都过一遍。新接 v2 endpoint 也要套上：
+
+```ts
+const data = await res.json()
+if (isV2AuthExpired(data)) {
+  await reLogin()
+  return retry(...)
+}
+```
+
+`isV2AuthExpired` 匹配的关键词：`登录已超时 | 请重新登入 | 请重新登录 | 未登录 | 未授权 | unauthor | token.*(expir|invalid|missing)`。新接口踩到其他类似关键词，加进 helper。
+
+**反面教训**：dogfood 第 1 版按 401 写 retry 逻辑，token 过期时 SubmitDialog 「✓ 已登录」状态条**显示绿色但实际失败**，因为响应 HTTP 200 通过了我们的「成功」分支。
+
+#### 2. v2 `/api.php/v2/files` 端点附件上传账号 deny
+
+参见下面的「已知做不到」。
+
+#### 3. v2 endpoint 不接受 cookie 鉴权（必须 token）
+
+v0.4.0 dogfood 时一度想用 v2 endpoint 探 cookie 是否还在 jar 里，发现 v2 endpoint 严格只认 `Token: <token>` header，cookie 完全无视。
+
+应对：login 后**信任** cookie 已写入 jar（不再探），cookie 失效靠下一次 `/file-ajaxUpload.html` 失败 + reLogin 重写。代码 `ensureCookieSession()` 走 trust 路径。
+
+---
+
 ### 已知「做不到」（v0.2.3 实测穷举过的，下次别再花时间重探）
 
 - **录像在 bug 详情页 inline 播放**：禅道 HTML sanitizer 是严格白名单，`<video>` / `<embed>` / `<object>` 整段剥成空，`<iframe>` 字母被改全角；上传的 `.webm` 被禅道强制改名 `.txt` + 返 `application/octet-stream`。webm → GIF 理论可行但体积膨胀 5-10 倍必超 50M。**现状：bug 详情页放下载链接**。
