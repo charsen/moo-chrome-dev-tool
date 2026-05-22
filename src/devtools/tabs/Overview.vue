@@ -136,6 +136,16 @@
     <div class="empty" v-else>
       <p v-if="loading">加载中…</p>
       <p v-else-if="kinds.size === 0">两个类型都已隐藏；点上方筛选重新开启。</p>
+      <template v-else-if="hasDataFilteredOut">
+        <p class="empty-title">⏱ 当前过滤条件下没匹配</p>
+        <p class="empty-hint">
+          共 <b>{{ requests.length + errors.length }}</b> 条数据被过滤掉了（时间窗：{{ windowLabel }}<span v-if="filter">；URL/错误过滤：「{{ filter }}」</span>）。
+          <br>
+          <button v-if="windowMs !== -1" class="link-btn" type="button" @click="windowMs = -1">切到「全部」时间窗</button>
+          <span v-if="filter && windowMs !== -1"> · </span>
+          <button v-if="filter" class="link-btn" type="button" @click="filter = ''">清空过滤词</button>
+        </p>
+      </template>
       <template v-else>
         <p class="empty-title">还没抓到任何请求或错误</p>
         <p class="empty-hint">
@@ -262,6 +272,23 @@ const timeline = computed<TimelineItem[]>(() => {
   return items
 })
 
+/**
+ * 数据被过滤掉的判定（empty state 智能分支用）：
+ * 起因 dogfood — chip 显示「请求 3」但列表空（时间窗 30s 过滤），文案「还没抓到」误导。
+ * 这种情况下提示用户「N 条被过滤」+ 一键切「全部」时间窗。
+ */
+const hasDataFilteredOut = computed(() => {
+  const total = requests.value.length + errors.value.length
+  return total > 0 && timeline.value.length === 0
+})
+
+const windowLabel = computed(() => {
+  const ms = windowMs.value
+  if (ms < 0) return '全部'
+  if (ms >= 1000) return `最近 ${ms / 1000}s`
+  return `${ms}ms`
+})
+
 function toggle(id: string) {
   openId.value = openId.value === id ? '' : id
 }
@@ -375,6 +402,20 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--moo-c-border);
   background: var(--moo-c-bg);
 }
+
+/* empty state 行内链接按钮（「切到全部」「清空过滤词」用） */
+.link-btn {
+  background: transparent;
+  border: none;
+  color: var(--moo-c-link, var(--moo-c-primary, #4f8df9));
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link-btn:hover { color: var(--moo-c-primary-hover, #6ba0fa); }
+.link-btn:focus-visible { outline: 2px solid var(--moo-c-primary, #4f8df9); outline-offset: 2px; border-radius: 2px; }
 
 /* 类型筛选 chip（请求 / 错误，可独立开关） */
 .kind-filters {
