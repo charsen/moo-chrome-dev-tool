@@ -337,22 +337,23 @@ export async function ping(env: ZentaoEnv): Promise<ZentaoResult<ZentaoProfile>>
       profile?: { id?: number; account?: string; realname?: string }
     } | null
     if (isV2AuthExpired(body)) return { _retry: true as const }
-    // 双兜底：v2 平铺 / 万一禅道版本变化嵌套 profile
+    // v0.4.2 dogfood 修：v2 /users/{id} 响应非标时 fallback 到 cached（不再 abort）。
+    // 起因：某些禅道实例返非标 schema（缺 id / 缺 realname / 字段名不同），但 token 真有效
+    //   （res.ok + 非 v2AuthExpired）。cached 来自 login 必齐，用它兜底比报「v2 用户详情响应格式不对」好。
+    // 严格 validation 把响应当 fallback「更新 cache」，能解析就更新，不能就保持 cached。
     const idRaw = body?.id ?? body?.profile?.id
-    if (idRaw == null) {
-      // 没 id 字段说明响应根本不是用户详情（可能是业务错响应如「用户不存在」）—— 不要拿 cached fallback
-      const errMsg = typeof body?.message === 'string' && body.message ? body.message : 'v2 用户详情响应格式不对'
-      return { ok: false as const, error: errMsg }
+    const account = body?.account || body?.profile?.account
+    const realname = body?.realname || body?.profile?.realname
+    if (idRaw != null && account && realname) {
+      const id = typeof idRaw === 'number' ? idRaw : Number(idRaw)
+      if (Number.isFinite(id)) {
+        // 解析成功 → 更新 cache（万一禅道侧改名）
+        userCache.set(envKey(env), { id, account, realname })
+        return { ok: true as const, data: { id, account, realname } }
+      }
     }
-    const account = body?.account || body?.profile?.account || cached.account
-    const realname = body?.realname || body?.profile?.realname || cached.realname
-    const id = typeof idRaw === 'number' ? idRaw : Number(idRaw)
-    if (Number.isFinite(id) && account && realname) {
-      // 更新 cache（万一禅道侧改名）
-      userCache.set(envKey(env), { id, account, realname })
-      return { ok: true as const, data: { id, account, realname } }
-    }
-    return { ok: false as const, error: 'v2 用户详情响应格式不对' }
+    // 解析失败但 token 有效 → 用 cached（login 拿的，必齐）
+    return { ok: true as const, data: { id: cached.id, account: cached.account, realname: cached.realname } }
   })
 }
 

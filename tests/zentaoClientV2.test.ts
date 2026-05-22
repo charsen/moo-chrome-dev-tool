@@ -397,7 +397,8 @@ describe('v2 鉴权失效非标响应 — 真禅道 实测 200 + {result:false, 
   })
 
   it('isV2AuthExpired 不误触发：result:false 但 message 不是鉴权词（业务错误） → 不 retry', async () => {
-    // 反例：result:false 但 message 是「项目不存在」之类业务错 — 不应被当成 token 失效
+    // 反例：result:false 但 message 是「项目不存在」之类业务错 — 不应被当成 token 失效（不 retry）
+    // v0.4.2 行为变更：解析失败 + token 有效 → fallback cached（login 拿到的 user）返成功，不报错
     let userCalls = 0
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url.includes('/users/login')) {
@@ -411,8 +412,54 @@ describe('v2 鉴权失效非标响应 — 真禅道 实测 200 + {result:false, 
     }))
     const { ping } = await import('@/background/zentao/client')
     const r = await ping(env)
-    expect(r.ok).toBe(false)  // 不 retry 直接报错
-    expect(userCalls).toBe(1)  // 只调一次（没 retry）
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.data.realname).toBe('A')  // cached 兜底
+    expect(userCalls).toBe(1)  // 没 retry（只调一次）
+  })
+
+  it('v0.4.2 fix · v2 /users/{id} 响应缺 id/realname → fallback cached（不报「响应格式不对」）', async () => {
+    // 起因：dogfood 时同事禅道 v2 /users/{id} 返非标 schema，旧版 strict abort 卡住测试连接
+    let userCalls = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/users/1')) {
+        userCalls++
+        // 模拟某些禅道实例：返空对象 / 不规范字段
+        return mockJsonRes({ foo: 'bar' })
+      }
+      throw new Error(`unexpected ${url}`)
+    }))
+    const { ping } = await import('@/background/zentao/client')
+    const r = await ping(env)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data.id).toBe(1)
+      expect(r.data.account).toBe('a')
+      expect(r.data.realname).toBe('A')
+    }
+    expect(userCalls).toBe(1)
+  })
+
+  it('v0.4.2 · v2 /users/{id} 响应规范（含完整 id/account/realname） → 用响应数据 + 更新 cache', async () => {
+    let userCalls = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/users/1')) {
+        userCalls++
+        return mockJsonRes({ id: 1, account: 'a-new', realname: 'A-new' })  // 假设禅道侧改名
+      }
+      throw new Error(`unexpected ${url}`)
+    }))
+    const { ping } = await import('@/background/zentao/client')
+    const r = await ping(env)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data.realname).toBe('A-new')  // 用响应里的新名字
+    }
   })
 })
 
