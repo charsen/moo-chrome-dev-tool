@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src/assets/banner.png" alt="Moo Dev Tool" width="100%" />
+</p>
+
 # Moo Dev Tool
 
 一个给开发、测试、设计师在浏览器里报 bug 用的 Chrome 扩展。
