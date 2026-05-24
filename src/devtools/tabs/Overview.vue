@@ -297,48 +297,14 @@ function toggle(id: string) {
 const bodySearch = ref('')
 watch(openId, () => { bodySearch.value = '' })
 
+// v0.4.5：6 个 row format 函数抽到 @/utils/requestRowFormat（SubmitDialog 同款）
+// Overview 的 shortUrl 含 host（宽度足够），SubmitDialog 在 shadow 内宽度受限不含 host
+import {
+  shortUrl as shortUrlBare,
+  statusClass, failClass, durClass, errLevelLabel, errLevelTitle
+} from '@/utils/requestRowFormat'
 function shortUrl(url: string): string {
-  try {
-    const u = new URL(url)
-    return u.host + u.pathname + (u.search ? u.search : '')
-  } catch {
-    return url
-  }
-}
-
-function statusClass(s: number) {
-  if (!s) return 'err'
-  if (s >= 500) return 'err'
-  if (s >= 400) return 'warn'
-  return 'ok'
-}
-
-// 行级"出错强调"：4xx 给橙色左色条，5xx / 网络错给红色左色条。
-// 跟 SubmitDialog 用同一套语义；视觉上 chip 标点 + 左色条扫面
-function failClass(s: number): string {
-  if (!s) return 'is-err'
-  if (s >= 500) return 'is-err'
-  if (s >= 400) return 'is-warn'
-  return ''
-}
-
-// 慢请求 duration 染色（≥1s 橙 / ≥3s 红）。200 但 5s 同样是问题，
-// 光看 status chip 看不出来
-function durClass(d: number): string {
-  if (d >= 3000) return 'dur--xslow'
-  if (d >= 1000) return 'dur--slow'
-  return ''
-}
-
-function errLevelLabel(level: ConsoleError['level']): string {
-  if (level === 'rejection') return 'REJ'
-  if (level === 'console') return 'CON'
-  return 'ERR'
-}
-function errLevelTitle(level: ConsoleError['level']): string {
-  if (level === 'rejection') return 'Unhandled Promise Rejection'
-  if (level === 'console') return 'console.error 调用'
-  return 'window.onerror（运行时错误）'
+  return shortUrlBare(url, { includeHost: true })
 }
 
 function formatTime(iso: string) {

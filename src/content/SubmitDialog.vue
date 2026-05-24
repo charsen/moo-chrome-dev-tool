@@ -679,49 +679,9 @@ function selectNone() {
   selectedIds.value = new Set()
 }
 
-function shortUrl(url: string): string {
-  try {
-    const u = new URL(url)
-    return u.pathname + u.search
-  } catch {
-    return url
-  }
-}
-
-function statusClass(status: number): string {
-  if (!status) return 'err'
-  if (status >= 500) return 'err'
-  if (status >= 400) return 'warn'
-  return 'ok'
-}
-
-// 行级"出错强调"：4xx 给橙色左色条，5xx / 网络错给红色左色条。
-// 配合现有 status chip 一起看：chip 标点、左色条扫面（眼睛跨几十行一扫就知道哪条挂了）
-function failClass(status: number): string {
-  if (!status) return 'is-err'
-  if (status >= 500) return 'is-err'
-  if (status >= 400) return 'is-warn'
-  return ''
-}
-
-// 慢请求 duration 染色：≥1s 橙、≥3s 红。chip 系统只看 status，
-// duration 是另一维度——200 但 5s 也是问题，光看 chip 看不出来
-function durClass(duration: number): string {
-  if (duration >= 3000) return 'dur--xslow'
-  if (duration >= 1000) return 'dur--slow'
-  return ''
-}
-
-function errLevelLabel(level: ConsoleError['level']): string {
-  if (level === 'rejection') return 'REJ'
-  if (level === 'console') return 'CON'
-  return 'ERR'
-}
-function errLevelTitle(level: ConsoleError['level']): string {
-  if (level === 'rejection') return 'Unhandled Promise Rejection'
-  if (level === 'console') return 'console.error 调用'
-  return 'window.onerror（运行时错误）'
-}
+// v0.4.5：shortUrl / statusClass / failClass / durClass / errLevelLabel / errLevelTitle
+// 抽到 @/utils/requestRowFormat（Overview.vue 同款）
+import { shortUrl, statusClass, failClass, durClass, errLevelLabel, errLevelTitle } from '@/utils/requestRowFormat'
 
 const kind = computed(() => props.project.kind ?? 'webhook')
 

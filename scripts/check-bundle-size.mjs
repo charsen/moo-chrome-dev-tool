@@ -52,7 +52,9 @@ if (result.total > TOTAL_LIMIT) {
   errors.push(`总大小超阈值：${(result.total / 1024).toFixed(1)} KB > ${TOTAL_LIMIT / 1024} KB`)
 }
 
-const big = result.files.filter(f => f.size > SINGLE_FILE_LIMIT && !f.path.endsWith('.png') && !f.path.endsWith('.jpg'))
+// 排除图片 / 字体 / 视频等资源，只检查代码 + 样式 chunk
+const RESOURCE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.woff', '.woff2', '.ttf', '.eot', '.mp4', '.webm']
+const big = result.files.filter(f => f.size > SINGLE_FILE_LIMIT && !RESOURCE_EXTS.some(ext => f.path.endsWith(ext)))
 if (big.length > 0) {
   errors.push(
     `单文件超阈值：\n  ` +

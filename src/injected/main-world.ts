@@ -281,7 +281,23 @@ interface ErrPayload {
   startTime: number
 }
 
+// v0.4.5：失控代码 / React error loop 时同 message 可能 16ms 一发 → content useErrors.ts
+// 推 ref 后 Vue 响应式更新 30fps 死循环 → 宿主页卡死。
+// 加 100ms 窗口同 message 去重，相同 message 在窗口内只发一次。
+const recentErrPosts = new Map<string, number>()
+const ERR_POST_DEDUPE_MS = 100
 function postErr(p: ErrPayload) {
+  const key = `${p.level}|${p.message}|${p.source ?? ''}|${p.line ?? ''}|${p.col ?? ''}`
+  const now = performance.now()
+  const last = recentErrPosts.get(key)
+  if (last !== undefined && now - last < ERR_POST_DEDUPE_MS) return
+  recentErrPosts.set(key, now)
+  // 防 map 无限增长：每次写入扫一遍清掉过期 key
+  if (recentErrPosts.size > 50) {
+    for (const [k, t] of recentErrPosts) {
+      if (now - t >= ERR_POST_DEDUPE_MS) recentErrPosts.delete(k)
+    }
+  }
   try { window.postMessage({ __moo: true, tag: TAG_ERR, payload: p }, location.origin) } catch {}
 }
 

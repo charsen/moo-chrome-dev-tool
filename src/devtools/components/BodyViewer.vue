@@ -33,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   escapeHtml,
   highlightJson,
@@ -107,16 +107,25 @@ const remainingLabel = computed(() => {
   return `${(rest / 1024).toFixed(1)} K 字符`
 })
 
+// v0.4.5：copied 1.5s timer 在 unmount 时必须清，否则 timer 闭包引用已卸载实例 ref
+let copiedTimer: ReturnType<typeof setTimeout> | null = null
 async function copy() {
   try {
     // 复制原文（无 HTML 标签），格式化态复制 pretty 文本——更符合"我要拿去贴别处"的直觉
     await navigator.clipboard.writeText(displayText.value)
     copied.value = true
-    setTimeout(() => { copied.value = false }, 1500)
+    if (copiedTimer) clearTimeout(copiedTimer)
+    copiedTimer = setTimeout(() => {
+      copied.value = false
+      copiedTimer = null
+    }, 1500)
   } catch {
     // devtools panel 通常有 clipboard 权限；失败极少见。静默
   }
 }
+onBeforeUnmount(() => {
+  if (copiedTimer) clearTimeout(copiedTimer)
+})
 </script>
 
 <style scoped>

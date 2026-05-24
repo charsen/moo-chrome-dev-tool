@@ -565,7 +565,7 @@ const TagInput = defineComponent({
 }
 .save-indicator.is-saving { color: var(--moo-c-text); }
 .save-indicator.is-saved  { color: var(--moo-c-success); font-weight: 500; }
-.save-indicator.is-error  { color: var(--moo-c-danger);  font-weight: 500; }
+.save-indicator.is-error  { color: var(--moo-c-danger-fg);  font-weight: 500; }
 
 .page-body {
   flex: 1;

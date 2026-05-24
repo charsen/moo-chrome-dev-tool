@@ -2,6 +2,42 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.4.5
+
+2026-05-24 发版。无 BREAKING。**v0.4.4 大复盘后跑 `/full-team-review` 找出「我刚做的就有同款 bug」+ 累积漏扫的 24 个问题，全修一波**。
+
+讽刺：**3 agent 大团队 review 发现 v0.4.4 修补里有 4 处同款漏扫** —— sender 校验只补了 background+offscreen 漏了 content+ContentApp；dark mode token 只修 Overview 漏了 Environment；setTimeout leak 只清 SubmitDialog 漏了 BodyViewer；写检查脚本时正则硬编码 `v0.x.x` 1.0 自废。证明 CLAUDE.md「主动扩展清单」第一版强度不够。
+
+**🔴 严重（7）**：
+- content/index.ts + ContentApp.vue sender 校验补齐（v0.4.4 漏的同款）
+- check-version-consistency.mjs 正则改通用 `v\d+\.\d+\.\d+`（1.0 之后仍能用）
+- Environment.vue dark mode token（用了不存在的 `--moo-c-ok-fg` → 改 `-success-fg`）
+- HANDOFF.md 「100 e2e」→ 实际 90，纠正 + 31 行 stale 段更新
+- broadcastAutoStopped 读 `chrome.runtime.lastError`（防 80+ tabs 时 console 噪音）
+
+**🟡 中等（12，含 race/leak/CSP 防御）**：
+- 第二批 dark token：popup `.rec-err` / Environment+Settings `.is-error` 改 `-fg` 变体（AA 对比度）
+- BodyViewer copied timer 加 onBeforeUnmount 清（跟 SubmitDialog copyHintTimer 同款 leak）
+- alarm 加 `alarms.get` 先判断（防 onInstalled+onStartup 同名覆盖重置周期）
+- main-world.ts window.error 加 100ms 同 message 去重（防 React loop 卡死宿主）
+- offscreen track-ended sendMessage 加 50ms 重试 + storage flag fallback（SW 回收时不丢）
+- SW spin-up 时 `checkOffscreenAutoStoppedFlag` 读 flag 兜底
+- captureVisibleTab catch 内显式 void lastError（Chrome 109-115 边缘行为）
+- retryQueue cooldown 30s（防 SW 回收 inflight 重发，flushPromise 改 IIFE 同步设防 race）
+- SubmitDialog+Overview 重复 6 函数抽到 `utils/requestRowFormat.ts`
+- release.mjs PII_INCLUDE_EXTS 加 yml/yaml/html/sh/css/txt（之前 .github/workflows 完全没扫）
+- release.mjs 邮箱 allowlist 去掉 gmail/qq/163/126/sina（free-mail provider 全 allowlist 让真名邮箱绕过）
+
+**🟢 小问题（5）**：
+- 删 4 个真死 type（CaptureScreenshotReq / RecordExternalStartedMsg / RecordAutoStoppedMsg / QueuedRequest）
+- content/index.ts mounted log 加 DEV 门控（防污染所有宿主 console）
+- check-bundle-size.mjs exclude 加 svg/webp/gif/woff2/视频等
+- storage/config migration 加 10 单测（之前 0 单测，最高风险 dead zone）
+
+**CLAUDE.md「主动扩展清单」加固**：新增 5 条 v0.4.5 lesson —— 修一个 X 应该 grep 这些（不只扫直接命中位置）。
+
+**测试**：单测 366 + 7 skipped（+10 config migration） + 90 e2e + vue-tsc 0 报错。
+
 ## v0.4.4
 
 2026-05-24 发版。无 BREAKING。**v0.4.3 后大团队复盘 + 全面加固一波**。

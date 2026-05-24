@@ -163,8 +163,18 @@ async function handleStart(streamId: string, tabId?: number): Promise<{ ok: bool
       // 通知 background：本次录屏是被外部停止的（没人在 await STOP），
       // SW 会把消息转发给原录屏 tab 的 content script，让 rec-bar 收回。
       // catch 防 SW 暂时不可达（offscreen 文档外部 sendMessage 偶发失败）。
+      // v0.4.5：SW 刚回收时这条 message 会丢（chrome 不保证 in-flight 投递）→ 所有 tab 的 rec-bar 不退。
+      // 加 storage flag fallback：SW spin-up 时读 flag 也能感知到 auto-stop（仍要 SW 自己广播）。
+      const notify = () => {
+        try {
+          chrome.runtime.sendMessage({ type: 'OFFSCREEN_AUTO_STOPPED' }).catch(() => {})
+        } catch { /* ignore */ }
+      }
+      notify()
+      // 50ms 后重试一次防 SW 此刻正在 spin-up；同时落 storage flag 兜底
+      setTimeout(notify, 50)
       try {
-        chrome.runtime.sendMessage({ type: 'OFFSCREEN_AUTO_STOPPED' }).catch(() => {})
+        chrome.storage.local.set({ mooOffscreenAutoStopped: { at: Date.now() } }).catch(() => {})
       } catch { /* ignore */ }
     }
   })

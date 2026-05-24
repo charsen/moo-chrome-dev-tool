@@ -151,7 +151,11 @@ function onKeydown(e: KeyboardEvent) {
 // 每次 Vue app 重挂（极少但 SPA 切换 / 扩展 reload 边缘 case 会触发）都会叠加
 // 一份，长期累积导致 storage 变更触发 N 次 refreshProject + 多份 toast。
 let disposeConfigWatcher: (() => void) | null = null
-function onRuntimeMessage(raw: unknown) {
+function onRuntimeMessage(raw: unknown, sender?: chrome.runtime.MessageSender) {
+  // 严格校验消息来源（v0.4.5 复盘加固）：sender.id 必须 === runtime.id。
+  // 任何不匹配（含 undefined / 不同 ext id）直接拒，防第三方扩展构造
+  // RECORD_EXTERNAL_STARTED 让 page 凭空切到 recording 态。
+  if (sender && sender.id !== chrome.runtime.id) return
   // 校验 shape：避免任意 chrome.runtime.sendMessage({type:'...',...}) 调用伪造 UI。
   // messages.ts 给出了相关接口，这里只做运行时最小校验。
   if (!raw || typeof raw !== 'object') return

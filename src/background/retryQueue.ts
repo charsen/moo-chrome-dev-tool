@@ -188,9 +188,36 @@ async function pushItem(item: QueuedItem): Promise<boolean> {
  */
 let flushPromise: Promise<number> | null = null
 
+/**
+ * v0.4.5：flushPromise 是 SW 内存锁，SW 30s 回收后锁丢但 inflight fetch 在 keep-alive 期间已发出。
+ * 下次 spin-up 立即 flush 时若上次 fetch 还没返回，**同一条 retry 发两次**（特别是禅道 multipart
+ * 重发会产生重复 bug 单）。加 storage 级 ≤30s hard cooldown 兜底。
+ */
+const FLUSH_COOLDOWN_KEY = 'mooLastFlushAt'
+const FLUSH_COOLDOWN_MS = 30_000
+
+async function shouldSkipForCooldown(): Promise<boolean> {
+  // 不吞 storage 错 —— storage 坏了让 caller 知道（跟 readQueue 一致语义）
+  const { [FLUSH_COOLDOWN_KEY]: last } = await chrome.storage.local.get(FLUSH_COOLDOWN_KEY)
+  return typeof last === 'number' && Date.now() - last < FLUSH_COOLDOWN_MS
+}
+
+async function markFlushStart(): Promise<void> {
+  await chrome.storage.local.set({ [FLUSH_COOLDOWN_KEY]: Date.now() })
+}
+
 export async function flushRetryQueue(): Promise<number> {
   if (flushPromise) return flushPromise
-  flushPromise = doFlush().finally(() => { flushPromise = null })
+  // v0.4.5：同步设置 flushPromise 避免 shouldSkipForCooldown await 期间第二个 caller 漏进。
+  // 把 cooldown check + markFlushStart + doFlush 都放进同一个 Promise 里原子化。
+  flushPromise = (async () => {
+    if (await shouldSkipForCooldown()) {
+      console.log('[Moo] flushRetryQueue 跳过：30s cooldown 内（防 SW 回收后重发重复条）')
+      return 0
+    }
+    await markFlushStart()
+    return doFlush()
+  })().finally(() => { flushPromise = null })
   return flushPromise
 }
 

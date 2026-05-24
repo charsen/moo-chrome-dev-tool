@@ -13,7 +13,7 @@ export interface MooMessage<T = unknown> {
 
 // ---- 具体消息载荷 ----
 
-export interface CaptureScreenshotReq {}
+// （CaptureScreenshotReq 空 interface 已删 — runtime 不带 payload，type narrow 不需要）
 export interface CaptureScreenshotRes {
   ok: boolean
   dataUrl?: string
@@ -97,21 +97,9 @@ export interface GetErrorsRes {
   errors: ConsoleError[]
 }
 
-/** background → content 通过 chrome.runtime.sendMessage 广播，告诉所有 tab
- *  录屏快捷键已被触发 + 是否真正进入录制（getMediaStreamId 可能被用户拒）。 */
-export interface RecordExternalStartedMsg {
-  type: 'RECORD_EXTERNAL_STARTED'
-  ok: boolean
-  error?: string
-}
-
-/** background → content（仅发给录屏中的 tab）：告诉 content 录屏已被外部停止
- *  （Chrome 顶部"停止共享"条点击 / tab 关闭等），需要切回 idle 状态。 */
-export interface RecordAutoStoppedMsg {
-  type: 'RECORD_AUTO_STOPPED'
-  /** 'chrome-ui' = 用户点 Chrome 自带"停止共享"条；'other' = 其他原因 */
-  reason?: 'chrome-ui' | 'other'
-}
+// （RecordExternalStartedMsg / RecordAutoStoppedMsg 两个消息 shape interface 已删 —
+//  runtime 通过 MSG.RECORD_EXTERNAL_STARTED / MSG.RECORD_AUTO_STOPPED 字符串识别，
+//  没有 import 这些 type 的代码点。新增类似消息时 inline 类型即可）
 
 /** content → background：重新挂载时（同 tab navigation）查录屏是否进行中 */
 export interface QueryRecordingStateRes {

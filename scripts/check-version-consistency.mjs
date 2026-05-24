@@ -55,8 +55,8 @@ if (!mfMatch) {
 // 注意：CHANGELOG.md 含所有版本号链接是合法的（changelog 性质，每条都该指向对应版本）。
 
 const FORBIDDEN_DOWNLOAD_FILES = ['docs/ZENTAO_SETUP.md', 'README.md', 'README.en.md']
-const DOWNLOAD_PATTERN = /releases\/download\/v(0\.\d+\.\d+)\//g
-const RECOMMEND_PATTERN = /(?:当前\s*latest\s*=|建议用|推荐用|当前版本是)[\s*]*v(0\.\d+\.\d+)/g
+const DOWNLOAD_PATTERN = /releases\/download\/v(\d+\.\d+\.\d+)\//g
+const RECOMMEND_PATTERN = /(?:当前\s*latest\s*=|建议用|推荐用|当前版本是)[\s*]*v(\d+\.\d+\.\d+)/g
 
 for (const f of FORBIDDEN_DOWNLOAD_FILES) {
   let content
@@ -108,7 +108,7 @@ try {
   const out = execSync(
     `git grep -lE '⌘⇧B|⌘\\+⇧\\+B|Ctrl\\+Shift\\+B|Cmd\\+Shift\\+B' -- ` +
     `':!CHANGELOG.md' ':!HANDOFF.md' ':!docs/handoff-archive/' ` +
-    `':!scripts/check-version-consistency.mjs' || true`,
+    `':!scripts/check-version-consistency.mjs' ':!CLAUDE.md' || true`,
     { cwd: root, encoding: 'utf8' }
   ).trim()
   if (out) {

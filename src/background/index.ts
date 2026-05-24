@@ -43,14 +43,24 @@ const RETRY_ALARM = 'mooRetry'
  *  查这个状态恢复 UI；offscreen 自动 stop 时清空并广播给原 tab。 */
 let currentRecording: { tabId: number; startedAt: number } | null = null
 
+// v0.4.5：onInstalled + onStartup 都 create 同名 alarm，chrome 行为是同名覆盖会重置计时。
+// 用户首次失败入队后再过 4:59 被 onStartup 重置成 0，等于「重试周期最长能拖到 ~10min」。
+// 改成 alarms.get 先判断再 create —— 已存在就 noop，避免重置。
+async function ensureRetryAlarm(): Promise<void> {
+  const existing = await chrome.alarms.get(RETRY_ALARM)
+  if (!existing) {
+    chrome.alarms.create(RETRY_ALARM, { periodInMinutes: 5 })
+  }
+}
+
 chrome.runtime.onInstalled.addListener(({ reason }) => {
   console.log('[Moo] installed:', reason)
-  chrome.alarms.create(RETRY_ALARM, { periodInMinutes: 5 })
+  void ensureRetryAlarm()
   void refreshBadge()
 })
 
 chrome.runtime.onStartup?.addListener(() => {
-  chrome.alarms.create(RETRY_ALARM, { periodInMinutes: 5 })
+  void ensureRetryAlarm()
   void flushRetryQueue()
   void refreshBadge()
 })
@@ -89,7 +99,29 @@ chrome.alarms?.onAlarm.addListener((alarm) => {
   void refreshBadge()
   // v0.4.4：从 offscreen 恢复录屏状态（SW 内存丢但 offscreen 还在录的边缘场景）
   void rehydrateRecordingFromOffscreen()
+  // v0.4.5：offscreen track-ended 时如果 SW 刚回收，sendMessage 会丢。spin-up 时读 storage flag 兜底
+  void checkOffscreenAutoStoppedFlag()
 })()
+
+async function checkOffscreenAutoStoppedFlag(): Promise<void> {
+  try {
+    const { mooOffscreenAutoStopped } = await chrome.storage.local.get('mooOffscreenAutoStopped')
+    if (!mooOffscreenAutoStopped?.at) return
+    // 5 分钟内的 flag 才处理 —— 太老的可能是历史残留，避免广播过期事件
+    if (Date.now() - mooOffscreenAutoStopped.at > 5 * 60_000) {
+      await chrome.storage.local.remove('mooOffscreenAutoStopped')
+      return
+    }
+    if (currentRecording) {
+      console.log('[Moo] SW boot: 从 storage flag 感知到 offscreen auto-stopped，广播给 tabs')
+      currentRecording = null
+      await broadcastAutoStopped('chrome-ui')
+    }
+    await chrome.storage.local.remove('mooOffscreenAutoStopped')
+  } catch (e) {
+    console.warn('[Moo] checkOffscreenAutoStoppedFlag failed:', (e as Error).message)
+  }
+}
 
 // 录屏入口必须由用户手势触发：chrome.commands 命中算手势，并直接把当前 tab 传进来。
 // 悬浮球的 click 经 content script → message 转一道后手势就丢了，tabCapture.getMediaStreamId
@@ -342,6 +374,9 @@ async function broadcastAutoStopped(reason: string, excludeTabId?: number): Prom
       await chrome.tabs.sendMessage(t.id, { type: MSG.RECORD_AUTO_STOPPED, reason })
     } catch {
       // tab 不接消息（无 content script / 已关）—— 静默
+      // v0.4.5：80+ tabs 时 chrome 会把 reject 同时设到全局 lastError 里，必须显式 read
+      // 否则扩展错误页刷一堆「unchecked runtime.lastError」噪音
+      void chrome.runtime.lastError
     }
   }))
 }
@@ -354,6 +389,9 @@ async function captureScreenshot(windowId?: number): Promise<CaptureScreenshotRe
     )
     return { ok: true, dataUrl }
   } catch (err) {
+    // v0.4.5：Promise 版的 captureVisibleTab 失败时 reject Error，理论上不会留 lastError。
+    // 但 chrome 109-115 实现历史上有版本两条都设，防御性 read 一下避免 unchecked 警告
+    void chrome.runtime.lastError
     return { ok: false, error: (err as Error).message }
   }
 }

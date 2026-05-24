@@ -92,7 +92,9 @@ if (!process.env.MOO_RELEASE_FORCE) {
 // 设计原因：黑名单词本身就是真 PII，写进 release.mjs 等于把要脱的内容塞进公开仓库。
 const PII_DENY_FILE = resolve(root, '.release-pii-deny')
 const PII_DENY_EXAMPLE_FILE = resolve(root, '.release-pii-deny.example')
-const PII_INCLUDE_EXTS = ['md', 'ts', 'tsx', 'vue', 'json', 'mjs', 'js']
+// v0.4.5：扩展覆盖到 yaml workflow / shell 脚本 / html / css / txt / sh 等。
+// 之前漏了这些 → .github/workflows/*.yml、scripts/*.sh、src/styles/*.css 都不会被 PII 扫到
+const PII_INCLUDE_EXTS = ['md', 'ts', 'tsx', 'vue', 'json', 'mjs', 'js', 'yml', 'yaml', 'html', 'sh', 'css', 'txt']
 const PII_EXCLUDE_PATH_PATTERNS = [
   'node_modules/',
   'dist/',
@@ -181,10 +183,15 @@ const PII_PATTERN_CHECKS = [
     allowlistRegex: '(138|139)(00000000|11111111)'
   },
   {
-    name: '可疑邮箱（@非 example/gmail/anthropic/noreply/gitee）',
+    name: '可疑邮箱（@非 example/anthropic/noreply/gitee 等公共服务域）',
     regex: '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.(com|cn|net|org|edu)',
-    // 整行包含 allowlist 模式即跳过
-    allowlistRegex: '@(example\\.|gmail\\.|anthropic\\.|noreply|huawei\\.|sentry\\.io|gitee\\.com|github\\.com|qq\\.com|163\\.com|sina\\.com|126\\.com)|(user|alice|bob|admin|test)@'
+    // 整行包含 allowlist 模式即跳过。
+    // v0.4.5：去掉 gmail/qq/163/126/sina —— 之前这些是 free-mail provider 全 allowlist，
+    // 同事用 gmail/QQ/163 的真名邮箱直接绕过 PII 扫，跟 hard rule 冲突。
+    // 真人 gmail 应该入 .release-pii-deny 黑名单（按具体地址匹配，不靠域 allowlist）。
+    // 保留：example（文档示例域）/ anthropic/sentry.io/gitee.com/github.com（服务方域）/
+    //       noreply（机器人提交方常用）/ huawei（公司域举例 — 你公司域应保留）/ user|alice|bob|admin|test 测试占位前缀
+    allowlistRegex: '@(example\\.|anthropic\\.|noreply|huawei\\.|sentry\\.io|gitee\\.com|github\\.com)|(user|alice|bob|admin|test)@'
   },
   {
     name: '私网 IP（192.168 / 10.x / 172.16-31）',

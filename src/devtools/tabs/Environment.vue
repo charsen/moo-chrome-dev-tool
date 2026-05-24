@@ -844,7 +844,7 @@ function truncate(s: string, n: number): string {
 }
 .save-bar.is-saving .status-msg { color: var(--moo-c-text); }
 .save-bar.is-saved  .status-msg { color: var(--moo-c-success); font-weight: 500; }
-.save-bar.is-error  .status-msg { color: var(--moo-c-danger);  font-weight: 500; }
+.save-bar.is-error  .status-msg { color: var(--moo-c-danger-fg);  font-weight: 500; }
 /* retry 按钮按 canonical .moo-btn--sm.moo-btn--danger 出，无需 override */
 
 /* 项目搜索框（项目 > 6 时显示） */
@@ -1173,8 +1173,8 @@ function truncate(s: string, n: number): string {
   font-family: var(--moo-ff-mono);
   margin-left: 8px;
 }
-.zentao-status.ok { color: var(--moo-c-ok-fg, #16a34a); }
-.zentao-status.err { color: var(--moo-c-err-fg, #dc2626); }
+.zentao-status.ok { color: var(--moo-c-success-fg); }
+.zentao-status.err { color: var(--moo-c-danger-fg); }
 .zentao-defaults {
   margin-top: 12px;
   padding: 10px 12px 4px;

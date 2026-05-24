@@ -578,7 +578,7 @@ onMounted(async () => {
 .rec-label { color: var(--moo-c-text); font-weight: 500; }
 .rec-err {
   font-size: var(--moo-fs-xs);
-  color: var(--moo-c-warn);
+  color: var(--moo-c-warn-fg);
   margin-bottom: 6px;
   text-align: center;
 }

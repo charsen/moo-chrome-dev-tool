@@ -4,7 +4,9 @@
 
 ## 一句话现状
 
-**v0.4.4 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.4/moo-chrome-dev-tool-0.4.4.zip)（sha256 `7cf1fd9c07931942aee4e6bd6d72871b56216dba62f77290e62a00ac781a7265`）。v0.4.3 后**大团队复盘** —— 3 个 agent 并行审找出 4 严重 + 7 中等问题全修。包括 MV3 安全加固（onMessage sender 严格校验）+ dark mode token 修复 + SubmitDialog leak + SW/offscreen 状态同步 + submit.ts 加 17 单测 + 文档/类型债清理。无 BREAKING。**356 单测 + 7 skipped + 100 e2e 全绿**。
+**v0.4.5 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.5/moo-chrome-dev-tool-0.4.5.zip)（sha256 待回填）。v0.4.4 后**跑 `/full-team-review` 发现 4 处「我刚做的就有同款 bug」+ 24 累积问题**。讽刺地证明 v0.4.4 的「主动扩展清单」强度不够 —— sender 校验补漏 content/ContentApp、dark mode token 漏 Environment、setTimeout leak 漏 BodyViewer、写检查脚本时正则硬编码 v0.x.x。全修 + CLAUDE.md 清单加固。无 BREAKING。**366 单测 + 7 skipped + 90 e2e 全绿**。
+
+**v0.4.4 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.4/moo-chrome-dev-tool-0.4.4.zip)（sha256 `7cf1fd9c07931942aee4e6bd6d72871b56216dba62f77290e62a00ac781a7265`）。v0.4.3 后**大团队复盘** —— 3 个 agent 并行审找出 4 严重 + 7 中等问题全修。包括 MV3 安全加固（onMessage sender 严格校验）+ dark mode token 修复 + SubmitDialog leak + SW/offscreen 状态同步 + submit.ts 加 17 单测 + 文档/类型债清理。无 BREAKING。**356 单测 + 7 skipped + 90 e2e 全绿**。
 
 **v0.4.3 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.3/moo-chrome-dev-tool-0.4.3.zip)（sha256 `223227490b3a310bd28ca3a4b73fafee4986331ef9cac735a1e29b7a442effa1`）。5 个禅道 v2 endpoint 全部双轨化（v2 拿不到自动 fallback v1）解同事提交 bug 阻塞 + 测试方法论加固（schema fuzz 40 用例 + 真实 fixture 库 + 双 MCP 分断面）。无 BREAKING。339 单测 + 7 skipped + 100 e2e 全绿。
 
@@ -24,11 +26,11 @@
 
 ## 这两周做了什么
 
-> 历史版本（v0.1.7 → v0.1.14 + v0.2.0 → v0.2.3 简介）已归档至 [docs/handoff-archive/v0.1.x.md](docs/handoff-archive/v0.1.x.md)。当前发版（v0.4.0）的明细全在 [CHANGELOG.md](CHANGELOG.md) 顶部，本文档不重复列。
+> 历史版本（v0.1.7 → v0.1.14 + v0.2.0 → v0.2.3 简介）已归档至 [docs/handoff-archive/v0.1.x.md](docs/handoff-archive/v0.1.x.md)。当前发版的明细全在 [CHANGELOG.md](CHANGELOG.md) 顶部，本文档不重复列。
 
 **MV3 限制·永远只能人眼核**：toolbar badge 视觉、`Alt+Shift+M` 真触发、DevTools 面板内嵌渲染、global shortcut、native toolbar、chrome:// 页——这些都 Playwright 也做不了，发版前自己手点 1-2 分钟过一下。**v0.1.13 / v0.1.14 / v0.2.0 / v0.3.1 / v0.4.0 都没走 dogfood ≥ 几天**（用户明示跳过）：v0.2.0 的禅道集成在 真禅道实例 真实环境完整 dogfood 过（11 个 dogfood fix 出自实测），v0.3.1 4 修一捆「文档+单测+悬浮球时间窗+流程文档」均非生产行为变更（P3 250ms 时间窗对真用户 0 影响），**v0.4.0 重型重构** dogfood 同事截图证明 ensureCookieSession + discoverProduct 核心路径 work 用户明示放行。后续 v0.4.x 体感回归 hotfix 走 v0.4.1。
 
-## Playwright E2E（v0.1.14 留下的 97 case，v0.2.0 / v0.3.x / v0.4.0 未加新 spec）
+## Playwright E2E（v0.1.14 立基线 90 case，v0.4.x 加了 SubmitDialog 复制/收起 spec 持平 90）
 
 > v0.2.0 的禅道集成 dogfood 是在真实环境（真禅道实例）走的，**没补 E2E**——禅道 API 跨域 + cookie session + 真实 WAF 在 Playwright headless chromium 里没法可靠复现（mock 价值不大）。如果后续要做禅道侧的回归保护，更现实的方向是在 `tests/` 里加 client.ts / submit.ts 的纯单测（已有 zentao client 71 + retryQueue multipart 11，覆盖了主要分支）。
 

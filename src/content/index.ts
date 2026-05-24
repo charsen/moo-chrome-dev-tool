@@ -6,7 +6,11 @@ import { clearErrors, getCurrentErrors } from './useErrors'
 import { MSG, type GetErrorsRes, type GetRequestsRes, type MooMessage } from '@/types/messages'
 
 // 处理来自 devtools / popup 的查询。即使 Vue 还未挂载也要能响应。
-chrome.runtime.onMessage.addListener((msg: MooMessage, _sender, sendResponse) => {
+// 严格校验消息来源（v0.4.5 复盘加固，跟 background + offscreen 拉齐）：
+// 同扩展发的 sender.id 必须 === runtime.id，外部 / 未知来源直接拒。
+// GET_REQUESTS 暴露脱敏前的 URL/headers/body 等敏感数据，必须挡住第三方扩展。
+chrome.runtime.onMessage.addListener((msg: MooMessage, sender, sendResponse) => {
+  if (sender.id !== chrome.runtime.id) return false
   if (msg.type === MSG.GET_REQUESTS) {
     sendResponse({ requests: getCurrentRequests() } satisfies GetRequestsRes)
     return true
@@ -50,5 +54,6 @@ if (!document.getElementById(HOST_ID)) {
 
   createApp(ContentApp).mount(mount)
 
-  console.log('[Moo:content] mounted')
+  // v0.4.5：DEV 才打 log，避免污染所有宿主 page 的 console（每个 tab 每个 frame 都打一行）
+  if (import.meta.env.DEV) console.log('[Moo:content] mounted')
 }

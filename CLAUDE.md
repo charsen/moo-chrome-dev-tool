@@ -184,3 +184,15 @@ return { ok: false, error: 'v2/v1 xxx 响应都不识别' }
 - 「修一个 X，至少 grep 同类 X」—— 不是「扫到才修」，是「主动 grep」
 - 多干的事如果跟主任务无关 / 工作量大 / 不确定该不该 → 用 AskUserQuestion 问，**不要默默拒绝扩展**
 - 拒绝「过度设计」（用户也批评过太激进）—— 只扫真同类，不发明新概念
+
+**v0.4.5 大复盘新增 lesson**（用户跑 `/full-team-review` 时找出 4 处「我刚做的就有同款 bug」）：
+
+| 修这个 | 必须 grep 这些（不只扫直接命中位置）|
+|---|---|
+| onMessage sender 校验（任意一处） | grep `chrome.runtime.onMessage.addListener` 全仓 — content / ContentApp 也要校验，不只 background |
+| dark mode 用了 `--moo-c-xxx` token | grep tokens.css 验证此 token **真存在**；同时扫 `.vue` 里其他用同款命名变体（`-fg` / `-soft` / `-hover` 等）的 |
+| setTimeout / setInterval 加进新组件 | **全仓 grep `setTimeout|setInterval`** 检查同款 timer 是否都有 onBeforeUnmount 清（不只新加的） |
+| 写新检查脚本 / utility | **脚本本身先过自己的检查**（v0.4.4 `check-version-consistency.mjs` 正则硬编码 `v0.x.x` 是反例 — 1.0 发版自废） |
+| 修文档误导（任意一处） | git grep 同款误导文案是否多处复发（v0.3.1 ⌘⇧B 5 处复发的教训） |
+
+铁律：**「我刚改对一个 X，至少 grep 同类 X」远比「让用户跑 /full-team-review 找出来」高效**。前者是接任务时主动；后者是发版前救火。两者结合才稳。
