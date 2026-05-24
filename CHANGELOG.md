@@ -2,6 +2,40 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.5.1
+
+2026-05-24 发版。无 BREAKING。**第 8 波 review** —— 换 3 个新视角 agent：**release-captain（首次）+ Plan（首次）+ vue-craft 三审**。挖出之前 7 波都没碰的工程层 + 战略层维度。修 3 严重 + 11 中等 + 发 docs/PLAN_v1.0.md。
+
+**🔴 3 严重（release.mjs 工程漏洞）**：
+- **Step 4 push 失败无 rollback** — 之前本地 tag + zip 已建，重跑撞「tag 已存在跳过」 → Gitee release 关联到远端不存在的 tag。补 `git tag -d` rollback + 清 release/
+- **attach_files 部分失败不阻塞 Step 6** — 之前 545 行 `return false`，同事按提示更新 HANDOFF 但 zip 没传完。改 `process.exit(1)` + 给手动补救链接
+- **`pnpm release --publish` 自动跑 e2e** — 之前「发版前必跑 e2e」是人脑承诺无机器化。加 `--skip-e2e` 紧急 hotfix 可跳
+
+**🟡 6 UI 同款漏扫（vue-craft 三审）**：
+- `PayloadEditorModal` 漏 `useFocusTrap`（v0.4.9 给其他 3 个 modal 都加了漏这个）
+- `popup .rec-err` 加 `role="alert"` / `aria-live="assertive"`（v0.4.9 4 处 toast 补了漏 popup）
+- `popup .rh-fail` vs `.rh-open` token 区分 — open 改 `--moo-c-warn-fg/-soft`（之前用 danger 跟 fail 完全同色，用户分不清「失败」vs「待处理」）
+- `History.vue KeepAlive` 下 `onHistoryChanged` 订阅 `onActivated/onDeactivated` 暂停（之前别窗口提交触发不可见 list 重 diff 30 条缩略图行）
+- `Overview.vue visibilitychange` listener `onActivated/onDeactivated` 暂停（v0.4.9 timer 暂停了但 listener 漏）
+- `Panel.vue setTimeout(focus, 0)` → `nextTick(() => focus)`（Vue3 microtask 时序更准）
+
+**🟡 5 release-captain 工程改进**：
+- 工作区脏树报错时加文案「如果你刚做完 PII 脱敏出现脏树，先 commit 再重跑」
+- PII 黑名单扫描 `grep -rEn` → `git grep -nE`（respect .gitignore，不扫 release/ / dist/ / .test-output/ 等 ignored 路径假阳）
+- `.claude/commands/full-team-review.md` 沉淀 8 波 review 元教训（专家清单 / 节奏建议 / 「换视角找新维度」）
+- `docs/RELEASE_TEST_CHECKLIST.md` 明文 dogfood 节奏（prerelease 流程废后改成什么）
+- `pnpm release --publish` 自动跑 e2e（详见严重 3）
+
+**📋 写 `docs/PLAN_v1.0.md`** — Plan agent 给出的 v0.5.0 → v1.0 路线：
+- 5 关键决策（CWS 上架 / `<all_urls>` 改 optional / IssueAdapter 抽象 / 团队范围 / release 节奏）
+- P0-P4 架构债务排序（onMessage MessageRouter 最高 ROI）
+- 测试 / 运维 / i18n 路线
+- v0.5.x → v1.0 6-9 个月规划
+
+**🟡 8 波 review 元教训沉淀**：换 agent 视角 = 找新维度，比反复跑 general-purpose ROI 高。可用专家清单：mv3-pro / vue-craft / lab-tester / code-simplifier / release-captain / Plan。建议改「每 feature PR 1 波专项 + 每月 1 次全量轮换」。
+
+**测试**：399 单测全绿 + 7 skipped + 90 e2e + vue-tsc 0 报错。
+
 ## v0.5.0
 
 2026-05-24 发版。无 BREAKING。**第 7 波 review** —— 换 3 个新视角 agent（**lab-tester + code-simplifier + mv3-pro 二次**）找出之前 6 波完全没碰的维度：**测试 debt + 代码重复 + MV3 深陷阱**。修 11 + 5 backlog。

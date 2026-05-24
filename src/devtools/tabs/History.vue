@@ -94,7 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { clearHistory, listHistory, onHistoryChanged, removeHistory } from '@/storage/history'
 import { loadConfig } from '@/storage/config'
 import { MSG, type SubmitBugReq, type SubmitBugRes } from '@/types/messages'
@@ -173,13 +173,24 @@ async function reload() {
   }
 }
 
-onMounted(async () => {
+async function subscribeChanges(): Promise<void> {
   await reload()
   dispose = onHistoryChanged(() => reload())
   // v0.3：进 Tab 时如果有 zentao kind 项目的 history，自动同步一次状态。
   // webhook 路径仍要用户点「同步远端状态」（避免对未配的后端做无意义 ping）。
   const hasZentao = projects.value.some(p => p.kind === 'zentao' && list.value.some(e => e.projectId === p.id && e.remoteId))
   if (hasZentao) void syncRemoteStatus()
+}
+
+onMounted(subscribeChanges)
+
+// v0.5.1：KeepAlive 下切走 tab 时取消 onHistoryChanged 订阅（之前不暂停 → 别窗口提交一条 bug
+// 触发不可见 list reload + Vue diff 30 条 base64 缩略图行，白烧 CPU）
+onActivated(async () => {
+  if (!dispose) await subscribeChanges()
+})
+onDeactivated(() => {
+  if (dispose) { dispose(); dispose = null }
 })
 
 onBeforeUnmount(() => {

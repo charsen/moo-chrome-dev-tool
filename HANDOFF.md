@@ -4,7 +4,9 @@
 
 ## 一句话现状
 
-**v0.5.0 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.5.0/moo-chrome-dev-tool-0.5.0.zip)（sha256 `6589763d24a13ddb66d8a7c24cddece19dbc2523d13031e3ca285c46a1840f5d`）。**第 7 波 review** —— 换 3 个新视角 agent（**lab-tester + code-simplifier + mv3-pro 二次**）挖出之前 6 波都没碰的维度：测试 debt + 代码重复 + MV3 深陷阱 + chrome 未来 API 5 坑。修 11 + 5 backlog。**元教训：换 agent 视角 = 找出新维度**，比重复跑 general-purpose review ROI 高。**399 单测**（366 → 399 = +33）+ 90 e2e。
+**v0.5.1 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.5.1/moo-chrome-dev-tool-0.5.1.zip)（sha256 待回填）。**第 8 波 review** —— 换 3 个新视角 agent（**release-captain + Plan + vue-craft 三审**）。修 3 严重 release.mjs 工程漏洞（push 失败 rollback / attach_files 失败 exit / e2e 自动跑）+ 6 UI 同款漏扫（PayloadEditorModal focusTrap / popup aria-live / fail vs open token / KeepAlive listener 暂停）+ 5 工程改进（PII git grep / skill 沉淀元教训 / dogfood 节奏明文）+ **发 docs/PLAN_v1.0.md**（v0.5.0 → v1.0 战略路线：CWS 上架 / `<all_urls>` 改 optional / IssueAdapter 抽象 / 节奏改 2-3 周 minor）。399 单测 + 90 e2e。
+
+**v0.5.0 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.5.0/moo-chrome-dev-tool-0.5.0.zip)（sha256 `6589763d24a13ddb66d8a7c24cddece19dbc2523d13031e3ca285c46a1840f5d`）。第 7 波 review — 换 lab-tester + code-simplifier + mv3-pro 二次找出测试 debt + 代码重复 + MV3 深陷阱。399 单测（366 → 399 = +33） + 90 e2e。
 
 **v0.4.9 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.9/moo-chrome-dev-tool-0.4.9.zip)（sha256 `8a502b4eb0599e4a333709fa89cc67c2f2efc877627f44daab25056ba946e968`）。第 6 波 review — 业务复盘 v3 找出 13 个问题（5 个 v0.4.8 回归），全修。366 单测 + 90 e2e。
 

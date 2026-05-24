@@ -67,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import Environment from './tabs/Environment.vue'
 import History from './tabs/History.vue'
 import Overview from './tabs/Overview.vue'
@@ -104,8 +104,8 @@ function onTabKeydown(e: KeyboardEvent) {
   const nextTab = tabs[nextIdx]
   if (!nextTab) return
   active.value = nextTab.key
-  // 等下一帧让 ref 重新挂上正确的 tabindex 再 focus
-  setTimeout(() => tabRefs[nextIdx]?.focus(), 0)
+  // v0.5.1：用 nextTick 而非 setTimeout(0) — Vue3 microtask 时序更准
+  void nextTick(() => tabRefs[nextIdx]?.focus())
 }
 
 // 把"Tab #1234567"换成实际主机名——对用户有意义得多。

@@ -7,8 +7,18 @@
 
 `pre-commit` 跑：`pnpm check:versions && pnpm type-check && pnpm test`
 `CI` 跑：版本一致 / type-check / 单测 / build / bundle size / pnpm audit (warn-only)
+`pnpm release --publish` 自动跑：**e2e**（v0.5.1 加 — 默认必跑，紧急 hotfix 可 `--skip-e2e`）+ build + zip + sha256 + tag + push + Gitee API
 
-这些**机械问题**（版本号漂移 / 依赖漏洞 / bundle 爆涨）由脚本守门。下面 checklist 聚焦**机器逮不到的真功能问题**。
+这些**机械问题**（版本号漂移 / 依赖漏洞 / bundle 爆涨 / e2e 回归）由脚本守门。下面 checklist 聚焦**机器逮不到的真功能问题**。
+
+## 📅 dogfood 节奏（v0.5.1 明文）
+
+prerelease 流程 v0.4.6 已废。当前节奏：
+
+- **每个 minor 版本**（v0.5.x / v0.6.x …）发版后，同事 dogfood 一周内反馈，hotfix 累成下个 patch 一起发
+- **每天最多 2 个 patch**（防同事升级疲劳；v0.4.x 一天 7 版是清 debt 高峰，不是常态）
+- **紧急 fix**（同事真踩 bug）可立即发 patch，commit message 明示「dogfood hotfix」
+- **重大变更**（架构 / 权限变化）必走 dogfood ≥ 几天，详见 `docs/PLAN_v1.0.md`
 
 ## 🧑‍🤝‍🧑 大团队 review（每次发版必跑）
 

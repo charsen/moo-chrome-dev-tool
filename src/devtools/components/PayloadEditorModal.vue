@@ -1,6 +1,6 @@
 <template>
   <div class="payload-mask" @click.self="onCancel">
-    <div class="payload-modal" role="dialog" aria-modal="true" aria-labelledby="payload-edit-title">
+    <div ref="modalRef" class="payload-modal" role="dialog" aria-modal="true" aria-labelledby="payload-edit-title" tabindex="-1">
       <header class="payload-hd">
         <h3 id="payload-edit-title">编辑 Payload 模板</h3>
         <MooCloseBtn @click="onCancel" />
@@ -46,6 +46,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import MooCloseBtn from '@/components/MooCloseBtn.vue'
+import { useFocusTrap } from '@/composables/useFocusTrap'
 
 const props = defineProps<{
   modelValue: string
@@ -58,6 +59,11 @@ const emit = defineEmits<{
 
 const draftText = ref(props.modelValue)
 const editorRef = ref<HTMLTextAreaElement | null>(null)
+const modalRef = ref<HTMLElement>()
+
+// v0.5.1：focus trap（v0.4.9 给 ConfirmModal/MooAlert/MooDialog 都加了，这个 modal 漏了）
+// Tab 键不溜出去 Environment 表单 + Esc 关闭后焦点回触发按钮
+useFocusTrap(modalRef, { onEscape: () => onCancel(), initialFocus: 'first' })
 
 const VARIABLES: { name: string; desc: string }[] = [
   { name: 'title', desc: 'Bug 标题' },

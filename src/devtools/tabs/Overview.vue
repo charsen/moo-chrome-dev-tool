@@ -362,14 +362,17 @@ function onVisibilityChange() {
   if (isPanelVisible() && autoRefresh.value) refresh()
 }
 
-// v0.4.9：KeepAlive 下切 tab 时暂停 timer（之前一直跑，4 Tab 全 KeepAlive 等于 4× 后台轮询）
+// v0.4.9：KeepAlive 下切 tab 时暂停 timer + visibilitychange listener（之前一直跑，
+// 4 Tab 全 KeepAlive 等于 4× 后台轮询；v0.5.1 vue-craft 三审发现 visibilitychange 也漏暂停）
 onDeactivated(() => {
   if (timer) {
     clearInterval(timer)
     timer = undefined
   }
+  document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 onActivated(() => {
+  document.addEventListener('visibilitychange', onVisibilityChange)
   if (!timer) {
     timer = window.setInterval(() => {
       if (autoRefresh.value && isPanelVisible()) refresh()

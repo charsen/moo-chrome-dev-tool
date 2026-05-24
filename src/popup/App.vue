@@ -135,7 +135,7 @@
           <span class="popup-switch-thumb" />
         </button>
       </div>
-      <div v-if="recError" class="rec-err">{{ recError }}</div>
+      <div v-if="recError" class="rec-err" role="alert" aria-live="assertive">{{ recError }}</div>
 
       <div class="help-pop">
         打开 DevTools 控制面板：在网页上按 <span class="kbd">F12</span>（或右键 → <b>检查</b>），切到 <b>Moo</b> 面板。
@@ -600,7 +600,8 @@ onMounted(async () => {
 .rh-status.rh-done   { color: var(--moo-c-success-fg); background: var(--moo-c-success-soft); border-color: var(--moo-c-success-soft); }
 .rh-status.rh-prog   { color: var(--moo-c-warn-fg);    background: var(--moo-c-warn-soft);    border-color: var(--moo-c-warn-soft); }
 .rh-status.rh-del    { color: var(--moo-c-text-muted); background: var(--moo-c-bg-soft);      border-color: var(--moo-c-border); }
-.rh-status.rh-open   { color: var(--moo-c-danger-fg);  background: var(--moo-c-danger-soft);  border-color: var(--moo-c-danger-soft); }
+/* v0.5.1：rh-open 改 warn 配色 — 跟 rh-fail（danger）区分。「后端待处理」≠「提交失败」 */
+.rh-status.rh-open   { color: var(--moo-c-warn-fg);    background: var(--moo-c-warn-soft);    border-color: var(--moo-c-warn-soft); }
 .rh-status.rh-ok     { color: var(--moo-c-text-muted); background: var(--moo-c-bg-soft);      border-color: var(--moo-c-border); }
 
 .rec-toggle {

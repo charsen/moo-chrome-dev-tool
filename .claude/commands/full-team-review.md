@@ -114,3 +114,38 @@ v0.4.4 复盘后立项。**3 个领域专家 agent 并行扫描整仓库**，找
 ## v0.4.4 首跑战绩（参考）
 
 第一次跑发现：4 严重（MV3 安全漏洞 / dark mode 硬编码 / 文档版本误导 / setTimeout leak）+ 7 中等 + 一堆小。全修后单测 339 → 356 + 100 e2e + vue-tsc 0 报错。
+
+## v0.4.4 → v0.5.1 8 波 review 元教训
+
+| 波次 | agent 组合 | 严重 | 关键发现 | 教训 |
+|---|---|---|---|---|
+| v0.4.4 | mv3-pro / vue-craft / general-purpose | 4 | 代码+架构 | 第一次有用，找出基线 bug |
+| v0.4.5 | 同上 | 4 同款 | **「我刚做的就有同款 bug」** | 主动扩展清单第一版不够 |
+| v0.4.6 | 文档专项 3 general-purpose | 5 | 文档+PII+归档 | filter-repo 清 PII history |
+| v0.4.7 | 业务专项 3 general-purpose | 8 | **4 个月隐藏 bug**（History 重提错发 webhook） | 模拟真用户场景 = 找隐藏 bug |
+| v0.4.8 | 业务 v2 3 general-purpose | 12 | **4 隐私洞**（capture 开关失效 / URL 不脱敏 / iframe 密码框 / main-world all_urls） | 数据隐私链路审 |
+| v0.4.9 | 业务 v3 3 general-purpose | 5 | **5 个 v0.4.8 修复未修干净** | 「上波修不完整」是核心价值 |
+| v0.5.0 | **换 lab-tester + code-simplifier + mv3-pro 二次** | 5 | **测试 debt + 代码重复 + chrome 130+ API 未来坑** | **换 agent 视角 = 找新维度** |
+| v0.5.1 | **换 release-captain + Plan + vue-craft 三审** | 3 严重 + Plan 战略路线 | release.mjs rollback / Plan v1.0 路线 | **专家断面 ROI 远 > 重复 general-purpose** |
+
+## 核心元教训（按时间排序，可以直接抄）
+
+1. **第一次跑找基线 bug**（mv3 / vue / general 三档够用）
+2. **每跑一次都有 5-12 个新发现**，证明 review 的边际效用不为零
+3. **「上波修复没修干净」是 review 真正的价值** — 同款漏扫 / 部分修 / 老路径回归
+4. **换 agent 视角 = 找新维度**，比反复跑 general-purpose ROI 高得多。可用专家清单：
+   - mv3-pro（chrome MV3）
+   - vue-craft（UI / 样式）
+   - lab-tester（测试覆盖断面）
+   - code-simplifier:code-simplifier（代码重复 / 死代码）
+   - release-captain（发版流程 / 工程化）
+   - Plan（架构路线 / 长期决策）
+5. **不要把发现都标 backlog**，每波严重的真要修；mini-feature 才标 backlog
+6. **跑完一波 → 修完 → 发版 → 下一波再跑** 比攒一大波再跑节奏好
+
+## v0.5.0 后建议节奏改变
+
+7 波 review 一天发 7 个版本是高峰期，accumulated debt 已被清。后续建议：
+- **每 feature PR 跑 1 波专项 agent review**（按 PR 范围选 1-2 个相关 expert）
+- **每月跑 1 次全量 review**（mv3-pro / vue-craft / general-purpose / lab-tester / code-simplifier / release-captain / Plan 轮换）
+- **不再每天发版**，按 docs/PLAN_v1.0.md 改 2-3 周 minor 节奏

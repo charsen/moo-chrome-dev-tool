@@ -2,7 +2,8 @@
 //
 // 模式：
 //   pnpm release                          → dry-run：纯打印「会做啥」清单（不 build / 不写盘）
-//   pnpm release --publish                → 真发：build + zip + sha256 + tag + push + Gitee create-release + 上传
+//   pnpm release --publish                → 真发：e2e + build + zip + sha256 + tag + push + Gitee create-release + 上传
+//   pnpm release --publish --skip-e2e     → 紧急 hotfix 跳 e2e（dogfood 阻塞场景）
 //   pnpm release --skip-build             → 仍是 dry-run，只是连「会跑 build」那行都不打印
 //   pnpm release --publish --skip-build   → 真发但跳 vite build（用现有 dist/）
 //
@@ -34,6 +35,9 @@ const root = resolve(__dirname, '..')
 const argv = process.argv.slice(2)
 const publish = argv.includes('--publish')
 const skipBuild = argv.includes('--skip-build')
+// v0.5.1：默认 --publish 时跑 e2e（之前发版前必跑 e2e 是人脑承诺无机器化）。
+// 紧急 hotfix 可用 --skip-e2e 跳过（同事 dogfood 阻塞场景）。
+const skipE2E = argv.includes('--skip-e2e')
 const dryRun = !publish // 默认 dry-run
 
 // ---------- 版本号：package.json + manifest.json 双读校验一致 ----------
@@ -86,6 +90,8 @@ if (!process.env.MOO_RELEASE_FORCE) {
     console.error('工作区有未提交的改动，先 commit 再 release（避免 zip 和 git tag 不一致）：')
     console.error(dirty.trim().split('\n').map((l) => '  ' + l).join('\n'))
     console.error('真的要带脏树发版，可设 MOO_RELEASE_FORCE=1 跳过。')
+    // v0.5.1：提示 PII 流程顺序（PII 检查在下面 — 如果你刚脱敏过命中词，脏树是正常的）
+    console.error('提示：如果你刚做完 PII 脱敏出现脏树，先 commit 这些脱敏改动再重跑 pnpm release。')
     process.exit(1)
   }
 }
@@ -146,13 +152,14 @@ function preFlightPiiCheck() {
     console.warn('  建议：cp .release-pii-deny.example .release-pii-deny  然后加入你需要脱敏的真词')
     console.warn('')
   }
-  const includeArgs = PII_INCLUDE_EXTS.map((e) => `--include=*.${e}`).join(' ')
-  // 词里若含 grep ERE 元字符，转义掉
+  // v0.5.1：改 git grep — respect .gitignore + 不扫 release/ / dist/ / .test-output/ 等
+  // ignored 路径。之前 grep -rEn 会扫 ignored 假阳（test 残留 / build artifact）
+  const pathspecs = PII_INCLUDE_EXTS.map((e) => `'*.${e}'`).join(' ')
   const grepPattern = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
   let raw = ''
   try {
     raw = execSync(
-      `grep -rEn ${includeArgs} "${grepPattern}" . 2>/dev/null || true`,
+      `git grep -nE "${grepPattern}" -- ${pathspecs} 2>/dev/null || true`,
       { cwd: root, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }
     )
   } catch {
@@ -365,6 +372,19 @@ if (dryRun) {
 
 // ---------- 以下都是 --publish 真发分支 ----------
 
+// ---------- e2e 预跑（v0.5.1 加）----------
+// 之前发版前必跑 e2e 是人脑承诺无机器化（RELEASE_TEST_CHECKLIST 写了但靠记忆）。
+// 现在默认 --publish 走 e2e，紧急 hotfix 可 --skip-e2e 跳过。dry-run 不跑（开发体验）
+if (publish && !skipE2E) {
+  console.log('━━━ pre-build e2e 预跑（v0.5.1 加，跳用 --skip-e2e）━━━')
+  try {
+    execSync('pnpm test:e2e', { cwd: root, stdio: 'inherit' })
+  } catch {
+    console.error('❌ e2e 失败 — release 中止。修完 e2e 再重跑，或紧急 hotfix 用 --skip-e2e')
+    process.exit(1)
+  }
+}
+
 // ---------- build ----------
 if (!skipBuild) {
   if (existsSync(distDir)) {
@@ -457,15 +477,35 @@ try {
 } catch {
   // 不存在
 }
+// v0.5.1：记录本次脚本是否真新建了 tag（不是已存在）—— push 失败时 rollback 用
+let tagCreatedByThisRun = false
 if (tagExists) {
   console.log(`tag ${tagName} 已存在（本地），跳过 git tag -a`)
 } else {
   console.log(`创建 annotated tag ${tagName}`)
-  // tag message 走 -F -（从 stdin 读），避免多行 message 在不同 shell 下 escape 不一致
   execSync(`git tag -a ${tagName} -F -`, { cwd: root, input: tagMessage })
+  tagCreatedByThisRun = true
 }
 console.log('推送 master + tags …')
-execSync('git push origin master --tags', { cwd: root, stdio: 'inherit' })
+try {
+  execSync('git push origin master --tags', { cwd: root, stdio: 'inherit' })
+} catch (e) {
+  // v0.5.1：push 失败 rollback —— 之前本地 tag + zip 已建，重跑撞 462 行「tag 已存在跳过」
+  //   → Gitee release 关联到远端不存在的 tag。现在主动 cleanup
+  console.error('❌ git push 失败')
+  if (tagCreatedByThisRun) {
+    console.log(`回滚本次创建的本地 tag ${tagName}…`)
+    try { execSync(`git tag -d ${tagName}`, { cwd: root, stdio: 'inherit' }) } catch { /* best-effort */ }
+  }
+  console.log(`清理本次产物 release/${zipName}*…`)
+  try {
+    if (existsSync(resolve(root, 'release', zipName))) rmSync(resolve(root, 'release', zipName))
+    if (existsSync(resolve(root, 'release', `${zipName}.sha256.txt`))) rmSync(resolve(root, 'release', `${zipName}.sha256.txt`))
+    if (existsSync(resolve(root, 'release', `${zipName}.sha256`))) rmSync(resolve(root, 'release', `${zipName}.sha256`))
+  } catch { /* ignore */ }
+  console.error('请排查 git push 失败原因（SSH key / 权限 / 网络）后重跑 pnpm release --publish')
+  process.exit(1)
+}
 console.log('')
 
 // ---------- 真发：Step 5 ----------
@@ -556,8 +596,21 @@ async function attachFile(releaseId, filePath) {
 }
 
 const releaseId = await createOrFindRelease()
-await attachFile(releaseId, zipPath)
-await attachFile(releaseId, sha256TxtPath)
+// v0.5.1：attach_files 任一失败立即 abort（之前 return false 不阻塞 → 同事按提示更新 HANDOFF 但 zip 没传完）
+const zipOk = await attachFile(releaseId, zipPath)
+if (!zipOk) {
+  console.error(`❌ release zip 上传失败。release ${tagName} 已创建但**没有 zip 文件**。`)
+  console.error(`手动补救：去 https://gitee.com/${owner}/${repo}/releases/${tagName} 点「上传附件」`)
+  console.error(`本地文件：${zipPath}`)
+  process.exit(1)
+}
+const shaOk = await attachFile(releaseId, sha256TxtPath)
+if (!shaOk) {
+  console.error(`❌ sha256.txt 上传失败。zip 已上传 OK，仅 sha256 缺。`)
+  console.error(`手动补救：去 https://gitee.com/${owner}/${repo}/releases/${tagName} 点「上传附件」`)
+  console.error(`本地文件：${sha256TxtPath}`)
+  process.exit(1)
+}
 
 console.log('')
 console.log('✓ Gitee release 发布完成')
