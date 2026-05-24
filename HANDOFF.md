@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.4.7 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.7/moo-chrome-dev-tool-0.4.7.zip)（sha256 待回填）。**业务专项 review 一波** —— 跑「拉团队，所有业务复盘」3 agent 并行模拟真用户场景找出 28 个业务问题，修了 19 个核心 + 9 个 mini-feature 标 backlog。**最严重的同事真踩 bug**：History 禅道「重新提交」错发到 webhook server（v0.2.0 起就在的，4 个月没人发现）。其他严重：popup 未匹配无入口 / retryQueue 永久错重试 5x / Environment 改密码不清 token / SubmitDialog cookie race / 50MB 视频卡 IPC 等。366 单测 + 7 skipped + 90 e2e 全绿。
+**v0.4.7 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.7/moo-chrome-dev-tool-0.4.7.zip)（sha256 `3f2bbd3dff0f000330476c12cb30d6af2948d54ec5f61fba098f0efafca57227`）。**业务专项 review 一波** —— 跑「拉团队，所有业务复盘」3 agent 并行模拟真用户场景找出 28 个业务问题，修了 19 个核心 + 9 个 mini-feature 标 backlog。**最严重的同事真踩 bug**：History 禅道「重新提交」错发到 webhook server（v0.2.0 起就在的，4 个月没人发现）。其他严重：popup 未匹配无入口 / retryQueue 永久错重试 5x / Environment 改密码不清 token / SubmitDialog cookie race / 50MB 视频卡 IPC 等。366 单测 + 7 skipped + 90 e2e 全绿。
 
 **v0.4.6 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.6/moo-chrome-dev-tool-0.4.6.zip)（sha256 `2e989cb5f33e632533f08587483733c90867ed76f0caeee4272aa892e2bb3b7f`）。**文档专项 review 一波** —— 跑「拉团队，所有文档优化」3 agent 并行审找出 22 个文档问题全清 + filter-repo 清 git history PII + HANDOFF 归档 + UX_REVIEW/COVERAGE_MATRIX/RELEASE_TEST_CHECKLIST 加历史 banner + CLAUDE.md 主动扩展清单抽象化。**runtime 代码 0 改动**。366 单测 + 7 skipped + 90 e2e 全绿。
 
