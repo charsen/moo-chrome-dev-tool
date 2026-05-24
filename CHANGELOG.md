@@ -4,7 +4,7 @@
 
 ## v0.4.3
 
-2026-05-24 发版（**prerelease** — 同事 dogfood ≥ 48h 不炸再 promote 正式版）。无 BREAKING。
+2026-05-24 发版。无 BREAKING。
 
 **主线 · 禅道 v2 endpoint 全部双轨化加固**：
 
@@ -19,14 +19,13 @@ dogfood 阻塞复盘：v0.4.0 hard 切 v2 后连炸 3 次（v0.4.2 ping / v0.4.3
 
 错误文案标 path 便于同事反馈定位（例：「HTTP 500（v1 projects fallback）」）。
 
-**支线 · 测试方法论三层护栏立法**：
+**支线 · 测试方法论加固**：
 
-测试断面同源（单测/e2e/双 MCP 都跑同一份 mock）是根本缺陷。三层护栏防下次连炸：
+测试断面同源（单测/e2e/双 MCP 都跑同一份 mock）是根本缺陷。三层加固防下次连炸：
 
-- **Tier 1A · schema fuzz** — `tests/zentaoV2SchemaFuzz.test.ts` 8 异常变体 × 5 endpoint = 40 用例。验证「任何 v2 异常都 degrade 优雅」，不依赖外部样本
-- **Tier 1B · pre-release 流程** — `scripts/release.mjs` 加 `--prerelease` 标志。Gitee API `prerelease:true`，同事 dogfood ≥ 48h 后手动 promote 正式版
-- **Tier 2 · 真实 fixture 库** — `scripts/dump-zentao-fixtures.sh` 同事一次性 dump 真实响应 + `anonymize-fixtures.mjs` 自动脱敏 + `zentaoV2RealFixture.test.ts` 回放（graceful skip 不阻塞 CI）
-- **Tier 3 · 双 MCP 分断面** — `docs/MCP_TESTING.md`：chrome-devtools MCP 专测 SW 行为，playwright MCP 专测 harness，能 playwright 跑就别用 chrome-devtools MCP
+- **schema fuzz** — `tests/zentaoV2SchemaFuzz.test.ts` 8 异常变体 × 5 endpoint = 40 用例。验证「任何 v2 异常都 degrade 优雅」，不依赖外部样本
+- **真实 fixture 库** — `scripts/dump-zentao-fixtures.sh` 同事一次性 dump 真实响应 + `anonymize-fixtures.mjs` 自动脱敏 + `zentaoV2RealFixture.test.ts` 回放（graceful skip 不阻塞 CI）
+- **双 MCP 分断面** — `docs/MCP_TESTING.md`：chrome-devtools MCP 专测 SW 行为，playwright MCP 专测 harness，能 playwright 跑就别用 chrome-devtools MCP
 
 **硬规则立法**：`CLAUDE.md` 新增「禅道 v2 API 改造硬规则」段（模板代码 + 错误文案标 path + 单测必备清单）。memory 加 `feedback_zentao_v2_dual_track_rule`。
 
@@ -34,7 +33,7 @@ dogfood 阻塞复盘：v0.4.0 hard 切 v2 后连炸 3 次（v0.4.2 ping / v0.4.3
 - SubmitDialog inline body URL row 横排（不浪费上方空间）
 - Overview empty state 区分「真没数据」vs「被时间窗/过滤词隐藏」+ 一键切「全部」/ 清空过滤词
 
-**测试**：339 单测全绿 + 7 skipped（Tier 2 fixture 等同事数据） + 100 e2e。vue-tsc 0 报错。
+**测试**：339 单测全绿 + 7 skipped（fixture 等同事数据） + 100 e2e。vue-tsc 0 报错。
 
 ## v0.4.2
 

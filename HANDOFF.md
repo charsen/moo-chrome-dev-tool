@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.4.3 prerelease 已发**（2026-05-24，**待同事 dogfood ≥ 48h 不炸再 promote 正式版**）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.3/moo-chrome-dev-tool-0.4.3.zip)（sha256 `223227490b3a310bd28ca3a4b73fafee4986331ef9cac735a1e29b7a442effa1`）。5 个禅道 v2 endpoint 全部双轨化（v2 拿不到自动 fallback v1）解阻塞 + 测试方法论三层护栏立法（schema fuzz 40 用例 + pre-release 流程 + 真实 fixture 库 + 双 MCP 分断面）。无 BREAKING。339 单测 + 7 skipped + 100 e2e 全绿。
+**v0.4.3 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.3/moo-chrome-dev-tool-0.4.3.zip)（sha256 `223227490b3a310bd28ca3a4b73fafee4986331ef9cac735a1e29b7a442effa1`）。5 个禅道 v2 endpoint 全部双轨化（v2 拿不到自动 fallback v1）解同事提交 bug 阻塞 + 测试方法论加固（schema fuzz 40 用例 + 真实 fixture 库 + 双 MCP 分断面）。无 BREAKING。339 单测 + 7 skipped + 100 e2e 全绿。
 
 **v0.4.2 已发**（2026-05-22，dogfood hotfix）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.2/moo-chrome-dev-tool-0.4.2.zip)（sha256 `e92e848994e21faa5eb0f3e11710c7195f394be3fa063363ac16be8d0d4bb77b`）。修同事在禅道「测试连接」卡的「v2 用户详情响应格式不对」—— v2 `/users/{id}` 返非标 schema 时 fallback cached。无 BREAKING。292 单测 + 100 e2e 全绿。
 

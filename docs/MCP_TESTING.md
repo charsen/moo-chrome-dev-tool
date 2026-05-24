@@ -99,10 +99,6 @@ DOM 状态 + textContent 断言 + 剪贴板内容验证。
 [ ] playwright MCP：
     [ ] tests-e2e/ 全 spec 跑过（pnpm test:e2e）
     [ ] 任何修改的 spec 局部跑通 + 截图 review
-
-[ ] 等同事 dogfood ≥ 48h（pre-release 流程）
-
-[ ] 全部满足 → 改 Gitee release prerelease=false（promote 正式版）
 ```
 
 ---
