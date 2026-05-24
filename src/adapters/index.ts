@@ -21,4 +21,9 @@ export function getAdapter(kind: AdapterKind | string): IssueAdapter | undefined
   return adapterRegistry[kind as AdapterKind]
 }
 
-export type { IssueAdapter, AdapterKind, AdapterSubmitOutcome, AdapterSubmitCtx, AdapterRetryPayload, AdapterRetryOutcome, AdapterStatus } from './IssueAdapter'
+export type {
+  IssueAdapter, AdapterKind,
+  AdapterSubmitOutcome, AdapterSubmitCtx,
+  AdapterFetchStatusCtx,
+  AdapterRetryPayload, AdapterRetryOutcome, AdapterStatus
+} from './IssueAdapter'

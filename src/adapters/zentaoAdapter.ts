@@ -48,15 +48,16 @@ export const zentaoAdapter: IssueAdapter<'zentao'> = {
     return {
       ok: res.ok,
       remoteId: res.remoteId,
-      // 借扩展字段传 status/body/viewUrl 给 router 拼 history
-      ...{ status: res.ok ? 200 : undefined, body: res.viewUrl, viewUrl: res.viewUrl } as Partial<AdapterSubmitOutcome>,
+      status: res.ok ? 200 : undefined,
+      body: res.viewUrl,
+      viewUrl: res.viewUrl,
       error: res.error,
       // 不显式给 retryable —— 让 router/retryQueue 按现行 estimateZentaoSize 兜底
       retryable: undefined
     }
   },
 
-  async fetchStatus(project, remoteId): Promise<AdapterStatus | undefined> {
+  async fetchStatus(project, remoteId, _ctx): Promise<AdapterStatus | undefined> {
     const z = project.zentao
     if (!z?.baseUrl || !z.account || !z.password) return undefined
     const bugId = Number(remoteId)

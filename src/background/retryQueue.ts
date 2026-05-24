@@ -112,8 +112,48 @@ async function readQueue(): Promise<QueuedItem[]> {
 }
 
 /**
+ * v0.5.3 IssueAdapter 接入：router 拿 adapter.serializeForRetry 返的 payload 直接入队。
+ * payload 自带 kind 字段，retryQueue 透传到 storage，flush 时按 kind 查 adapter 跑 retry。
+ *
+ * 跟 enqueueRetry / enqueueZentaoRetry 的区别：router 不再关心 adapter 内部字段
+ * （endpoint / bodyString vs projectId / req），只把 adapter 返的 payload envelope 投递即可。
+ * adapter 已经做完 serializeForRetry 内的合法性检查（multipart 拒 / 大小估算）。
+ */
+export async function pushQueueItem(payload: unknown): Promise<boolean> {
+  if (!payload || typeof payload !== 'object') return false
+  const kind = (payload as { kind?: string }).kind
+  if (kind === 'webhook') {
+    const w = payload as WebhookPayloadShape
+    return enqueueRetry(w.endpoint, w.method, w.headers, w.bodyString)
+  }
+  if (kind === 'zentao') {
+    const z = payload as ZentaoPayloadShape
+    return enqueueZentaoRetry(z.projectId, z.req)
+  }
+  console.warn('[Moo] pushQueueItem: unknown adapter payload kind:', kind)
+  return false
+}
+
+interface WebhookPayloadShape {
+  kind: 'webhook'
+  endpoint: string
+  method: string
+  headers: Record<string, string>
+  bodyString: string
+}
+
+interface ZentaoPayloadShape {
+  kind: 'zentao'
+  projectId: string
+  req: SubmitBugReq
+}
+
+/**
  * 把一条 webhook 失败请求入队。
  * @returns 是否真的入队（caller 用来决定 toast 文案要不要提"已加入重试"）
+ *
+ * @deprecated v0.5.3 起 router 走 pushQueueItem(adapter.serializeForRetry(req, project))。
+ * 老调用站（retryQueue 自测试 / 内部 pushQueueItem dispatch）保留。
  */
 export async function enqueueRetry(
   endpoint: string,

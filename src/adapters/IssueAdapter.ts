@@ -55,6 +55,16 @@ export interface AdapterSubmitCtx {
 }
 
 /**
+ * adapter.fetchStatus 的执行上下文 —— 给 webhook adapter 优先用 history entry 当时
+ * 记录的 remoteBase（而非项目当前 server.endpoint 推出来的 base，避免用户改 server 后状态回查指向新 base）。
+ * zentao adapter 忽略此 ctx。
+ */
+export interface AdapterFetchStatusCtx {
+  /** BugHistoryEntry.remoteBase —— 提交那一刻服务端地址的快照 */
+  remoteBase?: string
+}
+
+/**
  * adapter.submit 的结果。形态贴合 SubmitBugRes 但收紧字段语义。
  */
 export interface AdapterSubmitOutcome {
@@ -65,6 +75,10 @@ export interface AdapterSubmitOutcome {
   viewUrl?: string
   /** 失败原因（用户可见 toast 文案 — adapter 应该走 i18n） */
   error?: string
+  /** HTTP 状态码（webhook: resp.status；zentao: 成功 200 / 失败 undefined）— 给 history.result 看 */
+  status?: number
+  /** 服务端响应 body（webhook: 原始 text；zentao: viewUrl）— 给 history.result.body 存 */
+  body?: string
   /**
    * adapter 明确「这条 ok=false 是否值得入队重试」的信号：
    *   - `true` : 适合入队（瞬时网络错 / 5xx）—— retryQueue 仍可能因配额拒
@@ -128,10 +142,12 @@ export interface IssueAdapter<K extends AdapterKind = AdapterKind> {
    * 状态回查 —— History tab 刷新用。
    *
    * adapter 不支持回查时返 undefined（github 早期可能没接 status webhook）。
+   * ctx.remoteBase 让 webhook adapter 用 entry 当时的 base，不被项目当前配置覆盖。
    */
   fetchStatus?(
     project: Project,
-    remoteId: string
+    remoteId: string,
+    ctx?: AdapterFetchStatusCtx
   ): Promise<AdapterStatus | undefined>
 
   /**

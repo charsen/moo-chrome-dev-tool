@@ -28,7 +28,8 @@ import type {
   AdapterSubmitOutcome,
   AdapterRetryPayload,
   AdapterRetryOutcome,
-  AdapterStatus
+  AdapterStatus,
+  AdapterFetchStatusCtx
 } from './IssueAdapter'
 import { renderTemplate } from '@/utils/template'
 import { parseRemoteId } from '@/utils/remoteHeaders'
@@ -107,8 +108,8 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
       return {
         ok: resp.ok,
         remoteId,
-        // body/status 给 router 写 history.result 用 — 借 outcome 的扩展字段传
-        ...{ status: resp.status, body: text } as Partial<AdapterSubmitOutcome>,
+        status: resp.status,
+        body: text,
         // 5xx 适合重试，4xx 不重试
         retryable: !resp.ok ? resp.status >= 500 : undefined
       }
@@ -121,13 +122,17 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
     }
   },
 
-  async fetchStatus(project, remoteId): Promise<AdapterStatus | undefined> {
+  async fetchStatus(project, remoteId, ctx?: AdapterFetchStatusCtx): Promise<AdapterStatus | undefined> {
     // 老 webhook 路径：POST {remoteBase}/{id}/status-public 走 body.token 鉴权
     const token = project.token?.trim() ?? ''
-    // remoteBase 由 router 拼好放在 history.remoteBase；这里 adapter 自己根据 server 推
-    const server = project.servers.find(s => s.endpoint) // 第一个有 endpoint 的（v1.x 兼容）
-    if (!server?.endpoint) return undefined
-    const remoteBase = deriveRemoteBase(server.endpoint)
+    // 优先用 entry 当时记录的 remoteBase（用户改 server.endpoint 后状态查仍指向原 base）；
+    // 缺省 fallback 项目当前 server.endpoint
+    let remoteBase = ctx?.remoteBase
+    if (!remoteBase) {
+      const server = project.servers.find(s => s.endpoint)
+      if (!server?.endpoint) return undefined
+      remoteBase = deriveRemoteBase(server.endpoint)
+    }
     const url = `${remoteBase}/${remoteId}/status-public`
     try {
       const resp = await fetch(url, {
