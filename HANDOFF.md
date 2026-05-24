@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.5.0 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.5.0/moo-chrome-dev-tool-0.5.0.zip)（sha256 待回填）。**第 7 波 review** —— 换 3 个新视角 agent（**lab-tester + code-simplifier + mv3-pro 二次**）挖出之前 6 波都没碰的维度：测试 debt + 代码重复 + MV3 深陷阱 + chrome 未来 API 5 坑。修 11 + 5 backlog。**元教训：换 agent 视角 = 找出新维度**，比重复跑 general-purpose review ROI 高。**399 单测**（366 → 399 = +33）+ 90 e2e。
+**v0.5.0 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.5.0/moo-chrome-dev-tool-0.5.0.zip)（sha256 `6589763d24a13ddb66d8a7c24cddece19dbc2523d13031e3ca285c46a1840f5d`）。**第 7 波 review** —— 换 3 个新视角 agent（**lab-tester + code-simplifier + mv3-pro 二次**）挖出之前 6 波都没碰的维度：测试 debt + 代码重复 + MV3 深陷阱 + chrome 未来 API 5 坑。修 11 + 5 backlog。**元教训：换 agent 视角 = 找出新维度**，比重复跑 general-purpose review ROI 高。**399 单测**（366 → 399 = +33）+ 90 e2e。
 
 **v0.4.9 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.9/moo-chrome-dev-tool-0.4.9.zip)（sha256 `8a502b4eb0599e4a333709fa89cc67c2f2efc877627f44daab25056ba946e968`）。第 6 波 review — 业务复盘 v3 找出 13 个问题（5 个 v0.4.8 回归），全修。366 单测 + 90 e2e。
 
