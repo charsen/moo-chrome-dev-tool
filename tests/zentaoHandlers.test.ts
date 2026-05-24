@@ -23,6 +23,12 @@ function jsonRes(body: unknown, status = 200): Response {
 
 beforeEach(() => {
   vi.unstubAllGlobals()
+  // v0.5.3 #128：handler 入口 check host permission，默认 mock 已授权
+  vi.stubGlobal('chrome', {
+    permissions: {
+      async contains() { return true }
+    }
+  })
   // 每个 test 单独 stub fetch 模拟禅道响应
 })
 
@@ -40,6 +46,40 @@ async function importHandlers() {
   _clearZentaoCaches()
   return await import('@/background/handlers/zentao')
 }
+
+describe('host permission 未授权（v0.5.3 #128）', () => {
+  it('handleZentaoTestConnection: 未授权 → 返引导文案不调 fetch', async () => {
+    vi.stubGlobal('chrome', { permissions: { async contains() { return false } } })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { handleZentaoTestConnection } = await importHandlers()
+    const r = await handleZentaoTestConnection(creds)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('启用')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('handleZentaoListModules: 未授权 → 返引导文案不 login', async () => {
+    vi.stubGlobal('chrome', { permissions: { async contains() { return false } } })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { handleZentaoListModules } = await importHandlers()
+    const r = await handleZentaoListModules({ ...creds, projectId: 26 })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('启用')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('handleZentaoPingCookie: 未授权 → 返引导文案', async () => {
+    vi.stubGlobal('chrome', { permissions: { async contains() { return false } } })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { handleZentaoPingCookie } = await importHandlers()
+    const r = await handleZentaoPingCookie(creds)
+    expect(r.ok).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
 
 describe('handleZentaoTestConnection', () => {
   it('happy path：login + ping 都 OK → 返 realname / account', async () => {

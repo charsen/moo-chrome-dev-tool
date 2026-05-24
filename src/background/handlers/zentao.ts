@@ -42,6 +42,7 @@ import type {
   ZentaoPingCookieRes
 } from '@/types/messages'
 import { t } from '@/i18n'
+import { hasHostPermission } from '@/utils/hostPermission'
 
 function makeZentaoEnv(creds: { baseUrl: string; account: string; password: string }): ZentaoEnv {
   return { ...creds, projectId: 0, moduleId: 0 }
@@ -57,6 +58,11 @@ async function withZentaoSession<T extends { ok: boolean; error?: string }>(
   creds: { baseUrl: string; account: string; password: string },
   fn: (env: ZentaoEnv) => Promise<T>
 ): Promise<T> {
+  // v0.5.3 #128：禅道 handler 走的也是 fetch 用户禅道域，optional <all_urls> 未授权 → CORS / net err
+  // 必须在调 zentaoLogin 之前拦，否则用户看到「网络错误」摸不着头脑（mv3-pro review 报告 A）
+  if (!await hasHostPermission()) {
+    return { ok: false, error: t('host-permission.required') } as T
+  }
   const loginRes = await zentaoLogin(creds.baseUrl, creds.account, creds.password)
   if (!loginRes.ok) return { ok: false, error: loginRes.error } as T
   const env = makeZentaoEnv(creds)
@@ -92,6 +98,10 @@ export async function handleZentaoListUsers(payload: ZentaoCredsReq): Promise<Ze
 export async function handleZentaoListModules(payload: ZentaoCredsReq): Promise<ZentaoListModulesRes> {
   const projectId = payload.projectId
   if (!projectId) return { ok: false, error: t('zentao.modules.no-project-id') }
+  // v0.5.3 #128：handler 不走 withZentaoSession（直接调 zentaoLogin），需单独 host permission check
+  if (!await hasHostPermission()) {
+    return { ok: false, error: t('host-permission.required') }
+  }
   const loginRes = await zentaoLogin(payload.baseUrl, payload.account, payload.password)
   if (!loginRes.ok) return { ok: false, error: loginRes.error }
   // 跟其他 zentao handler 不同 — ZENTAO_LIST_MODULES 需要 projectId（不只 makeZentaoEnv default 0）
@@ -113,6 +123,10 @@ export async function handleZentaoListModules(payload: ZentaoCredsReq): Promise<
 export async function handleZentaoPingCookie(payload: ZentaoPingCookieReq): Promise<ZentaoPingCookieRes> {
   // v0.2.3 改：payload 含账号密码 → 调 ensureCookieSession 自动登录（cookie 没在
   // 就用账号密码 login 同时拿 token+写 cookie）。用户不再需要手动登录禅道。
+  // v0.5.3 #128：ensureCookieSession 内调用 fetch 禅道域，需 host permission check
+  if (!await hasHostPermission()) {
+    return { ok: false, error: t('host-permission.required') }
+  }
   const env = makeZentaoEnv(payload)
   const ensured = await zentaoEnsureCookie(env)
   if (ensured.ok) return { ok: true, realname: ensured.data.realname }
