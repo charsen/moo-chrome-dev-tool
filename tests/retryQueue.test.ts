@@ -25,6 +25,10 @@ function makeChrome(): MockStorage {
           Object.assign(state.data, obj)
         }
       }
+    },
+    // v0.5.3 #128：doFlush 入口 check host permission，默认 mock 已授权
+    permissions: {
+      async contains() { return true }
     }
   }
   return state

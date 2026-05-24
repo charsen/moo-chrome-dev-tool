@@ -10,8 +10,14 @@ import type { BugHistoryEntry } from '@/types/history'
 import { listHistory, updateHistoryEntry } from '@/storage/history'
 import { loadConfig } from '@/storage/config'
 import { getAdapter } from '@/adapters'
+import { hasHostPermission } from '@/utils/hostPermission'
 
 export async function handleRefreshHistoryStatus(): Promise<{ ok: true; updated: number }> {
+  // v0.5.3 #128：host_permission 未授权 → 静默 skip（fetchStatus 是后台 refresh，
+  // 没权限就当不刷，不弹错给用户 — popup 已有显式开关引导）
+  if (!await hasHostPermission()) {
+    return { ok: true, updated: 0 }
+  }
   const list = await listHistory()
   const config = await loadConfig()
   let updated = 0

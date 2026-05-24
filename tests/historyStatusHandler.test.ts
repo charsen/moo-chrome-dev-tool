@@ -27,6 +27,10 @@ function makeChrome(): void {
     },
     runtime: {
       getManifest: () => ({ version: '0.5.2-test' })
+    },
+    // v0.5.3 #128：fetchStatus 入口 check host permission，默认 mock 已授权
+    permissions: {
+      async contains() { return true }
     }
   }
 }
@@ -52,6 +56,26 @@ async function importHandler() {
   _clearZentaoCaches()
   return await import('@/background/handlers/historyStatus')
 }
+
+describe('handleRefreshHistoryStatus — host permission 未授权', () => {
+  it('contains 返 false → 静默 skip 返 updated:0', async () => {
+    ;(globalThis as { chrome: { permissions: { contains: () => Promise<boolean> } } })
+      .chrome.permissions.contains = async () => false
+    // 即使 history 里有可刷新的 entry 也不调 fetch
+    state.storageData.mooHistory = [{
+      id: 'h1', timestamp: Date.now(),
+      projectId: 'p1', projectName: 'x',
+      serverId: 's1', serverName: 'svr',
+      title: 't', description: '', url: '', userAgent: '',
+      viewport: { w: 0, h: 0 }, result: { ok: true },
+      remoteId: '100'
+    }]
+    const { handleRefreshHistoryStatus } = await importHandler()
+    const r = await handleRefreshHistoryStatus()
+    expect(r.ok).toBe(true)
+    expect(r.updated).toBe(0)
+  })
+})
 
 describe('handleRefreshHistoryStatus', () => {
   it('空 history → 返 {ok:true, updated:0}', async () => {

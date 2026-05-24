@@ -137,6 +137,22 @@
       </div>
       <div v-if="recError" class="rec-err" role="alert" aria-live="assertive">{{ recError }}</div>
 
+      <!-- v0.5.3 #128：host_permission 改 optional 后，用户主动启用「向上报服务器 fetch」一次即可 -->
+      <div class="rec-toggle">
+        <span class="rec-label">允许向上报服务器发送请求</span>
+        <button
+          type="button"
+          role="switch"
+          :class="['popup-switch', { 'is-on': hostEnabled }]"
+          :aria-checked="hostEnabled ? 'true' : 'false'"
+          :disabled="hostBusy"
+          @click="toggleHostPermission"
+        >
+          <span class="popup-switch-thumb" />
+        </button>
+      </div>
+      <div v-if="hostError" class="rec-err" role="alert" aria-live="assertive">{{ hostError }}</div>
+
       <div class="help-pop">
         打开 DevTools 控制面板：在网页上按 <span class="kbd">F12</span>（或右键 → <b>检查</b>），切到 <b>Moo</b> 面板。
       </div>
@@ -171,6 +187,10 @@ const loading = ref(true)
 const recEnabled = ref(false)
 const recBusy = ref(false)
 const recError = ref('')
+// v0.5.3 #128：host_permission 改 optional 后的开关状态
+const hostEnabled = ref(false)
+const hostBusy = ref(false)
+const hostError = ref('')
 const recent = ref<BugHistoryEntry[]>([])
 // v0.4.7：未匹配态快捷启用 —— 一键把当前 host wildcard 加进首个 enabled 项目的 matchPatterns
 const quickEnableBusy = ref(false)
@@ -254,14 +274,38 @@ async function toggleRecording() {
   }
 }
 
+/**
+ * v0.5.3 #128：开/关 `<all_urls>` host permission。
+ * 申请走 origins，必须在 button @click 同步栈 invoke 维持 user activation。
+ */
+async function toggleHostPermission() {
+  hostBusy.value = true
+  hostError.value = ''
+  try {
+    if (hostEnabled.value) {
+      const ok = await chrome.permissions.remove({ origins: ['<all_urls>'] })
+      if (ok) hostEnabled.value = false
+    } else {
+      const ok = await chrome.permissions.request({ origins: ['<all_urls>'] })
+      hostEnabled.value = ok
+      if (!ok) hostError.value = '已取消授权'
+    }
+  } catch (e) {
+    hostError.value = (e as Error).message
+  } finally {
+    hostBusy.value = false
+  }
+}
+
 onMounted(async () => {
   // v0.4.8：5 步串行 IO → 并行（之前 popup 打开 < 200ms 期望易破）
   // tabs.query / loadConfig / permissions.contains / listHistory 互不依赖，能并发
   try {
-    const [tabResult, cfg, hasRecPerm, historyList] = await Promise.all([
+    const [tabResult, cfg, hasRecPerm, hasHostPerm, historyList] = await Promise.all([
       chrome.tabs.query({ active: true, currentWindow: true }),
       loadConfig(),
       chrome.permissions.contains({ permissions: ['tabCapture'] }),
+      chrome.permissions.contains({ origins: ['<all_urls>'] }),
       listHistory().catch(() => [])  // 历史读失败静默不挡核心
     ])
     const tab = tabResult[0]
@@ -273,6 +317,7 @@ onMounted(async () => {
       )
     }
     recEnabled.value = hasRecPerm
+    hostEnabled.value = hasHostPerm
     recent.value = historyList.slice(0, 3)
     // ONBOARD_KEY 读放最后（只在没项目时才查，多数用户 short-circuit）
     if (projects.value.length === 0) {

@@ -40,7 +40,7 @@
   ],
   "permissions": ["storage", "tabs", "scripting", "alarms", "offscreen"],
   "optional_permissions": ["tabCapture"],
-  "host_permissions": ["<all_urls>"],
+  "optional_host_permissions": ["<all_urls>"],
   "commands": {
     "start-recording": {
       "suggested_key": {

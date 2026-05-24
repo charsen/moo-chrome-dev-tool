@@ -27,6 +27,7 @@ import type { SubmitBugReq } from '@/types/messages'
 import { thumbnailize } from '@/utils/image'
 import { loadConfig } from '@/storage/config'
 import { getAdapter } from '@/adapters'
+import { hasHostPermission } from '@/utils/hostPermission'
 
 const RETRY_QUEUE_KEY = 'mooRetryQueue'
 
@@ -268,6 +269,12 @@ export async function flushRetryQueue(): Promise<number> {
 }
 
 async function doFlush(): Promise<number> {
+  // v0.5.3 #128：host_permission 未授权 → 不 flush（fetch 必失败浪费 attempts++）。
+  // 用户重新授权后下次 alarm 周期 / SW spin-up 自动跑。
+  if (!await hasHostPermission()) {
+    console.log('[Moo] flushRetryQueue 跳过：host_permission 未授权')
+    return 0
+  }
   const list = await readQueue()
   if (list.length === 0) return 0
   const remaining: QueuedItem[] = []

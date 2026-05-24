@@ -35,6 +35,10 @@ function makeChrome(): void {
     },
     scripting: {
       async executeScript() { return [{ result: {} }] }
+    },
+    // v0.5.3 #128：handler 入口 check host permission，默认 mock 已授权
+    permissions: {
+      async contains() { return true }
     }
   }
 }
@@ -94,6 +98,18 @@ afterEach(() => {
 async function importHandler() {
   return await import('@/background/handlers/submit')
 }
+
+describe('handleSubmitBug — host permission 未授权', () => {
+  it('chrome.permissions.contains 返 false → 直接返 error 不调 fetch', async () => {
+    // 覆盖 makeChrome 默认 mock，让 contains 返 false
+    ;(globalThis as { chrome: { permissions: { contains: () => Promise<boolean> } } })
+      .chrome.permissions.contains = async () => false
+    const { handleSubmitBug } = await importHandler()
+    const r = await handleSubmitBug(baseReq())
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('启用')
+  })
+})
 
 describe('handleSubmitBug — project/server 缺失', () => {
   it('project 不存在 → error + 写失败 history', async () => {

@@ -23,9 +23,17 @@ import { getAdapter } from '@/adapters'
 import { deriveRemoteBase } from '@/adapters/webhookAdapter'
 import { preprocessZentaoForRetry } from '@/adapters/zentaoAdapter'
 import { refreshBadge } from './badge'
+import { hasHostPermission } from '@/utils/hostPermission'
 import { t } from '@/i18n'
 
 export async function handleSubmitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRes> {
+  // v0.5.3 #128：host_permission 从 mandatory 改 optional 后，submit / fetch / readPageStorage
+  // 都需要权限。没授权时不调 adapter，直接引导用户去 popup 启用。
+  if (!await hasHostPermission()) {
+    const err = t('host-permission.required')
+    return { ok: false, error: err }
+  }
+
   const config = await loadConfig()
   const project = config.projects.find((p) => p.id === req.projectId)
   if (!project) {
