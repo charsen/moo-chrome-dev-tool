@@ -13,6 +13,7 @@ import type {
 import type { BugServer } from '@/types/config'
 import { loadConfig, matchProjects } from '@/storage/config'
 import { renderTemplate } from '@/utils/template'
+import { t } from '@/i18n'
 
 export async function handleCaptureScreenshot(windowId?: number): Promise<CaptureScreenshotRes> {
   try {
@@ -44,7 +45,7 @@ export async function handleMatchProject(url: string): Promise<MatchProjectRes> 
 
 export function handlePreviewPayload(payload: { server?: BugServer; context?: Record<string, unknown> } | undefined): PreviewPayloadRes {
   if (!payload || !payload.server) {
-    return { ok: false, error: 'PREVIEW_PAYLOAD payload 缺 server' }
+    return { ok: false, error: t('preview.payload.no-server') }
   }
   try {
     const rendered = renderTemplate(payload.server.payloadTemplate, payload.context ?? {})

@@ -39,6 +39,7 @@ import {
 import { handleCaptureScreenshot, handleMatchProject, handlePreviewPayload } from '@/background/handlers/simple'
 import { handleSubmitBug } from '@/background/handlers/submit'
 import { handleRefreshHistoryStatus } from '@/background/handlers/historyStatus'
+import { t } from '@/i18n'
 
 const RETRY_ALARM = 'mooRetry'
 
@@ -176,7 +177,7 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
           // payload 是 IncomingMessage 里的 required 字段，TS 已 narrow，无需 as 强转。
           // 但仍要防 caller 端漏传：runtime 一道 shape 校验。
           if (!message.payload || typeof message.payload !== 'object') {
-            sendResponse({ ok: false, error: 'SUBMIT_BUG payload 缺失' } satisfies SubmitBugRes)
+            sendResponse({ ok: false, error: t('submit.payload.missing') } satisfies SubmitBugRes)
             break
           }
           sendResponse(await handleSubmitBug(message.payload as SubmitBugReq, sender.tab?.id))

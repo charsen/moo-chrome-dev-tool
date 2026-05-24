@@ -20,6 +20,7 @@ import type {
   RecordStartRes,
   RecordStopRes
 } from '@/types/messages'
+import { t } from '@/i18n'
 
 // ─────────────────────────── module-level state ───────────────────────────
 
@@ -214,12 +215,12 @@ async function closeOffscreenDocument(): Promise<void> {
 }
 
 async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?: string }> {
-  if (!tabId) return { ok: false, error: '没找到要录的标签页。请确保焦点在网页上（不要在 DevTools 内）再按 ⌥⇧R' }
+  if (!tabId) return { ok: false, error: t('record.start.no-tab') }
 
   // tabCapture 是 optional_permission，用户需要先在 popup 主动启用
   const hasPerm = await chrome.permissions.contains({ permissions: ['tabCapture'] })
   if (!hasPerm) {
-    return { ok: false, error: '录屏功能尚未启用。请点击浏览器右上角的 Moo 图标 → 启用录屏后再试' }
+    return { ok: false, error: t('record.start.permission') }
   }
 
   // 关键：getMediaStreamId 必须在 user activation 还有效时立即 invoke
@@ -234,7 +235,7 @@ async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?:
         })
     })
   } catch (e) {
-    return { ok: false, error: '浏览器拒绝了录屏请求：' + (e as Error).message + '。建议直接按 ⌥⇧R（不要通过点击悬浮球），否则用户手势会失效' }
+    return { ok: false, error: t('record.start.gesture', { reason: (e as Error).message }) }
   }
 
   try {
@@ -247,7 +248,7 @@ async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?:
   const res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'START', streamId, tabId })
   if (!res?.ok) {
     await closeOffscreenDocument()
-    return { ok: false, error: res?.error || '录屏后台进程启动失败，请稍后重试' }
+    return { ok: false, error: res?.error || t('record.start.offscreen-fail') }
   }
   // v0.5.0：tripwire alarm 双保险（chrome.alarms 不受 SW/offscreen 节流影响）
   try {
@@ -261,7 +262,7 @@ async function stopTabRecording(): Promise<RecordStopRes> {
   try { await chrome.alarms.clear(OFFSCREEN_TRIPWIRE_ALARM) } catch { /* ignore */ }
   const res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'STOP' })
   await closeOffscreenDocument()
-  return res ?? { ok: false, error: '录屏后台没响应，可能已经被浏览器卸载。请重新开始录制' }
+  return res ?? { ok: false, error: t('record.stop.no-response') }
 }
 
 async function cancelTabRecording(): Promise<void> {

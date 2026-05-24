@@ -22,12 +22,13 @@ import { enqueueRetry, enqueueZentaoRetry } from '@/background/retryQueue'
 import { submitToZentao } from '@/background/zentao/submit'
 import { dataUrlToBlob } from '@/utils/dataUrl'
 import { refreshBadge } from './badge'
+import { t } from '@/i18n'
 
 export async function handleSubmitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRes> {
   const config = await loadConfig()
   const project = config.projects.find((p) => p.id === req.projectId)
   if (!project) {
-    const err = '找不到对应项目（可能项目刚被删除）。请回到 DevTools → Moo → 环境 重新选择'
+    const err = t('submit.project.not-found')
     await writeFailureHistory(req, undefined, undefined, err)
     return { ok: false, error: err }
   }
@@ -40,12 +41,12 @@ export async function handleSubmitBug(req: SubmitBugReq, tabId?: number): Promis
 
   const server = project.servers.find((s) => s.id === req.serverId)
   if (!server) {
-    const err = '找不到选中的上报服务器（可能刚被删除）。请回到 DevTools → Moo → 环境 重新选择'
+    const err = t('submit.server.not-found')
     await writeFailureHistory(req, project, undefined, err)
     return { ok: false, error: err }
   }
   if (!server.endpoint) {
-    const err = `上报服务器「${server.name}」还没填请求 URL。请去 DevTools → Moo → 环境 → 上报服务器，在「请求 URL」那一行填上后端地址后再试`
+    const err = t('submit.server.no-endpoint', { name: server.name })
     await writeFailureHistory(req, project, server, err)
     return { ok: false, error: err }
   }
