@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.4.4 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.4/moo-chrome-dev-tool-0.4.4.zip)（sha256 待回填）。v0.4.3 后**大团队复盘** —— 3 个 agent 并行审找出 4 严重 + 7 中等问题全修。包括 MV3 安全加固（onMessage sender 严格校验）+ dark mode token 修复 + SubmitDialog leak + SW/offscreen 状态同步 + submit.ts 加 17 单测 + 文档/类型债清理。无 BREAKING。**356 单测 + 7 skipped + 100 e2e 全绿**。
+**v0.4.4 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.4/moo-chrome-dev-tool-0.4.4.zip)（sha256 `7cf1fd9c07931942aee4e6bd6d72871b56216dba62f77290e62a00ac781a7265`）。v0.4.3 后**大团队复盘** —— 3 个 agent 并行审找出 4 严重 + 7 中等问题全修。包括 MV3 安全加固（onMessage sender 严格校验）+ dark mode token 修复 + SubmitDialog leak + SW/offscreen 状态同步 + submit.ts 加 17 单测 + 文档/类型债清理。无 BREAKING。**356 单测 + 7 skipped + 100 e2e 全绿**。
 
 **v0.4.3 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.3/moo-chrome-dev-tool-0.4.3.zip)（sha256 `223227490b3a310bd28ca3a4b73fafee4986331ef9cac735a1e29b7a442effa1`）。5 个禅道 v2 endpoint 全部双轨化（v2 拿不到自动 fallback v1）解同事提交 bug 阻塞 + 测试方法论加固（schema fuzz 40 用例 + 真实 fixture 库 + 双 MCP 分断面）。无 BREAKING。339 单测 + 7 skipped + 100 e2e 全绿。
 
