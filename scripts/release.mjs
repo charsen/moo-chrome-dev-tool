@@ -13,6 +13,13 @@
 // - Gitee POST 不重试：可能已成功，重试会拿到 400「该标签已存在发行版」
 // - GITEE_TOKEN 只从 env 读，绝不写盘、不打 log、不进 commit
 // - HANDOFF.md / CHANGELOG 收尾留给用户手动判断，脚本只打提示
+//
+// 认证方式说明（v0.4.8 后整理）：
+//   - git push / git tag：走 git 协议。当 remote 是 SSH（git@gitee.com:...）时用 SSH key 自动认证；
+//     HTTPS remote 走 credential helper（HTTPS 密码 / PAT），用 SSH 后**完全不需要 token**。
+//   - Step 5 Gitee REST API（POST /api/v5/repos/.../releases + attach_files）：**必须 token**，
+//     SSH key 在 REST API 上没用。token 最小权限范围可以缩到「projects:write」/「releases」。
+//   建议：remote 用 SSH（`git remote set-url origin git@gitee.com:OWNER/REPO.git`）+ token 仅作 API 用。
 
 import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, rmSync, openAsBlob } from 'node:fs'
