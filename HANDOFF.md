@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.4.9 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.9/moo-chrome-dev-tool-0.4.9.zip)（sha256 待回填）。**第 6 波 review** —— 跑「业务复盘 v3」3 agent 聚焦**回归 + a11y/i18n + 性能**，找出 13 个问题，**5 个是 v0.4.8 修复未修干净**（offscreen tripwire 漏通知 / addHistoryEntry 漏 mutex / ConfirmModal 漏 focus trap / redactUrl 漏 fragment / 老用户 redact 不补默认）。全修 + ARIA tabs pattern + Overview filter debounce + KeepAlive timer 暂停 + prefers-reduced-motion。边际效用递减但「上波修不完整」仍是 review 核心价值。
+**v0.4.9 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.9/moo-chrome-dev-tool-0.4.9.zip)（sha256 `8a502b4eb0599e4a333709fa89cc67c2f2efc877627f44daab25056ba946e968`）。**第 6 波 review** —— 跑「业务复盘 v3」3 agent 聚焦**回归 + a11y/i18n + 性能**，找出 13 个问题，**5 个是 v0.4.8 修复未修干净**（offscreen tripwire 漏通知 / addHistoryEntry 漏 mutex / ConfirmModal 漏 focus trap / redactUrl 漏 fragment / 老用户 redact 不补默认）。全修 + ARIA tabs pattern + Overview filter debounce + KeepAlive timer 暂停 + prefers-reduced-motion。边际效用递减但「上波修不完整」仍是 review 核心价值。
 
 **v0.4.8 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.8/moo-chrome-dev-tool-0.4.8.zip)（sha256 `114ee270502b35d72d43770b49cd23d7ad73bd1815b5942b091187687caf5009`）。**第 5 波 review** —— 业务复盘 v2 找出 24+ 问题，含 4 个隐私洞 + v0.4.7 修的 4 个月 bug 复活路径。修了 12 严重 + 9 中等。366 + 90 全绿。
 
