@@ -17,3 +17,7 @@ test-results/
 # release pre-flight 脱敏黑名单（本地维护，不入仓库 — 内容本身就是要脱的真 PII）
 # 模板见 .release-pii-deny.example
 .release-pii-deny
+
+# Tier 2 fixture：同事 dump 的真实禅道响应（含真账号/真名/真 token），脱敏前严格不入仓
+# 脱敏产物在 tests/fixtures/zentao-real/anon/ 才可入仓
+tests/fixtures/zentao-real/raw/

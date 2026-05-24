@@ -1,10 +1,17 @@
 // 发版打包 + 可选发布。
 //
 // 模式：
-//   pnpm release                          → dry-run：纯打印「会做啥」清单（不 build / 不写盘）
-//   pnpm release --publish                → 真发：build + zip + sha256 + tag + push + Gitee create-release + 上传
-//   pnpm release --skip-build             → 仍是 dry-run，只是连「会跑 build」那行都不打印
-//   pnpm release --publish --skip-build   → 真发但跳 vite build（用现有 dist/）
+//   pnpm release                            → dry-run：纯打印「会做啥」清单（不 build / 不写盘）
+//   pnpm release --publish                  → 真发：build + zip + sha256 + tag + push + Gitee create-release + 上传
+//   pnpm release --publish --prerelease     → 真发但标 prerelease=true：同事先 dogfood ≥ 48h 不炸再 promote 正式版
+//   pnpm release --skip-build               → 仍是 dry-run，只是连「会跑 build」那行都不打印
+//   pnpm release --publish --skip-build     → 真发但跳 vite build（用现有 dist/）
+//
+// --prerelease 流程（v0.4.3 复盘后立项）：
+//   1. 改动累一波 → 跑 --publish --prerelease 发到 Gitee（带 prerelease 标志）
+//   2. 同事拉 prerelease zip 在他公司禅道实例 dogfood ≥ 48h
+//   3. 48h 不炸 → 去 Gitee release 页手动把 prerelease 改正式版（或不改让它就保持 prerelease）
+//   4. 48h 内炸了 → 改 + 再发新版 prerelease（同事不再当「正式发版炸了」抱怨）
 //
 // 设计原则：
 // - 默认 dry-run，防误推；dry-run 绝不真 build / 不真写 zip / sha256（之前 P1 bug：名不副实，污染 working tree）
@@ -27,6 +34,7 @@ const root = resolve(__dirname, '..')
 const argv = process.argv.slice(2)
 const publish = argv.includes('--publish')
 const skipBuild = argv.includes('--skip-build')
+const prerelease = argv.includes('--prerelease')
 const dryRun = !publish // 默认 dry-run
 
 // ---------- 版本号：package.json + manifest.json 双读校验一致 ----------
@@ -250,7 +258,7 @@ if (publish && !token) {
   process.exit(1)
 }
 
-console.log(`版本：v${version}  仓库：${owner}/${repo}  模式：${publish ? 'PUBLISH（真发）' : 'DRY-RUN（默认）'}`)
+console.log(`版本：v${version}  仓库：${owner}/${repo}  模式：${publish ? 'PUBLISH（真发）' : 'DRY-RUN（默认）'}${prerelease ? '  · PRERELEASE（pre-release 标志）' : ''}`)
 console.log('')
 
 // ---------- 路径 / 文件名常量（dry-run 也要用来打印「会做啥」）----------
@@ -450,7 +458,7 @@ async function createOrFindRelease() {
       tag_name: tagName,
       name: releaseTitle,
       body: releaseBody,
-      prerelease: false,
+      prerelease,
       target_commitish: 'master'
     })
   })

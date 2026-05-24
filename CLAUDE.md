@@ -118,3 +118,42 @@ chore(release): v0.4.0 — 禅道 v2 化 + 同事反馈 4 改
 - 测试环节双 MCP 必须都用（chrome-devtools MCP + playwright MCP）
 - 不绕 pre-commit hook（type-check + 单测必须过）
 - 不要 force push main/master 除非用户明示授权（典型场景：撤回发版重发）
+
+---
+
+## 🟣 禅道 v2 API 改造硬规则（v0.4.3 复盘后立规）
+
+**所有 v2 endpoint 改造必须保留 v1 fallback 双路探测**，禁止 hard 切换。
+
+**Why**：v0.4.0 hard 切 v2 后，dogfood 我自己实例通过 → 同事公司禅道实例炸 3 次（ping/discoverProduct/...）。同一种失败模式：「不同禅道实例 v2 响应 schema 不一致，文档跟实例都未必对得上」。v1 endpoint dogfood 多月稳定。**单实例 dogfood 测不出多实例 schema 方差**。
+
+**模板**：
+```ts
+// 1. 试 v2
+const v2Res = await fetch(v2Url, { headers: { Token } })
+if (v2Res.status === 401) return _retry
+if (v2Res.status === 404) return errorNotFound  // 资源不存在 v1 也救不了
+if (v2Res.ok) {
+  const body = await readJson(v2Res)
+  if (parseV2(body)) return { ok, data }  // 拿到就用
+  // schema 不识别 → 落到 fallback（不报错）
+}
+// 2. fallback v1
+const v1Res = await fetch(v1Url, { headers: { Token } })
+if (v1Res.status === 401) return _retry
+if (!v1Res.ok) return { ok: false, error: `HTTP ${...}（v1 xxx fallback）` }
+const v1Body = await readJson(v1Res)
+if (parseV1(v1Body)) return { ok, data }
+return { ok: false, error: 'v2/v1 xxx 响应都不识别' }
+```
+
+**错误文案要标 path**：「HTTP 500（v1 projects fallback）」 vs 「HTTP 500」—— 便于同事反馈时定位是 v2 还是 v1 失败。
+
+**单测必备**（每个 v2 endpoint）：
+- 至少 1 个「v2 schema 不识别 → fallback v1 拿到」正面用例
+- 至少 1 个「v2 + v1 都不识别 → 错误」负面用例
+- 401/404 不应该走 fallback（如有这两个分支也要测）
+
+**例外**：v2 `/users/login` 没有 v1 等价 user 解析 → 字段缺失只跳过 cache 不报错，允许继续工作。
+
+**审计**：v0.4.3 已加固 listProjects / listUsers / getBug / discoverProduct / ping，全部双轨。后续改 client.ts 任何 v2 调用必须遵守。
