@@ -53,10 +53,26 @@ async function ensureRetryAlarm(): Promise<void> {
   }
 }
 
-chrome.runtime.onInstalled.addListener(({ reason }) => {
+chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   console.log('[Moo] installed:', reason)
   void ensureRetryAlarm()
   void refreshBadge()
+  // v0.6.0 BREAKING：host_permissions 从 mandatory <all_urls> 改 optional。老用户升级后
+  // 没有自动授权 → 写一个 storage flag，popup 启动时显示 prominent 升级 banner 引导一键启用。
+  if (reason === 'update') {
+    try {
+      const hasPerm = await chrome.permissions.contains({ origins: ['<all_urls>'] })
+      if (!hasPerm) {
+        await chrome.storage.local.set({ mooNeedsHostPermUpgrade: true })
+        // 同时打个 badge "!" 让没开 popup 的用户也注意到（24h failure 计数会自然覆盖，
+        // 但首次安装后 24h 内通常 history 空 → 这个 "!" 不会被盖）
+        await chrome.action.setBadgeText({ text: '!' }).catch(() => {})
+        await chrome.action.setBadgeBackgroundColor({ color: '#d97706' }).catch(() => {})
+      }
+    } catch (e) {
+      console.warn('[Moo] onInstalled host-perm check failed:', (e as Error).message)
+    }
+  }
 })
 
 chrome.runtime.onStartup?.addListener(() => {

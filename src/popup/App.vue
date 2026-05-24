@@ -8,6 +8,20 @@
       <span class="moo-chip">v{{ version }}</span>
     </header>
 
+    <!-- v0.6.0 BREAKING：升级到 v0.6.0 后 <all_urls> 改 optional，老用户首次打开需要主动启用。
+         banner 醒目展示直到用户开启或显式关闭。 -->
+    <div v-if="needsHostPermUpgrade" class="upgrade-banner" role="alert">
+      <div class="upgrade-title">升级到 v0.6.0 — 上报功能需要重新启用</div>
+      <div class="upgrade-msg">为符合 Chrome Web Store 评审要求，「向上报服务器发送请求」改为可选权限。点下方按钮一次性启用，之后所有提交照旧工作。</div>
+      <button
+        type="button"
+        class="moo-btn moo-btn--danger"
+        :disabled="hostBusy"
+        @click="toggleHostPermission"
+      >{{ hostBusy ? '处理中…' : '一键启用上报功能' }}</button>
+      <button type="button" class="upgrade-dismiss" @click="dismissUpgrade">稍后再说</button>
+    </div>
+
     <main>
     <div v-if="loading" class="state state--loading">
       <div class="spinner" /> 检测中…
@@ -192,6 +206,17 @@ const recError = ref('')
 const hostEnabled = ref(false)
 const hostBusy = ref(false)
 const hostError = ref('')
+// v0.6.0 BREAKING：onInstalled 升级时写 flag，banner 展示直到开启或显式关闭
+const needsHostPermUpgrade = ref(false)
+const UPGRADE_FLAG_KEY = 'mooNeedsHostPermUpgrade'
+
+async function dismissUpgrade() {
+  needsHostPermUpgrade.value = false
+  try {
+    await chrome.storage.local.remove(UPGRADE_FLAG_KEY)
+    await chrome.action.setBadgeText({ text: '' }).catch(() => {})
+  } catch {}
+}
 const recent = ref<BugHistoryEntry[]>([])
 // v0.4.7：未匹配态快捷启用 —— 一键把当前 host wildcard 加进首个 enabled 项目的 matchPatterns
 const quickEnableBusy = ref(false)
@@ -290,6 +315,10 @@ async function toggleHostPermission() {
       const ok = await chrome.permissions.request({ origins: ['<all_urls>'] })
       hostEnabled.value = ok
       if (!ok) hostError.value = t('popup.permission.cancelled')
+      else {
+        // 用户成功授权 → 清 upgrade flag + badge（dismissUpgrade 顺手清 storage）
+        await dismissUpgrade()
+      }
     }
   } catch (e) {
     hostError.value = (e as Error).message
@@ -302,11 +331,12 @@ onMounted(async () => {
   // v0.4.8：5 步串行 IO → 并行（之前 popup 打开 < 200ms 期望易破）
   // tabs.query / loadConfig / permissions.contains / listHistory 互不依赖，能并发
   try {
-    const [tabResult, cfg, hasRecPerm, hasHostPerm, historyList] = await Promise.all([
+    const [tabResult, cfg, hasRecPerm, hasHostPerm, upgradeFlagObj, historyList] = await Promise.all([
       chrome.tabs.query({ active: true, currentWindow: true }),
       loadConfig(),
       chrome.permissions.contains({ permissions: ['tabCapture'] }),
       chrome.permissions.contains({ origins: ['<all_urls>'] }),
+      chrome.storage.local.get(UPGRADE_FLAG_KEY).catch(() => ({})),
       listHistory().catch(() => [])  // 历史读失败静默不挡核心
     ])
     const tab = tabResult[0]
@@ -319,6 +349,8 @@ onMounted(async () => {
     }
     recEnabled.value = hasRecPerm
     hostEnabled.value = hasHostPerm
+    // v0.6.0：升级 flag 仅当还没授权时显示 banner（已开 host 即使 flag 在也不弹）
+    needsHostPermUpgrade.value = !hasHostPerm && !!(upgradeFlagObj as Record<string, unknown>)[UPGRADE_FLAG_KEY]
     recent.value = historyList.slice(0, 3)
     // ONBOARD_KEY 读放最后（只在没项目时才查，多数用户 short-circuit）
     if (projects.value.length === 0) {
@@ -649,6 +681,28 @@ onMounted(async () => {
 /* v0.5.1：rh-open 改 warn 配色 — 跟 rh-fail（danger）区分。「后端待处理」≠「提交失败」 */
 .rh-status.rh-open   { color: var(--moo-c-warn-fg);    background: var(--moo-c-warn-soft);    border-color: var(--moo-c-warn-soft); }
 .rh-status.rh-ok     { color: var(--moo-c-text-muted); background: var(--moo-c-bg-soft);      border-color: var(--moo-c-border); }
+
+/* v0.6.0 BREAKING：升级后的 host_permission 引导 banner，醒目背景 + 一键启用按钮 */
+.upgrade-banner {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--moo-c-warn-soft);
+  background: var(--moo-c-warn-soft);
+  border-radius: 6px;
+  color: var(--moo-c-warn-fg);
+  font-size: var(--moo-fs-xs);
+}
+.upgrade-title { font-weight: 600; margin-bottom: 4px; color: var(--moo-c-text); }
+.upgrade-msg { margin-bottom: 8px; line-height: 1.5; color: var(--moo-c-text-muted); }
+.upgrade-banner .moo-btn { margin-right: 8px; }
+.upgrade-dismiss {
+  border: none; background: none;
+  color: var(--moo-c-text-muted);
+  font-size: var(--moo-fs-xs);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.upgrade-dismiss:hover { color: var(--moo-c-text); }
 
 .rec-toggle {
   display: flex;
