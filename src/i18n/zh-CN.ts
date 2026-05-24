@@ -34,6 +34,8 @@ export const messages = {
   'record.start.permission': '录屏功能尚未启用。请点击浏览器右上角的 Moo 图标 → 启用录屏后再试',
   'record.start.gesture': '浏览器拒绝了录屏请求：{reason}。建议直接按 ⌥⇧R（不要通过点击悬浮球），否则用户手势会失效',
   'record.start.offscreen-fail': '录屏后台进程启动失败，请稍后重试',
+  'record.start.stream-fail': '获取屏幕流失败',
+  'record.start.offscreen-unsupported': '当前 Chrome 版本不支持 offscreen documents（需要 109+）',
   'record.stop.no-response': '录屏后台没响应，可能已经被浏览器卸载。请重新开始录制',
 
   // ── 提交相关 ────────────────────────────────────────
@@ -41,6 +43,11 @@ export const messages = {
   'submit.server.not-found': '找不到选中的上报服务器（可能刚被删除）。请回到 DevTools → Moo → 环境 重新选择',
   'submit.server.no-endpoint': '上报服务器「{name}」还没填请求 URL。请去 DevTools → Moo → 环境 → 上报服务器，在「请求 URL」那一行填上后端地址后再试',
   'submit.payload.missing': 'SUBMIT_BUG payload 缺失',
+  'submit.project.deleted-placeholder': '(项目已被删除)',
+  'submit.server.deleted-placeholder': '(服务器已被删除)',
+
+  // ── 禅道相关 ────────────────────────────────────────
+  'zentao.modules.no-project-id': 'projectId 必填',
 
   // ── 预览相关 ────────────────────────────────────────
   'preview.payload.no-server': 'PREVIEW_PAYLOAD payload 缺 server',

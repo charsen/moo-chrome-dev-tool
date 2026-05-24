@@ -185,7 +185,7 @@ async function broadcastAutoStopped(reason: string, excludeTabId?: number): Prom
 
 async function ensureOffscreenDocument(): Promise<void> {
   const hasApi = !!(chrome as unknown as { offscreen?: unknown }).offscreen
-  if (!hasApi) throw new Error('当前 Chrome 版本不支持 offscreen documents（需要 109+）')
+  if (!hasApi) throw new Error(t('record.start.offscreen-unsupported'))
 
   let exists = false
   try {
@@ -230,7 +230,7 @@ async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?:
       ;(chrome.tabCapture as unknown as { getMediaStreamId: (opts: { targetTabId: number }, cb: (id: string) => void) => void })
         .getMediaStreamId({ targetTabId: tabId }, (id: string) => {
           const err = chrome.runtime.lastError
-          if (err || !id) reject(new Error(err?.message || '获取屏幕流失败'))
+          if (err || !id) reject(new Error(err?.message || t('record.start.stream-fail')))
           else resolve(id)
         })
     })

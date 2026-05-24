@@ -41,6 +41,7 @@ import type {
   ZentaoPingCookieReq,
   ZentaoPingCookieRes
 } from '@/types/messages'
+import { t } from '@/i18n'
 
 function makeZentaoEnv(creds: { baseUrl: string; account: string; password: string }): ZentaoEnv {
   return { ...creds, projectId: 0, moduleId: 0 }
@@ -90,7 +91,7 @@ export async function handleZentaoListUsers(payload: ZentaoCredsReq): Promise<Ze
 
 export async function handleZentaoListModules(payload: ZentaoCredsReq): Promise<ZentaoListModulesRes> {
   const projectId = payload.projectId
-  if (!projectId) return { ok: false, error: 'projectId 必填' }
+  if (!projectId) return { ok: false, error: t('zentao.modules.no-project-id') }
   const loginRes = await zentaoLogin(payload.baseUrl, payload.account, payload.password)
   if (!loginRes.ok) return { ok: false, error: loginRes.error }
   // 跟其他 zentao handler 不同 — ZENTAO_LIST_MODULES 需要 projectId（不只 makeZentaoEnv default 0）
