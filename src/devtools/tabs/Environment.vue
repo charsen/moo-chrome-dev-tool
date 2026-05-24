@@ -100,248 +100,26 @@
           </label>
         </div>
 
-        <!-- ─────────────── Zentao 表单（kind=zentao） ─────────────── -->
-        <template v-if="activeProject.kind === 'zentao' && activeProject.zentao">
-          <div class="section-head">
-            <h4>禅道接入</h4>
-          </div>
-          <div class="row">
-            <label>禅道地址</label>
-            <input
-              v-model="activeProject.zentao.baseUrl"
-              placeholder="https://your-zentao.example.net"
-              class="grow"
-              autocomplete="off"
-              spellcheck="false"
-            />
-          </div>
-          <div class="row">
-            <label>账号</label>
-            <input
-              v-model="activeProject.zentao.account"
-              placeholder="禅道账号（同浏览器登录用的）"
-              class="grow"
-              autocomplete="off"
-              spellcheck="false"
-            />
-          </div>
-          <div class="row">
-            <label>密码</label>
-            <div class="token-input">
-              <input
-                v-model="activeProject.zentao.password"
-                :type="zentaoPwdVisible ? 'text' : 'password'"
-                placeholder="禅道密码（本地存 chrome.storage.local，不上云不传同事）"
-                autocomplete="off"
-                spellcheck="false"
-                class="grow"
-              />
-              <button
-                type="button"
-                class="token-toggle"
-                :aria-label="zentaoPwdVisible ? '隐藏密码' : '显示密码'"
-                :title="zentaoPwdVisible ? '隐藏' : '显示'"
-                @click="zentaoPwdVisible = !zentaoPwdVisible"
-              >{{ zentaoPwdVisible ? '🙈' : '👁' }}</button>
-            </div>
-          </div>
-          <div class="row">
-            <button
-              class="moo-btn moo-btn--sm"
-              @click="testZentaoConnection"
-              :disabled="!!zentaoBusy || !canCallZentao"
-              :title="canCallZentao ? '调禅道 /login + /user 接口验证账号' : '先填齐地址 / 账号 / 密码'"
-            >{{ zentaoBusy === 'test' ? '测试中…' : '测试连接' }}</button>
-            <button
-              class="moo-btn moo-btn--sm"
-              @click="loadZentaoProjects"
-              :disabled="!!zentaoBusy || !canCallZentao"
-              :title="canCallZentao ? '调禅道 /api.php/v2/projects（用户列表/模块列表在 SubmitDialog 里拉）' : '先填齐地址 / 账号 / 密码'"
-            >📋 拉项目列表</button>
-            <span v-if="zentaoStatus" :class="['zentao-status', zentaoStatusKind]">{{ zentaoStatus }}</span>
-          </div>
-
-          <div class="row" v-if="zentaoProjectsList.length">
-            <label>选项目</label>
-            <select v-model.number="activeProject.zentao.projectId" class="grow">
-              <option :value="0">— 从下面选一个 —</option>
-              <option v-for="p in zentaoProjectsList" :key="p.id" :value="p.id">
-                {{ p.name }}（#{{ p.id }}{{ p.status === 'closed' ? ' 已关闭' : '' }}）
-              </option>
-            </select>
-          </div>
-          <div class="row">
-            <label>项目 ID</label>
-            <input v-model.number="activeProject.zentao.projectId" type="number" min="1" class="narrow" />
-          </div>
-          <div class="row">
-            <label>模块 ID</label>
-            <input v-model.number="activeProject.zentao.moduleId" type="number" min="0" class="narrow" />
-            <span class="tpl-hint">通常填 0（默认模块）</span>
-          </div>
-
-          <div class="zentao-defaults">
-            <div class="zentao-defaults-title">提交默认值（每条 bug 提交时可单独改）</div>
-            <div class="row">
-              <label>类型</label>
-              <select v-model="activeProject.zentao.defaultType" class="narrow">
-                <option v-for="t in ZENTAO_TYPE_OPTIONS" :key="t.value" :value="t.value">{{ t.label }}</option>
-              </select>
-              <span class="tpl-hint">禅道 bug type 字段</span>
-            </div>
-            <div class="row">
-              <label>严重度</label>
-              <select v-model.number="activeProject.zentao.defaultSeverity" class="narrow">
-                <option v-for="s in ZENTAO_SEVERITY_OPTIONS" :key="s.value" :value="s.value">{{ s.label }}</option>
-              </select>
-            </div>
-            <div class="row">
-              <label>优先级</label>
-              <select v-model.number="activeProject.zentao.defaultPri" class="narrow">
-                <option v-for="p in ZENTAO_PRI_OPTIONS" :key="p.value" :value="p.value">{{ p.label }}</option>
-              </select>
-            </div>
-            <div class="row">
-              <label>默认关键词</label>
-              <input
-                v-model="activeProject.zentao.defaultKeywords"
-                placeholder="禅道搜索框输此字符可找到所有 Moo 上报的 bug"
-                class="grow"
-              />
-            </div>
-          </div>
-        </template>
-
-        <!-- ────────────── Webhook 表单（kind=webhook，原有 UI） ────────────── -->
-        <template v-else>
-        <div class="section-head">
-          <h4>上报 Token</h4>
-        </div>
-        <div class="row">
-          <label>Token</label>
-          <div class="token-input">
-            <input
-              v-model="activeProject.token"
-              :type="tokenVisible ? 'text' : 'password'"
-              placeholder="从 /scaffold/accounts 获取你的个人 token"
-              autocomplete="off"
-              spellcheck="false"
-              class="grow"
-            />
-            <button
-              type="button"
-              class="token-toggle"
-              :aria-label="tokenVisible ? '隐藏 token' : '显示 token'"
-              :title="tokenVisible ? '隐藏' : '显示'"
-              @click="tokenVisible = !tokenVisible"
-            >{{ tokenVisible ? '🙈' : '👁' }}</button>
-          </div>
-        </div>
-        <div class="tpl-hint">
-          token 通过 payload 模板的 <code class="inline-code" v-pre>{{token}}</code> 占位符注入 POST body 的 <code class="inline-code">token</code> 字段（webhook 风格，不进 header）。
-          服务端从 body 读出 token 校验，命中后用账号 username 作为提交人。
-          留空则按匿名提交（若服务端要求 token 会被拒）。
-        </div>
-
-        <div class="section-head">
-          <h4>上报服务器</h4>
-          <button class="moo-btn" @click="addServer">+ 新建服务器</button>
-        </div>
-
-        <div v-if="!activeProject.servers.length" class="server-empty-warn">
-          ⚠ 这个项目没有上报服务器，<b>悬浮球能匹配但点提交会失败</b>。点上面「+ 新建服务器」配一个。
-        </div>
-
-        <div v-for="s in activeProject.servers" :key="s.id" class="server-card">
-          <div class="row">
-            <label>名称</label>
-            <input v-model="s.name" />
-            <label class="inline">
-              <input
-                type="radio"
-                :name="`def-${activeProject.id}`"
-                :value="s.id"
-                v-model="activeProject.defaultServerId"
-              />
-              默认
-            </label>
-            <button class="moo-btn moo-btn--sm moo-btn--danger" @click="removeServer(s.id)">删除</button>
-          </div>
-          <div class="row">
-            <label>请求 URL</label>
-            <select v-model="s.method" class="method">
-              <option>POST</option>
-              <option>PUT</option>
-              <option>PATCH</option>
-            </select>
-            <input v-model="s.endpoint" placeholder="https://your-bug-server/api/bugs" class="grow" />
-          </div>
-          <div class="row">
-            <label>请求头</label>
-          </div>
-          <div class="kv-list">
-            <div v-for="(entry, i) in headerEntries(s)" :key="i" class="kv-row">
-              <input
-                :value="entry[0]"
-                @change="onHeaderKeyChange(s, i, ($event.target as HTMLInputElement).value)"
-                placeholder="Header-Name"
-              />
-              <input
-                :value="entry[1]"
-                @input="onHeaderValChange(s, i, ($event.target as HTMLInputElement).value)"
-                placeholder="value"
-              />
-              <button
-                class="moo-btn moo-btn--sm"
-                :aria-label="`移除 Header ${entry[0]}`"
-                @click="removeHeader(s, entry[0])"
-              >×</button>
-            </div>
-            <button class="moo-btn moo-btn--sm" @click="addHeader(s)">+ 添加 Header</button>
-          </div>
-          <div class="row">
-            <label>图片字段</label>
-            <input v-model="s.imageField" class="narrow" />
-            <label>格式</label>
-            <select v-model="s.imageFormat" class="narrow">
-              <option value="base64">base64 (JSON)</option>
-              <option value="multipart">multipart</option>
-            </select>
-          </div>
-          <div class="row template-row-head">
-            <label>Payload 模板</label>
-            <button class="moo-btn moo-btn--sm" type="button" @click="openTemplateEditor(s)">
-              ⤢ 大尺寸编辑
-            </button>
-          </div>
-          <textarea v-model="s.payloadTemplate" class="template" rows="8" />
-          <div class="tpl-hint">
-            可用变量：
-            <code v-pre>{{title}}</code>
-            <code v-pre>{{description}}</code>
-            <code v-pre>{{url}}</code>
-            <code v-pre>{{userAgent}}</code>
-            <code v-pre>{{viewport}}</code>
-            <code v-pre>{{timestamp}}</code>
-            <code v-pre>{{image}}</code>
-            <code v-pre>{{requestsJson}}</code>
-            <code v-pre>{{errorsJson}}</code>
-          </div>
-        </div>
-        </template>
+        <!-- v0.5.3 P1 第 3 步：zentao / webhook 子表单拆到独立组件，本主壳只管
+             项目侧栏 + 项目元数据（名称 / URL / 启用 / kind radio）+ 自动保存条 + toast。
+             双向绑定 v-model 让子组件直接 mutate activeProject.zentao / .servers / .token —
+             父组件的 watch(draft, deep) 仍会 fire 触发 autoSave。 -->
+        <EnvironmentZentao
+          v-if="activeProject.kind === 'zentao' && activeProject.zentao"
+          v-model="activeProject"
+          v-model:pwd-visible="zentaoPwdVisible"
+        />
+        <EnvironmentWebhook
+          v-else
+          v-model="activeProject"
+          v-model:token-visible="tokenVisible"
+        />
       </main>
 
       <main class="detail empty-state" v-else>
         <p>左侧选择或新建一个项目开始配置。</p>
       </main>
     </div>
-
-    <PayloadEditorModal
-      v-if="editingTemplate"
-      :model-value="editingTemplate.server.payloadTemplate"
-      @save="onTemplateSave"
-      @cancel="editingTemplate = null"
-    />
   </div>
 </template>
 
@@ -350,19 +128,17 @@ import { computed, ref, watch } from 'vue'
 import { useConfig } from '@/composables/useConfig'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useToast } from '@/composables/useToast'
-import { useZentaoEnvironment } from '@/composables/useZentaoEnvironment'
 import { useConfigImportExport } from '@/composables/useConfigImportExport'
-import { useServerCrud } from '@/composables/useServerCrud'
 import {
   createDefaultProject,
   DEFAULT_ZENTAO,
   type MooConfig,
   type Project
 } from '@/types/config'
-import { ZENTAO_TYPE_OPTIONS, ZENTAO_SEVERITY_OPTIONS, ZENTAO_PRI_OPTIONS } from '@/utils/zentaoOptions'
 import { clone } from '@/utils/clone'
 import { confirmDialog } from '../components/confirm'
-import PayloadEditorModal from '../components/PayloadEditorModal.vue'
+import EnvironmentZentao from './EnvironmentZentao.vue'
+import EnvironmentWebhook from './EnvironmentWebhook.vue'
 
 const { config, loaded, save } = useConfig()
 
@@ -448,21 +224,8 @@ watch(
   }
 )
 
-// v0.5.3 P1：禅道凭证操作 + 测试连接 + 拉项目 + 凭证变化清缓存
-// 都抽到 composables/useZentaoEnvironment.ts
-const zentao = useZentaoEnvironment({
-  zentao: computed(() => activeProject.value?.zentao),
-  activeProjectId: computed(() => activeProject.value?.id),
-  activeKind: computed(() => activeProject.value?.kind)
-})
-// 给模板用的简短别名（保持原 template 字段名兼容，减少 diff）
-const zentaoBusy = zentao.busy
-const zentaoStatus = zentao.status
-const zentaoStatusKind = zentao.statusKind
-const zentaoProjectsList = zentao.projectsList
-const canCallZentao = zentao.canCall
-const testZentaoConnection = zentao.testConnection
-const loadZentaoProjects = zentao.loadProjects
+// v0.5.3 P1：禅道凭证操作（测试连接 / 拉项目 / 凭证变化清缓存）已抽到 useZentaoEnvironment +
+// EnvironmentZentao.vue 子组件，本主壳不再持禅道相关 state。
 
 // 任何 draft 变更 → useAutoSave 防抖 800ms → 落盘
 watch(
@@ -519,22 +282,8 @@ function onPatternsBlur() {
     .filter(Boolean)
 }
 
-// v0.5.3 P1 第 2 步：server / header / payload 模板 CRUD 抽到 composables/useServerCrud.ts
-const {
-  editingTemplate,
-  openTemplateEditor,
-  onTemplateSave,
-  addServer,
-  removeServer,
-  headerEntries,
-  onHeaderKeyChange,
-  onHeaderValChange,
-  addHeader,
-  removeHeader
-} = useServerCrud({
-  activeProject,
-  confirmDialog
-})
+// v0.5.3 P1 第 2 步：server / header / payload 模板 CRUD 已抽到 useServerCrud +
+// EnvironmentWebhook.vue 子组件，本主壳不再持 webhook 相关 state。
 
 // v0.5.3 P1：配置导入/导出抽到 composables/useConfigImportExport.ts
 const { exportConfig, importConfig } = useConfigImportExport({
@@ -683,16 +432,6 @@ const { exportConfig, importConfig } = useConfigImportExport({
 .count--zero,
 .project-item.active .count--zero { color: var(--moo-c-warn-fg); font-family: var(--moo-ff-sans); }
 
-.server-empty-warn {
-  margin: 8px 0 12px;
-  padding: 10px 12px;
-  background: var(--moo-c-warn-soft);
-  border: 1px solid var(--moo-c-warn);
-  border-radius: var(--moo-r-md);
-  color: var(--moo-c-warn-fg);
-  font-size: var(--moo-fs-sm);
-  line-height: 1.5;
-}
 .empty {
   padding: 16px;
   color: var(--moo-c-text-dim);
@@ -763,41 +502,8 @@ const { exportConfig, importConfig } = useConfigImportExport({
   box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
 }
 
-/* Token 输入框 + 显隐切换 */
-.token-input {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.token-input input { font-family: var(--moo-ff-mono); }
-.token-toggle {
-  flex: 0 0 28px;
-  height: 28px;
-  border: 1px solid var(--moo-c-border);
-  background: var(--moo-c-bg);
-  border-radius: var(--moo-r-md);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-  padding: 0;
-  transition: background-color var(--moo-motion-fast), border-color var(--moo-motion-fast);
-}
-.token-toggle:hover { background: var(--moo-c-bg-soft); border-color: var(--moo-c-text-faint); }
-.row .narrow { flex: 0 0 130px; }
-.row .grow   { flex: 1; }
-.row .method { flex: 0 0 90px; }
-
-/* Payload 模板行的头：label + "大尺寸编辑" 按钮齐高 */
-.template-row-head {
-  align-items: center;
-}
-.template-row-head label { flex: 1; min-width: 0; }
-/* min-width: 0：长 label 文本不撑爆 row，让 "大尺寸编辑" 按钮永远在视区内 */
-
-/* 多行文本 */
-.patterns, .template {
+/* URL 匹配模式 textarea（zentao + webhook 子表单各自带自己的 textarea 样式） */
+.patterns {
   width: 100%;
   font-family: var(--moo-ff-mono);
   font-size: var(--moo-fs-sm);
@@ -811,7 +517,7 @@ const { exportConfig, importConfig } = useConfigImportExport({
   background: var(--moo-c-bg);
   transition: border-color var(--moo-motion-fast), box-shadow var(--moo-motion-fast);
 }
-.patterns:focus, .template:focus {
+.patterns:focus {
   outline: none;
   border-color: var(--moo-c-brand);
   box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
@@ -834,45 +540,10 @@ const { exportConfig, importConfig } = useConfigImportExport({
   letter-spacing: -.005em;
 }
 
-/* 服务器卡 */
-.server-card {
-  border: 1px solid var(--moo-c-border);
-  border-radius: var(--moo-r-lg);
-  padding: 14px;
-  margin-bottom: 14px;
-  background: var(--moo-c-bg-soft);
-}
-
-/* Header KV */
-.kv-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 4px 0 10px;
-}
-.kv-row { display: flex; gap: 8px; align-items: center; }
-.kv-row input {
-  flex: 1;
-  height: 26px;
-  font-size: var(--moo-fs-sm);
-  padding: 0 8px;
-  border: 1px solid var(--moo-c-border);
-  border-radius: var(--moo-r-md);
-  background: var(--moo-c-bg);
-  color: var(--moo-c-text);
-  font-family: var(--moo-ff-mono);
-  min-width: 0;
-}
-.kv-row input:focus {
-  outline: none;
-  border-color: var(--moo-c-brand);
-  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
-}
-
 /* 按钮全部走 canonical .moo-btn / .moo-btn--sm / .moo-btn--danger（tokens.css），
    不再 scoped 局部覆盖 */
 
-/* 模板提示 */
+/* 模板提示 + inline code（URL 匹配示例段用） */
 .tpl-hint {
   font-size: var(--moo-fs-xs);
   color: var(--moo-c-text-muted);
@@ -897,7 +568,7 @@ const { exportConfig, importConfig } = useConfigImportExport({
   font-size: 10px;
 }
 
-/* ───────────────── v0.2.0 禅道相关 UI ───────────────── */
+/* ───────────────── v0.2.0 禅道 / webhook radio + 项目侧栏 badge ───────────────── */
 .kind-row {
   gap: 16px;
 }
@@ -907,25 +578,5 @@ const { exportConfig, importConfig } = useConfigImportExport({
 }
 .count--zentao {
   font-family: var(--moo-ff-sans);
-}
-.zentao-status {
-  font-size: var(--moo-fs-xs);
-  font-family: var(--moo-ff-mono);
-  margin-left: 8px;
-}
-.zentao-status.ok { color: var(--moo-c-success-fg); }
-.zentao-status.err { color: var(--moo-c-danger-fg); }
-.zentao-defaults {
-  margin-top: 12px;
-  padding: 10px 12px 4px;
-  border: 1px solid var(--moo-c-border);
-  border-radius: var(--moo-r-md);
-  background: var(--moo-c-bg-elev);
-}
-.zentao-defaults-title {
-  font-size: var(--moo-fs-sm);
-  color: var(--moo-c-text);
-  margin-bottom: 8px;
-  font-weight: 500;
 }
 </style>
