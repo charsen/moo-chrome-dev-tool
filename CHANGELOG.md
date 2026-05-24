@@ -2,6 +2,51 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.4.8
+
+2026-05-24 发版。无 BREAKING。**第 5 波 review** —— v0.4.7 后再跑「业务复盘 v2」3 agent 并行**回归测试 + 找同款 + 长尾维度 + 数据隐私链路**，找出 **24+ 个问题**，其中 **4 个隐私洞 + 1 个 4 个月 bug 复活路径**。
+
+**🔴 严重 12 / 12 主修 + 3 标 backlog**：
+
+**回归 + 同款（v0.4.7 漏扫）**：
+- **`History.vue` isZentaoEntry 复活路径** — 用户删过禅道项目后 `projects.find()` 返 undefined 导致 isZentaoEntry false → fallback webhook → v0.4.7 修的 4 个月 bug 复活。改用 `e.serverId === 'zentao'` marker
+- **`stripSensitive` 漏 server.headers** — webhook bearer token 塞 Authorization header 不被剥，导出 JSON 仍泄。加 `SENSITIVE_HEADER_PATTERN` 剥 7 类 header
+- **`offscreen` 50MB cap 仍卡 IPC** — base64 dataUrl 1.37× 膨胀，50MB blob ≈ 68MB dataUrl 仍超 64MB。降到 46MB
+
+**4 个隐私洞**：
+- 🚨 **`capture.requests` / `capture.consoleErrors` 开关是死配置** — Settings UI 显示开关 + storage 保存 + normalize 都对，**但代码全文无读点**！用户关了开关以为没抓实际全程在抓 + 提交时全部附上。`useRequests` / `useErrors` 加 `captureEnabled` gate + setConfig 切 off 清 buffer
+- 🚨 **`location.href` 提交时不脱敏** — SPA 常把 `?access_token=` 放 URL 整条原文落 History/webhook/禅道。调 `redactUrl(location.href, redact.bodyKeys)`
+- **main-world 在所有 URL 注入未匹配 tab 也抓** — `ContentApp.refreshProject` 加 `matches.length===0` 显式 disable capture + clear buffer
+- **重试队列禅道条目存 1080p PNG** — `enqueueZentaoRetry` 入队前 `thumbnailize`（跟 webhook 路径拉齐）
+
+**数据完整性**：
+- `storage/history.ts` 加 `withWriteMutex` 防多窗口并发 last-write-wins 让已删 entry 复活
+- `offscreen` 录屏加独立 35s tripwire 兜底 content 端 30s timer（inactive tab 节流可绕到 1-2 分钟）
+
+**其他**：
+- `retryQueue.isPermanentFailure` 加 3 类禅道错（`返非 JSON` / `未返响应体` / `缺 user`）
+- `popup quickEnableHostPattern` 加 chrome:// / file:// / about: protocol 黑名单防生成非法 wildcard
+- `popup quickEnable` 按钮 v-if 守 `quickEnableHostPattern` 非空
+- `SubmitDialog canSubmit` 加二次确认重新截图（标题/描述填了时）
+- `background windows.onRemoved` 关窗紧急 STOP 录屏 best-effort
+
+**🟡 中等 9 / 12 主修**：
+- `Panel.vue` 用 `<KeepAlive>` 包 4 Tab（切换不丢 filter / openId / scroll 状态）
+- `popup onMounted` 5 步串行 IO → `Promise.all` 并行
+- `submitMessage` 用 `navigator.onLine` 区分「网络断」vs「服务器挂」文案
+- `SubmitDialog .req-item` 加 `content-visibility: auto`（50+ 请求滚动卡）
+- `background submit-fail` console.warn bodyPreview 缩短到 200 + 显式 ⚠ 警告
+- `DEFAULT_REDACT` 加宽 7 keys（`proxy-authorization` / `x-api-key` / `refresh_token` / `id_token` / `client_secret` 等常见敏感字段）
+- `storage/config.ts detectCustomTemplateMissingVideo` 加 `warnedMissingVideo` Set 防 SW spin-up 重复 warn
+
+**📋 backlog 8 项**（v0.5.x 单独）：
+- 跨 origin iframe 密码框遮罩（技术无解，需文档警告）
+- RECORD_GLOBAL_STARTED 广播（双 tab 协作）
+- saveConfig merge / Environment 多窗口编辑覆盖（需 mutex + UI 协议）
+- 跨窗口录屏文案 / readPageStorage 敏感 key 警告 / useRequests listener 等
+
+**测试**：366 单测 + 7 skipped + 90 e2e + vue-tsc 0 报错。
+
 ## v0.4.7
 
 2026-05-24 发版。无 BREAKING。**业务专项 review 一波** —— v0.4.6 后跑「拉团队，所有业务复盘」3 agent 并行审，模拟真用户场景找出 28 个业务问题，**修了 19 个，9 个 mini-feature 标 backlog**。

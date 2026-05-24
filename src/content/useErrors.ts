@@ -4,6 +4,8 @@ import type { ConsoleError } from '@/types/errors'
 const errors = ref<ConsoleError[]>([])
 let bufferSize = 50
 let started = false
+// v0.4.8：capture.consoleErrors 开关真生效（同 useRequests.ts 同款修）
+let captureEnabled = true
 
 function push(e: ConsoleError) {
   errors.value.push(e)
@@ -28,8 +30,14 @@ function start() {
     const data = e.data as { __moo?: boolean; tag?: string; payload?: unknown }
     if (!data?.__moo || data.tag !== '__moo_err__') return
     if (!isValidErrorPayload(data.payload)) return
+    if (!captureEnabled) return  // v0.4.8：用户在 Settings 关了 consoleErrors → 不入 buffer
     push(data.payload)
   })
+}
+
+export function setErrorsEnabled(enabled: boolean): void {
+  captureEnabled = enabled
+  if (!enabled) errors.value = []  // 切到 off 时清已 buffer
 }
 
 export function getCurrentErrors(): ConsoleError[] {

@@ -27,9 +27,13 @@ export function formatSubmitResult(res: SubmitBugRes): { ok: boolean; message: s
 
   // 1. fetch 异常
   if (res.error) {
+    // v0.4.8：用 navigator.onLine 区分「断网」vs「服务器挂」，文案更准确
+    const offlineHint = typeof navigator !== 'undefined' && navigator.onLine === false
+      ? '（浏览器检测到当前网络离线）'
+      : ''
     return {
       ok: false,
-      message: appendQueued(`提交失败：${res.error}`, res.queued)
+      message: appendQueued(`提交失败：${res.error}${offlineHint}`, res.queued)
     }
   }
 

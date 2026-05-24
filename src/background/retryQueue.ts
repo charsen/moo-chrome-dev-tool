@@ -27,6 +27,7 @@ import type { SubmitBugReq } from '@/types/messages'
 import type { Project } from '@/types/config'
 import { submitToZentao } from '@/background/zentao/submit'
 import { dataUrlToBlob } from '@/utils/dataUrl'
+import { thumbnailize } from '@/utils/image'
 import { loadConfig } from '@/storage/config'
 
 const RETRY_QUEUE_KEY = 'mooRetryQueue'
@@ -141,14 +142,19 @@ export async function enqueueRetry(
  * 跟 webhook multipart 不入队保持一致行为：用户得自己去 历史 Tab 手动重提。
  */
 export async function enqueueZentaoRetry(projectId: string, req: SubmitBugReq): Promise<boolean> {
-  const estimatedSize = estimateZentaoSize(req)
+  // v0.4.8：入队前 thumbnailize image（之前禅道路径直接存 1080p PNG 800KB-1.5MB 长期驻留 storage）。
+  // 跟 webhook 路径（history.ts）保持一致，重试时拿缩略图重提没问题（用户看到的也是缩略图）
+  const reqForQueue: SubmitBugReq = req.image
+    ? { ...req, image: await thumbnailize(req.image) }
+    : req
+  const estimatedSize = estimateZentaoSize(reqForQueue)
   if (estimatedSize > RETRY_MAX_BODY_BYTES) return false
   const item: QueuedZentao = {
     kind: 'zentao',
     enqueuedAt: Date.now(),
     attempts: 0,
     projectId,
-    req
+    req: reqForQueue
   }
   return pushItem(item)
 }
@@ -282,7 +288,10 @@ async function retryZentao(q: QueuedZentao, config: { projects: Project[] }): Pr
 /** v0.4.7：判断错误是否「永久失败」（重试无意义，drop）。
  *  v0.4.6 之前正则只覆盖 5 类，漏掉 product/项目/WAF/schema/认证持续/bug 不存在 → 重试 5x 浪费。 */
 function isPermanentFailure(error: string): boolean {
-  return /登录失败|缺少必填|未授权|Unauthorized|缺禅道配置|未关联.*product|WAF 拦截|认证持续失败|响应都不识别|项目.*不存在|bug 不存在/.test(error)
+  // v0.4.8 加 3 类禅道 schema/cookie 永久错（agent 第 5 波 review 发现）：
+  //   - 「返非 JSON」/「未返响应体」(client.ts schema 错)
+  //   - 「缺 user.realname」(login 成功但响应不完整)
+  return /登录失败|缺少必填|未授权|Unauthorized|缺禅道配置|未关联.*product|WAF 拦截|认证持续失败|响应都不识别|项目.*不存在|bug 不存在|返非 JSON|未返响应体|缺 user/.test(error)
 }
 
 /** 只读统计 API：storage 读失败按"空队列"返回，不该把 storage 异常往上抛打断 UI 渲染。 */

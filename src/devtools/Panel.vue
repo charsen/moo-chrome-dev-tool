@@ -50,10 +50,14 @@
       </nav>
     </header>
     <main class="content">
-      <Environment v-if="active === 'env'" />
-      <Overview v-else-if="active === 'overview'" />
-      <History v-else-if="active === 'history'" />
-      <Settings v-else-if="active === 'settings'" />
+      <!-- v0.4.8：用 KeepAlive 保留 tab 状态（filter / openId / scroll position / autoRefresh）。
+           之前 v-if 切换每次都 unmount/mount 丢状态 + History 会重触发 syncRemoteStatus 拉远端 -->
+      <KeepAlive>
+        <Environment v-if="active === 'env'" />
+        <Overview v-else-if="active === 'overview'" />
+        <History v-else-if="active === 'history'" />
+        <Settings v-else-if="active === 'settings'" />
+      </KeepAlive>
     </main>
   </div>
 </template>

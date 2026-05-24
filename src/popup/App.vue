@@ -58,7 +58,8 @@
         </ul>
       </div>
       <!-- v0.4.7：未匹配态加快捷入口，一键把当前 host wildcard 加进首个 enabled 项目 -->
-      <button v-if="quickEnableTarget" class="onboard-cta" :disabled="quickEnableBusy" @click="quickEnableHere">
+      <!-- v0.4.8：chrome:// / file:// 等无 host 时禁用按钮（生成的 wildcard 非法） -->
+      <button v-if="quickEnableTarget && quickEnableHostPattern" class="onboard-cta" :disabled="quickEnableBusy" @click="quickEnableHere">
         {{ quickEnableBusy ? '配置中…' : `+ 在此页面也启用「${quickEnableTarget.name}」` }}
       </button>
       <p class="hint">点上面按钮把 <code>{{ quickEnableHostPattern || '当前域名' }}</code> 加进项目；或去 DevTools → <b>Moo</b> → <b>环境</b> 手动改规则。</p>
@@ -174,9 +175,14 @@ const recent = ref<BugHistoryEntry[]>([])
 // v0.4.7：未匹配态快捷启用 —— 一键把当前 host wildcard 加进首个 enabled 项目的 matchPatterns
 const quickEnableBusy = ref(false)
 const quickEnableTarget = computed(() => projects.value.find(p => p.enabled) ?? null)
+// v0.4.8：chrome:// / file:// / about: 这些 protocol 没有有效 host，生成 `chrome:///*`
+// 这种非法 wildcard saveConfig 也不会验证 → 用户点按钮看似成功但 pattern 永远不匹配
+const QUICK_ENABLE_PROTO_BLACKLIST = ['chrome:', 'chrome-extension:', 'file:', 'about:', 'edge:', 'view-source:']
 const quickEnableHostPattern = computed(() => {
   try {
     const u = new URL(currentUrl.value)
+    if (QUICK_ENABLE_PROTO_BLACKLIST.includes(u.protocol)) return ''
+    if (!u.host) return ''
     return `${u.protocol}//${u.host}/*`
   } catch { return '' }
 })
@@ -249,29 +255,30 @@ async function toggleRecording() {
 }
 
 onMounted(async () => {
+  // v0.4.8：5 步串行 IO → 并行（之前 popup 打开 < 200ms 期望易破）
+  // tabs.query / loadConfig / permissions.contains / listHistory 互不依赖，能并发
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    const [tabResult, cfg, hasRecPerm, historyList] = await Promise.all([
+      chrome.tabs.query({ active: true, currentWindow: true }),
+      loadConfig(),
+      chrome.permissions.contains({ permissions: ['tabCapture'] }),
+      listHistory().catch(() => [])  // 历史读失败静默不挡核心
+    ])
+    const tab = tabResult[0]
     currentUrl.value = tab?.url ?? ''
-    const cfg = await loadConfig()
     projects.value = cfg.projects
     if (tab?.url && cfg.globalEnabled) {
       matched.value = cfg.projects.filter(
         (p) => p.enabled && p.matchPatterns.some((pat) => urlMatches(tab.url!, pat))
       )
     }
-    // 首次使用判定：没建过项目 + 没标记过"看完引导"。两条都满足才算"new user"
+    recEnabled.value = hasRecPerm
+    recent.value = historyList.slice(0, 3)
+    // ONBOARD_KEY 读放最后（只在没项目时才查，多数用户 short-circuit）
     if (projects.value.length === 0) {
       const r = await chrome.storage.local.get(ONBOARD_KEY)
       if (!r[ONBOARD_KEY]) firstRun.value = true
     }
-    // 读 tabCapture optional permission 当前状态
-    recEnabled.value = await chrome.permissions.contains({ permissions: ['tabCapture'] })
-    // 最近提交：只取前 3 条（1 prominent 卡 + 2 compact 行）；read 失败静默——
-    // 历史区是辅助信息，不该挡住核心状态显示
-    try {
-      const list = await listHistory()
-      recent.value = list.slice(0, 3)
-    } catch { /* ignore */ }
   } finally {
     loading.value = false
   }

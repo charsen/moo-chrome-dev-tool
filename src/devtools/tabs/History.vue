@@ -215,11 +215,12 @@ const servers = computed(() => {
   return all
 })
 
-/** v0.4.7：判断 entry 是否来自禅道项目（kind='zentao'）。
- *  禅道 entry 不让换服务器 + 重提时强制走原 project（不走 resubmitTo） */
+/** v0.4.8：判断 entry 是否来自禅道路径。
+ *  v0.2.0+ 起 zentao 提交时 entry.serverId 写 'zentao' marker（webhook 走 server.id uuid）。
+ *  直接用 marker 判定，不依赖 project 现存 —— 防用户删过 project 后兜底失败让
+ *  v0.4.7 修的「webhook 错发」bug 又以另一形式复活（agent 第 5 波 review 发现）。 */
 function isZentaoEntry(e: BugHistoryEntry): boolean {
-  const p = projects.value.find(p => p.id === e.projectId)
-  return p?.kind === 'zentao'
+  return e.serverId === 'zentao'
 }
 
 function toggle(id: string) {

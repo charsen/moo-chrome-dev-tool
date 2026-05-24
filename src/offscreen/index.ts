@@ -144,8 +144,10 @@ async function handleStart(streamId: string, tabId?: number): Promise<{ ok: bool
     try {
       const blob = new Blob(chunks, { type: recorder?.mimeType || 'video/webm' })
       // v0.4.7：50MB hard cap —— 防 chrome IPC ~64MB 上限被 dataUrl 撑爆崩 offscreen。
-      // 用户录长视频时 30s 限制是 content 端 timer，inactive tab 节流可绕。这里是最后兜底。
-      const MAX_VIDEO_BYTES = 50 * 1024 * 1024
+      // v0.4.8：阈值降到 46MB —— base64 dataUrl 1.37× 膨胀，50MB blob ≈ 68MB dataUrl 仍超 IPC 64MB。
+      // 46MB blob ≈ 63MB dataUrl 留点 safety。用户录长视频时 30s 限制是 content 端 timer，
+      // inactive tab 节流可绕。这里是最后兜底。
+      const MAX_VIDEO_BYTES = 46 * 1024 * 1024
       if (blob.size > MAX_VIDEO_BYTES) {
         if (wasStopping) stopResolver?.({
           ok: false,
@@ -196,6 +198,18 @@ async function handleStart(streamId: string, tabId?: number): Promise<{ ok: bool
 
   recorder.start(1000)
   state = 'recording'
+
+  // v0.4.8：独立 35s tripwire 兜底 content 端 30s timer（inactive tab 节流可绕导致录到 1-2 分钟）。
+  // 35s 留 5s buffer 让 content 端正常 stop 先执行；如果还没停就强制 stop 防长录像爆 IPC。
+  const TRIPWIRE_MS = 35_000
+  setTimeout(() => {
+    if (state === 'recording') {
+      console.log('[Moo offscreen] 35s tripwire fired — content 端 30s timer 可能被 inactive tab 节流，强制 stop')
+      state = 'stopping'
+      try { recorder?.stop() } catch { /* ignore */ }
+    }
+  }, TRIPWIRE_MS)
+
   return { ok: true }
 }
 

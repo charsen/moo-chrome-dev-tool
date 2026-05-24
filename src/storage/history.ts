@@ -114,21 +114,36 @@ export async function listHistory(): Promise<BugHistoryEntry[]> {
   return read()
 }
 
+// v0.4.8：read→modify→write 加 mutex 防多窗口并发 last-write-wins 让已删 entry 复活。
+// 同款思路：retryQueue 的 flushPromise inflight 锁。
+let writeMutex: Promise<unknown> = Promise.resolve()
+function withWriteMutex<T>(fn: () => Promise<T>): Promise<T> {
+  const next = writeMutex.then(fn, fn)
+  writeMutex = next.catch(() => {})
+  return next
+}
+
 export async function removeHistory(id: string): Promise<void> {
-  const list = await read()
-  await write(list.filter((e) => e.id !== id))
+  await withWriteMutex(async () => {
+    const list = await read()
+    await write(list.filter((e) => e.id !== id))
+  })
 }
 
 export async function clearHistory(): Promise<void> {
-  await chrome.storage.local.set({ [KEY]: [] })
+  await withWriteMutex(async () => {
+    await chrome.storage.local.set({ [KEY]: [] })
+  })
 }
 
 export async function updateHistoryEntry(id: string, entry: BugHistoryEntry): Promise<void> {
-  const list = await read()
-  const idx = list.findIndex((e) => e.id === id)
-  if (idx < 0) return
-  list[idx] = entry
-  await write(list)
+  await withWriteMutex(async () => {
+    const list = await read()
+    const idx = list.findIndex((e) => e.id === id)
+    if (idx < 0) return
+    list[idx] = entry
+    await write(list)
+  })
 }
 
 export function onHistoryChanged(handler: () => void): () => void {

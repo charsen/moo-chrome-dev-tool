@@ -40,20 +40,24 @@ function migrateServerTemplate(tpl: string): string {
 }
 
 /** v0.4.7：检测「自定义模板但缺 video 占位」的 server —— migrate 不动它（保留用户结构），
- *  但 console.warn 让 dev 知道：用户提交时 video 字段不会被填，录屏发不到后端。 */
+ *  但 console.warn 让 dev 知道：用户提交时 video 字段不会被填，录屏发不到后端。
+ *  v0.4.8：加 seenOnce 防 SW 每次 spin-up 重 warn 同条（noise reduction） */
 function detectCustomTemplateMissingVideo(s: BugServer): boolean {
   if (typeof s.payloadTemplate !== 'string' || !s.payloadTemplate) return false
   if (s.payloadTemplate.includes('{{video}}')) return false
   // 匹配「默认派生模板」结构，匹配上的会被 migrateServerTemplate 自动补 — 不算自定义
   return !/([ \t]*)"screenshot"\s*:\s*"\{\{image\}\}"\s*,/.test(s.payloadTemplate)
 }
+const warnedMissingVideo = new Set<string>()
 
 function applyMigrations(cfg: MooConfig): { config: MooConfig; changed: boolean } {
   let changed = false
   const projects = cfg.projects.map((p) => {
     if (!Array.isArray(p.servers) || p.servers.length === 0) return p
     const servers: BugServer[] = p.servers.map((s) => {
-      if (detectCustomTemplateMissingVideo(s)) {
+      // v0.4.8：每个 server 只 warn 一次（SW spin-up 多次时不重复刷）
+      if (detectCustomTemplateMissingVideo(s) && !warnedMissingVideo.has(s.id)) {
+        warnedMissingVideo.add(s.id)
         console.warn(`[Moo:config] project "${p.name}" server "${s.name}" 用了自定义 payloadTemplate 但缺 {{video}} 占位 — 录屏字段不会发到后端。请手动在模板里加 video / videoDuration / videoBytes 占位符（参考 DEFAULT_PAYLOAD_TEMPLATE）`)
       }
       const tpl2 = migrateServerTemplate(s.payloadTemplate)

@@ -122,9 +122,19 @@ export const DEFAULT_CAPTURE: CaptureConfig = {
   requestBufferSize: 50
 }
 
+// v0.4.8：加宽默认 redact 覆盖（agent 第 5 波 review 发现 DEFAULT 漏了常见敏感 key）
 export const DEFAULT_REDACT: RedactConfig = {
-  headerKeys: ['authorization', 'cookie', 'x-auth-token'],
-  bodyKeys: ['password', 'token'],
+  headerKeys: [
+    'authorization', 'cookie', 'x-auth-token',
+    // 新加 4 类常见 auth header
+    'proxy-authorization', 'x-api-key', 'x-access-token', 'set-cookie'
+  ],
+  bodyKeys: [
+    'password', 'token',
+    // 新加 OAuth / API 常见敏感字段
+    'secret', 'apiKey', 'api_key', 'access_token', 'refresh_token',
+    'id_token', 'client_secret', 'pwd', 'passwd'
+  ],
   maskPasswordInputs: true
 }
 
@@ -318,12 +328,25 @@ function sanitizeBugType(raw: unknown): string {
  * Import / export 用：剥掉敏感字段（避免误传同事）。
  *   - zentao.password（v0.2.0+）
  *   - project.token（v0.4.7 加：webhook 路径的 token 也是敏感字段，每人一个不应跨人）
+ *   - server.headers 里的 Authorization / X-Api-Key 等（v0.4.8 加：webhook 路径 token 常塞自定义 header）
  * 调用方决定是否使用——load 流程不要走这个，否则用户每次开浏览器都要重输密码。
  */
+const SENSITIVE_HEADER_PATTERN = /^(authorization|x-api-key|x-auth-token|x-access-token|cookie|set-cookie|proxy-authorization)$/i
 export function stripSensitiveProjectFields(p: Project): Project {
   const out: Project = { ...p }
   if (out.zentao) out.zentao = { ...out.zentao, password: '' }
   if (out.token) out.token = ''
+  // v0.4.8：剥 server.headers 里的敏感字段
+  if (Array.isArray(out.servers) && out.servers.length > 0) {
+    out.servers = out.servers.map(s => {
+      if (!s.headers) return s
+      const sanitized: Record<string, string> = {}
+      for (const [k, v] of Object.entries(s.headers)) {
+        sanitized[k] = SENSITIVE_HEADER_PATTERN.test(k) ? '' : v
+      }
+      return { ...s, headers: sanitized }
+    })
+  }
   return out
 }
 

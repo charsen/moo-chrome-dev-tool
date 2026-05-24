@@ -402,6 +402,7 @@ const ZENTAO_MAX_ATTACHMENT_MB = 49
 
 import { formatSubmitResult } from '@/utils/submitMessage'
 import { safeSendMessage } from '@/utils/messaging'
+import { redactUrl } from '@/utils/redact'
 // ElementPicker 只在用户点"选元素"按钮（picking=true）才挂载，默认根本不渲染。
 // 异步拆 chunk 后 SubmitDialog 自身体积也跟着瘦——picker 只用全屏 overlay 那一下。
 // PickedElement 类型仍按 type-only 静态导入，避免编译时依赖触发 chunk 合并。
@@ -880,11 +881,14 @@ function toggleErr(id: string) {
 }
 
 function buildContext() {
+  // v0.4.8：location.href 可能含 ?access_token= / #id_token= 等敏感 query/hash
+  // → 用项目 redact.bodyKeys 走 redactUrl 脱敏后再提交（之前整条原文落 History/webhook/禅道）
+  const safeUrl = redactUrl(location.href, props.project.redact.bodyKeys)
   return {
     title: title.value,
     description: description.value,
     image: props.image ?? '',
-    url: location.href,
+    url: safeUrl,
     userAgent: navigator.userAgent,
     viewport: `${window.innerWidth}x${window.innerHeight}`,
     timestamp: new Date().toISOString(),
@@ -998,6 +1002,13 @@ function onReannotate() {
 
 function onRecapture() {
   if (submitting.value || successInfo.value) return
+  // v0.4.8：已填字段时加二次确认（标注虽不在 SubmitDialog 但 ContentApp 会清整个流程）。
+  // 用 window.confirm 是 closed shadow 内的简洁方案；其他二次确认走 MooAlert（如 Annotator cancel-guard）
+  const hasContent = title.value.trim() || description.value.trim()
+  if (hasContent) {
+    const ok = window.confirm('重新截图会重走「截图 → 标注」流程，当前已画的标注会丢（已填的标题/描述/选项保留）。继续？')
+    if (!ok) return
+  }
   emit('recapture')
 }
 

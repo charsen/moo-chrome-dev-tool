@@ -960,6 +960,9 @@ export const SHADOW_CSS = `
   border-bottom: 1px solid var(--c-divider);
   cursor: pointer;
   transition: background .1s;
+  /* v0.4.8：50+ 请求滚动卡 — 跟 History.row 同款 content-visibility 优化（v0.1.12 加） */
+  content-visibility: auto;
+  contain-intrinsic-size: 0 32px;
 }
 .req-item:last-child { border-bottom: none; }
 .req-item:hover { background: var(--c-bg-soft); }

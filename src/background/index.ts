@@ -82,6 +82,21 @@ chrome.alarms?.onAlarm.addListener((alarm) => {
   if (alarm.name === RETRY_ALARM) void flushRetryQueue()
 })
 
+// v0.4.8：关 window 时如果 currentRecording 是这个 window 的 tab → 尝试 best-effort 紧急停录
+// （SW 可能马上被销毁，能 await 多少看运气；至少 offscreen 端 cleanup → stream tracks stop 让
+// chrome UI 不卡在「正在分享」条；丢的录像数据无解，用户感知是「以为录上了实际没」）
+chrome.windows?.onRemoved?.addListener(async (windowId) => {
+  if (!currentRecording) return
+  try {
+    const tab = await chrome.tabs.get(currentRecording.tabId).catch(() => null)
+    if (!tab || tab.windowId === windowId) {
+      console.log('[Moo] window closed during recording, emergency stop')
+      await cancelTabRecording().catch(() => {})
+      currentRecording = null
+    }
+  } catch { /* SW 可能已被销毁 */ }
+})
+
 // SW 每次 spin-up（不止 onStartup）都立刻 flush 一次：MV3 SW 空闲 ~30s 被回收，
 // 中途任何消息/alarm 唤醒都走这条路径。之前只 onStartup 主动 flush，意味着
 // 用户在浏览器中途的失败 submit 要干等 alarm 周期（5min）才会重试。
@@ -466,12 +481,14 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
       // 只 log header 名字不打 value：用户配的 server.headers 可能含敏感字段
       // （token 已经在 body 里，但有人会额外手配 Authorization 等），SW console
       // 落盘后任何能读 chrome://extensions 日志的进程都能拿到。
-      console.warn('[Moo submit-fail]', {
+      // v0.4.8：bodyPreview 缩短到 200 + 显式 ⚠ 警告（服务端响应可能回显用户提交内容含 token / 截图 base64，
+      // SW console 落盘后 chrome://extensions 错误页能看，敏感数据扩散）
+      console.warn('[Moo submit-fail] ⚠ bodyPreview 可能含 token / 截图 base64 等敏感数据', {
         endpoint: server.endpoint,
         finalUrl: resp.url,
         status: resp.status,
         statusText: resp.statusText,
-        bodyPreview: text.slice(0, 400),
+        bodyPreview: text.slice(0, 200),
         headerNames: Object.keys(safeHeaders)
       })
     }

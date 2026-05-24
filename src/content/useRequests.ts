@@ -14,6 +14,9 @@ let bufferSize = 50
 // + password/token 的 bodyKeys），refreshProject 完成后用项目自定义配置覆盖。
 let currentRedact: RedactConfig = DEFAULT_REDACT
 let started = false
+// v0.4.8：capture.requests 开关真生效（之前 Settings UI 显示开关但代码无读点，
+// 用户关了开关以为没抓实际全程在抓 → 严重隐私洞）。默认 true 保持向后兼容。
+let captureEnabled = true
 
 /**
  * postMessage 通道无法做加密签名，所以靠"长得像不像"挡掉随便伪造的载荷。
@@ -47,7 +50,10 @@ export function clearRequests() {
 function start(initialCfg: { capture?: CaptureConfig; redact?: RedactConfig } = {}) {
   if (started) return
   started = true
-  if (initialCfg.capture) bufferSize = initialCfg.capture.requestBufferSize ?? 50
+  if (initialCfg.capture) {
+    bufferSize = initialCfg.capture.requestBufferSize ?? 50
+    captureEnabled = initialCfg.capture.requests !== false
+  }
   if (initialCfg.redact) currentRedact = initialCfg.redact
 
   window.addEventListener('message', (e) => {
@@ -59,6 +65,8 @@ function start(initialCfg: { capture?: CaptureConfig; redact?: RedactConfig } = 
     const data = e.data as { __moo?: boolean; tag?: string; payload?: unknown }
     if (!data?.__moo || data.tag !== '__moo_req__') return
     if (!isValidRequestPayload(data.payload)) return
+    // v0.4.8：用户在 Settings 关了 capture.requests → 不入 buffer
+    if (!captureEnabled) return
     // 永远经过 redact：默认 DEFAULT_REDACT，刷新项目配置后用用户自定义的覆盖
     push(redactRequest(data.payload, currentRedact))
   })
@@ -69,7 +77,12 @@ export function useRequests() {
     requests: computed(() => requests.value),
     start,
     setConfig(cfg: { capture?: CaptureConfig; redact?: RedactConfig }) {
-      if (cfg.capture) bufferSize = cfg.capture.requestBufferSize ?? 50
+      if (cfg.capture) {
+        bufferSize = cfg.capture.requestBufferSize ?? 50
+        captureEnabled = cfg.capture.requests !== false
+        // v0.4.8：开关切到 off 时清掉已 buffer（防之前抓到的还在内存里）
+        if (!captureEnabled) requests.value = []
+      }
       if (cfg.redact) currentRedact = cfg.redact
     },
     clear() {

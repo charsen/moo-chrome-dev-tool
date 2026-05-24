@@ -51,7 +51,7 @@ import { onConfigChanged } from '@/storage/config'
 import { safeSendMessage } from '@/utils/messaging'
 import { useToast } from '@/composables/useToast'
 import { useRequests } from './useRequests'
-import { useErrors } from './useErrors'
+import { useErrors, setErrorsEnabled } from './useErrors'
 
 type State = 'idle' | 'capturing' | 'annotating' | 'recording' | 'submitting'
 
@@ -124,7 +124,16 @@ async function refreshProject() {
   // 即使有差异，submit 时仍用用户选定的 active project，所以问题可控）
   project.value = matches.value.length === 1 ? (matches.value[0] ?? null) : null
   const cfgSrc = project.value ?? matches.value[0]
-  if (cfgSrc) reqApi.setConfig({ capture: cfgSrc.capture, redact: cfgSrc.redact })
+  if (cfgSrc) {
+    reqApi.setConfig({ capture: cfgSrc.capture, redact: cfgSrc.redact })
+    // v0.4.8：consoleErrors 开关真生效（之前 Settings UI 显示但代码无读点）
+    setErrorsEnabled(cfgSrc.capture.consoleErrors !== false)
+  } else {
+    // v0.4.8：URL 没匹配任何项目 → 显式停掉 capture 防隐私洞（main-world 仍 all_urls
+    // 注入抓 body/headers/errors，但 content 这边不入 buffer + 已 buffer 清掉）
+    reqApi.setConfig({ capture: { requests: false, consoleErrors: false, storageKeys: [], requestBufferSize: 50 } })
+    setErrorsEnabled(false)
+  }
 }
 
 function onSelectProject(id: string) {
