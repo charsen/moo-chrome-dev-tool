@@ -33,9 +33,9 @@ list_console_messages → grep "error|Error" → 必须 0 条
 
 如果 SW 有 `Uncaught (in promise)` 或 `Unchecked runtime.lastError`，**别发版**。
 
-### 2. 真禅道实例往返（如果 dogfood 仪表上有 token）
+### 2. 真禅道实例往返（在自己的 dogfood 禅道实例上跑，不接生产）
 
-注意：**chrome-devtools MCP 不该接真生产禅道实例**（怕误改数据）。但 dogfood 环境（你自己的 z.example.com）OK。
+注意：**chrome-devtools MCP 不该接真生产禅道实例**（怕误改数据）。但**自己搭的 dogfood 禅道实例**（你私有的 `z.example.com` 之类）OK，可清可重置。
 - 触发 Submit Bug 流程
 - 看 service worker 实际发到禅道的 fetch（network panel）
 - 验证 productId 是否拿到、bug 是否真创建（你自己实例可清）

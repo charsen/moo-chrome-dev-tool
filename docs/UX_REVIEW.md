@@ -1,9 +1,16 @@
-# moo-chrome-dev-tool · UX 评审
+# moo-chrome-dev-tool · UX 评审（v0.1.x 时代快照，多条已 land）
 
+> ⚠️ **本文档为 2026-04 v0.1.x 时代评审快照**。多条 🔴 / 🟡 建议已经在 v0.1.12 / v0.1.14 land：
+> - 全局暗色主题：`tokens.css` 加 `prefers-color-scheme: dark` 完整切换
+> - Settings/Environment 自动保存范式统一：`composables/useAutoSave.ts` land
+> - brand-meta「Tab #」改 hostname fallback：`Panel.vue` 已修
+> - × 按钮 aria-label：`MooCloseBtn` 抽组件统一
+> - 大列表性能：`History.vue` 用 `content-visibility: auto` 优化
+>
+> 已 land 项保留只作历史 reference（不划掉保原貌）。当前活档 UX 决策走 [HANDOFF.md](../HANDOFF.md) + 实际代码。
+>
 > 评审范围：popup、devtools 4 个 tab、content scripts（悬浮球 / 标注器 / 提交弹窗）、设计令牌
-> 视角：高级 UI 设计师 + 交互设计师
-> 评审依据：源码静态走读（未实机操作）。每条修改建议都标注了具体 `file:line`，方便工程师定位。
-> 每条前缀 🔴 = 必改、🟡 = 应改、🟢 = 可优化。
+> 评审依据：源码静态走读。每条标 `file:line`。前缀 🔴 = 必改、🟡 = 应改、🟢 = 可优化。
 
 ---
 

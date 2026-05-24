@@ -55,6 +55,12 @@ chrome://extensions 「加载已解压的扩展程序」指向 `<repo>/dist`。
 - 悬浮球用 pointer 事件自实现 click 判定（防 drag 误触）。CDP `click` / `click_at` 合成事件**可能触发不了**截图按钮 —— v0.3.0+ 已加 dragEndedAt 时间窗（250ms 之外的合成 click 放过），但极快连击仍有打架。如自动化遇「click 报 success 但 Annotator 不弹」，先确认 host 已创建、再尝试隔 300ms 重试。
 - CDP `fill` 对 closed shadow root 内 textbox 设置 `input.value` **不触发 Vue v-model input event** → Vue 内部 state 不更新 → 提交时拿到的是 v-model 原值。解决：自动化需用 `dispatchEvent(new Event('input', { bubbles: true }))` 显式触发。
 
+## v0.1.x 时代发版 checklist（历史 reference，v0.4.x 已不按此跑）
+
+> ⚠️ **下面的 v0.1.11 / v0.1.12 表格化 checklist 是 v0.1.x 时代逐项手填的发版护栏**。当前 v0.4.x 实际发版走「pre-commit 自动化 + `/full-team-review` + 双 MCP 分断面（上面段已规定）」，不再按下面表格逐项核对。
+>
+> 保留只作 ① 历史参照 ② 极端情况下需要回归到「逐项手填」时仍能照抄表格结构。
+
 ## v0.1.11 BREAKING — webhook 化基线
 
 | # | 场景 | 操作 | 期望 | ☐ |

@@ -1,8 +1,10 @@
 # Welcome to Moo Chrome Dev Tool
 
+> ⚠️ **「How We Use Claude」段是 v0.1.x 时代 30 天使用快照**（彼时 playwright 用得少 / 测试数 136+13）。当前 v0.4.x **双 MCP 必须都用且分断面**（见 `docs/MCP_TESTING.md`），测试数 366 单测 + 90 e2e。下面统计仅作历史 reference。
+
 ## How We Use Claude
 
-Based on Charsen's usage over the last 30 days:
+Based on Charsen's usage over the last 30 days (v0.1.x 时代):
 
 Work Type Breakdown:
   Build Feature  ████████░░░░░░░░░░░░  40%
@@ -25,7 +27,7 @@ Top MCP Servers:
 
 ### MCP Servers to Activate
 - [ ] chrome-devtools — drives a real Chrome instance from Claude (list pages, snapshots/screenshots, evaluate scripts, drive clicks/keys, read console). Used heavily here for实机 verifying the extension (悬浮球 / Annotator / DevTools panel). Launch Chrome with `--remote-debugging-port=9222`, then connect via `--browserUrl http://127.0.0.1:9222`.
-- [ ] playwright — headless browser automation for E2E. Lighter usage; mainly backs the CI E2E job.
+- [ ] playwright — headless browser automation for E2E. v0.4.3 起跟 chrome-devtools MCP **分断面同等重要**（playwright 测程序化断言 + harness mock；chrome-devtools 测真扩展加载 + SW 行为）。见 `docs/MCP_TESTING.md`。
 
 ### Skills to Know About
 - /compact — squeeze long conversations to keep context fresh; used regularly on multi-hour sessions.
@@ -59,10 +61,10 @@ pnpm mock     # 另起一个终端，假后端跑在 http://localhost:8787/bugs
 跑通后顺手做一遍：
 
 ```bash
-pnpm test          # 136 个 vitest 单测，应该全绿
+pnpm test          # 366 个 vitest 单测（v0.4.5 数），应该全绿
 pnpm type-check    # 干净
 pnpm build         # 干净
-pnpm test:e2e      # 13 个 Playwright E2E（首次需 pnpm exec playwright install chromium）
+pnpm test:e2e      # 90 个 Playwright E2E（首次需 pnpm exec playwright install chromium）
 ```
 
 然后读 `HANDOFF.md`——里面有当前最该干的事、3 个老坑、若干新坑。挑一条上手。

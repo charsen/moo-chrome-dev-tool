@@ -115,7 +115,7 @@ chore(release): v0.4.0 — 禅道 v2 化 + 同事反馈 4 改
 
 - 累几个改动再发，不要每个 patch 单独发
 - 跳 release checklist 的三条标准：① 非 BREAKING ② 全绿 ③ dogfood ≥ 几天 —— 三条不齐用户明示放行才能跳
-- 测试环节双 MCP 必须都用（chrome-devtools MCP + playwright MCP）
+- 测试环节双 MCP 必须都用且分断面（chrome-devtools 测真扩展 + SW 行为；playwright 测 harness + 程序化断言）。详细分工见 `docs/MCP_TESTING.md`
 - 不绕 pre-commit hook（type-check + 单测必须过）
 - 不要 force push main/master 除非用户明示授权（典型场景：撤回发版重发）
 
@@ -185,14 +185,21 @@ return { ok: false, error: 'v2/v1 xxx 响应都不识别' }
 - 多干的事如果跟主任务无关 / 工作量大 / 不确定该不该 → 用 AskUserQuestion 问，**不要默默拒绝扩展**
 - 拒绝「过度设计」（用户也批评过太激进）—— 只扫真同类，不发明新概念
 
-**v0.4.5 大复盘新增 lesson**（用户跑 `/full-team-review` 时找出 4 处「我刚做的就有同款 bug」）：
+**通用同款扫描原则**（v0.4.4/v0.4.5 复盘抽象化得来）：
 
-| 修这个 | 必须 grep 这些（不只扫直接命中位置）|
+| 改动模式 | 必扫同款（不只扫直接命中位置）|
 |---|---|
-| onMessage sender 校验（任意一处） | grep `chrome.runtime.onMessage.addListener` 全仓 — content / ContentApp 也要校验，不只 background |
-| dark mode 用了 `--moo-c-xxx` token | grep tokens.css 验证此 token **真存在**；同时扫 `.vue` 里其他用同款命名变体（`-fg` / `-soft` / `-hover` 等）的 |
-| setTimeout / setInterval 加进新组件 | **全仓 grep `setTimeout|setInterval`** 检查同款 timer 是否都有 onBeforeUnmount 清（不只新加的） |
-| 写新检查脚本 / utility | **脚本本身先过自己的检查**（v0.4.4 `check-version-consistency.mjs` 正则硬编码 `v0.x.x` 是反例 — 1.0 发版自废） |
-| 修文档误导（任意一处） | git grep 同款误导文案是否多处复发（v0.3.1 ⌘⇧B 5 处复发的教训） |
+| 改一处 listener 校验（sender / origin / source / shape）| 全仓 grep 同类 listener 注册点，每处都按同款校验 |
+| 用 CSS variable / token | 先 grep token **真存在**于源头（tokens.css 或对应定义文件），再用；同时扫所有 `-fg` / `-soft` / `-hover` 等命名变体一致性 |
+| 加任意 `setTimeout` / `setInterval` / `addEventListener` | 全仓 grep 同款 API，检查所有调用点是否都有 `onBeforeUnmount` / `removeEventListener` 配对 |
+| 写新检查脚本 / utility | 脚本本身先 dogfood 未来场景（不只当前命中，还有版本递增 / 边界变更）；写完用脚本扫脚本自己 |
+| 修文档误导 / 过期措辞 | `git grep` 同款字符串全仓，挨个清干净（不只你看到的那处） |
+| 加 v2 endpoint 调用 | 双轨化（v2 + v1 fallback），见 🟣 段 — 不允许 hard 切 |
+| 改 manifest.json 权限 | 最小化原则，能 optional 不 mandatory；同步检查 SW 路径是否真用了 |
 
-铁律：**「我刚改对一个 X，至少 grep 同类 X」远比「让用户跑 /full-team-review 找出来」高效**。前者是接任务时主动；后者是发版前救火。两者结合才稳。
+**铁律**：**「我刚改对一个 X，至少 grep 同类 X」远比「让用户跑 `/full-team-review` 找出来」高效**。前者是接任务时主动；后者是发版前救火。两者结合才稳 —— 但救火数应该越来越少。
+
+**复盘案例**（不重复写规则，留作 lesson 速查）：
+- v0.4.4 大复盘：onMessage sender 漏了 content/ContentApp（v0.4.5 补）；dark token 漏了 Environment（v0.4.5 补）；setTimeout 漏了 BodyViewer（v0.4.5 补）；check-version-consistency 正则 hardcode `v0.\d+\.\d+`（v0.4.5 改通用）
+- v0.3.1 复盘：⌘⇧B 文档误导 5 处复发（v0.4.4 全清）
+- v0.4.0 复盘：禅道 v2 hard 切让同事 dogfood 炸 3 次 → v2 双轨化硬规则（见 🟣 段）

@@ -2,6 +2,36 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.4.6
+
+2026-05-24 发版。无 BREAKING。**文档专项 review 一波** —— v0.4.5 后跑「拉团队，所有文档优化」3 agent 并行审，找出 22 个文档问题全清 + filter-repo 清 git history PII。**纯文档/工程，无运行时代码改动**（runtime 0 行变化）。
+
+**🔴 严重 5 项**：
+- `docs/MCP_TESTING.md:38` 真公司禅道域名 hardcode（**hard rule 违反**）→ filter-repo --replace-text + --replace-message 双管清整个 git history + force push（v0.4.0/v0.4.4 同款处理）
+- HANDOFF.md 大段 stale + 归档严重滞后：v0.3.0 → v0.4.4 简介迁到 `docs/handoff-archive/v0.1.x.md`，主文件「一句话现状」只留 v0.4.6 + v0.4.5
+- HANDOFF.md 「现在最值得做的下一件事」段从 v0.3.1 视角更新到 v0.4.5 视角；老 ✓/~~~~ todo 替换成当前 backlog（host_permissions / 依赖漏洞 / listModules / knip 等）
+- HANDOFF.md E2E 数字内部冲突：line 37/47 「97 case」→ 90 case（v0.4.x 实际数）
+- `docs/handoff-archive/PLAN_v0.2.0.md` 加归档 banner + 清 ⌘⇧B 残留 + 项目 ID 26 加注释
+
+**🟡 中等 10 项**：
+- `docs/UX_REVIEW.md` 加 banner 标记多条 v0.1.12 / v0.1.14 已 land（dark theme / useAutoSave / hostname fallback / MooCloseBtn aria）
+- `docs/COVERAGE_MATRIX.md:116` 「已 ✓ 195 case」加 banner 说明是 v0.1.x 时代基线（当前 456 case）
+- `docs/RELEASE_TEST_CHECKLIST.md` v0.1.11/12 表格化 checklist 加 banner 说明 v0.4.x 不再按此跑
+- `README.md` mock endpoint `/bugs/intake` 统一成 `/bugs`（跟 mock-server.mjs 自报一致）
+- README.md 「配一个项目」加禅道接入分流（指向 ZENTAO_SETUP.md）
+- `ONBOARDING.md` 加 banner 说明「How We Use Claude」是 v0.1.x 快照 + 修测试数 136→366 / 13→90
+- `CHANGELOG.md` v0.2.0 段 `kind:'b'` → `'webhook'` 注脚说明
+- `CLAUDE.md` v0.4.5 lesson 抽象化（去掉具体文件名，改通用模式表）+ 复盘案例独立段
+- `CLAUDE.md` 双 MCP 规则集中到 `docs/MCP_TESTING.md`（其他位置用指针）
+- `.claude/commands/full-team-review.md` 「3-4 agent」vs「3 agent 合并」矛盾统一
+
+**🟢 小问题 7 项**：
+- `docs/ZENTAO_SETUP.md:11` 不点具体版本号（v0.4.0/v0.4.3）→ 「v0.4.x 系列持续加固」永远不过期
+- `docs/MCP_TESTING.md:36` 「dogfood 仪表上有 token」措辞 → 「自己搭的 dogfood 禅道实例」
+- 其他小润色
+
+**测试**：366 单测 + 7 skipped + 90 e2e + vue-tsc 0 报错。**runtime 代码 0 改动**。
+
 ## v0.4.5
 
 2026-05-24 发版。无 BREAKING。**v0.4.4 大复盘后跑 `/full-team-review` 找出「我刚做的就有同款 bug」+ 累积漏扫的 24 个问题，全修一波**。
@@ -294,6 +324,8 @@ allPass: true
 ## v0.2.0
 
 **禅道集成**——把 Moo 上报通道从「只支持自建 B 路径接口」扩成「自建 B / 禅道（云禅道 biz12 + 自建禅道，v2.0 API）」二选一。同一份截图 / 录像 / 请求 / 错误 / curl 复现，可以直接一键开成禅道 bug，自带附件。**无 BREAKING**——老项目（无 `kind` 字段）一律按 `kind: 'b'` 走原路径，行为不变。
+
+> 注：下文 `kind: 'b'` 是 v0.2.0 当时的命名；后续重命名为 `kind: 'webhook'`（代码中 `src/types/config.ts` / `retryQueue.ts` 均用 `'webhook'`）。changelog 段保留原叙述作历史记录。
 
 **发版决策小记**（2026-05-21）：v0.2.0 是 feature 大版本，**主动跳过 dogfood ≥ 几天**——禅道集成已在 真禅道实例 真实环境 dogfood 过完整流程（用户实测发现并修复 7+4 个 dogfood fix，见下文），全部场景闭环。3 条跳 checklist 标准只满足前 2（① 无 BREAKING ② 249 单测 + type-check + vite build 全绿），第 3 条 dogfood ≥ 几天**用户明示放行**。后续如有其他禅道版本回归，hotfix 走 v0.2.1。
 
