@@ -17,6 +17,7 @@ import { MSG } from '@/types/messages'
 import { onHistoryChanged } from '@/storage/history'
 import { flushRetryQueue, getQueueLength } from '@/background/retryQueue'
 import { refreshBadge } from '@/background/handlers/badge'
+import { UPGRADE_FLAG_KEY } from '@/utils/upgradeFlag'
 import {
   handleZentaoTestConnection,
   handleZentaoListProjects,
@@ -56,22 +57,39 @@ async function ensureRetryAlarm(): Promise<void> {
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   console.log('[Moo] installed:', reason)
   void ensureRetryAlarm()
-  void refreshBadge()
   // v0.6.0 BREAKING：host_permissions 从 mandatory <all_urls> 改 optional。老用户升级后
   // 没有自动授权 → 写一个 storage flag，popup 启动时显示 prominent 升级 banner 引导一键启用。
+  // v0.6.1：badge '!' 显示由 utils/badge.ts 内 check flag 决定（spin-up refreshBadge 会自动
+  // 优先显示 '!'），不再在这里硬写 badge，否则 spin-up IIFE refreshBadge 立即覆盖回失败计数。
   if (reason === 'update') {
     try {
       const hasPerm = await chrome.permissions.contains({ origins: ['<all_urls>'] })
       if (!hasPerm) {
         await chrome.storage.local.set({ mooNeedsHostPermUpgrade: true })
-        // 同时打个 badge "!" 让没开 popup 的用户也注意到（24h failure 计数会自然覆盖，
-        // 但首次安装后 24h 内通常 history 空 → 这个 "!" 不会被盖）
-        await chrome.action.setBadgeText({ text: '!' }).catch(() => {})
-        await chrome.action.setBadgeBackgroundColor({ color: '#d97706' }).catch(() => {})
       }
     } catch (e) {
       console.warn('[Moo] onInstalled host-perm check failed:', (e as Error).message)
     }
+  }
+  // flag 写完才 refreshBadge — 让 badge.ts 内的 UPGRADE_FLAG check 拿到最新值
+  void refreshBadge()
+})
+
+// v0.6.1：监听升级 flag 变化（popup dismissUpgrade / 用户启用权限）→ 重算 badge。
+// 避免 popup 直接 setBadgeText('') 误清失败计数 badge（mv3-pro review 报告 2）。
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && 'mooNeedsHostPermUpgrade' in changes) {
+    void refreshBadge()
+  }
+})
+
+// v0.6.1：用户在系统层面（chrome://extensions / popup）授权 <all_urls> 后主动清升级 flag。
+// 跨 popup 同步 + 用户从 chrome 扩展页直接给权限的情况都能覆盖。
+chrome.permissions?.onAdded?.addListener?.(async (perm) => {
+  if (perm.origins?.some(o => o === '<all_urls>' || o === '*://*/*')) {
+    try {
+      await chrome.storage.local.remove('mooNeedsHostPermUpgrade')
+    } catch { /* storage 读失败兜底 — flag 残留也不致命 */ }
   }
 })
 

@@ -182,6 +182,7 @@ import { loadConfig, saveConfig, urlMatches } from '@/storage/config'
 import { listHistory } from '@/storage/history'
 import { relativeTime } from '@/utils/relativeTime'
 import { t } from '@/i18n'
+import { UPGRADE_FLAG_KEY } from '@/utils/upgradeFlag'
 
 const version = ref(chrome.runtime.getManifest().version)
 // 显示尺寸 28px，用 32 比 48 更省字节 + 缩放损失更小（lighthouse image-size-responsive）
@@ -208,13 +209,14 @@ const hostBusy = ref(false)
 const hostError = ref('')
 // v0.6.0 BREAKING：onInstalled 升级时写 flag，banner 展示直到开启或显式关闭
 const needsHostPermUpgrade = ref(false)
-const UPGRADE_FLAG_KEY = 'mooNeedsHostPermUpgrade'
 
 async function dismissUpgrade() {
   needsHostPermUpgrade.value = false
   try {
     await chrome.storage.local.remove(UPGRADE_FLAG_KEY)
-    await chrome.action.setBadgeText({ text: '' }).catch(() => {})
+    // v0.6.1：badge 不在 popup 直接清空（会误清 24h failure 计数）。
+    // 让 SW 的 chrome.storage.onChanged listener 监听到 flag 删除 → 自动 refreshBadge
+    // 重算 — 优先级会从 '!' 自动回落到失败计数文本（mv3-pro review 报告 2）
   } catch {}
 }
 const recent = ref<BugHistoryEntry[]>([])
