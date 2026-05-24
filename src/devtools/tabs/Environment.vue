@@ -352,11 +352,10 @@ import { useAutoSave } from '@/composables/useAutoSave'
 import { useToast } from '@/composables/useToast'
 import { useZentaoEnvironment } from '@/composables/useZentaoEnvironment'
 import { useConfigImportExport } from '@/composables/useConfigImportExport'
+import { useServerCrud } from '@/composables/useServerCrud'
 import {
   createDefaultProject,
-  createDefaultServer,
   DEFAULT_ZENTAO,
-  type BugServer,
   type MooConfig,
   type Project
 } from '@/types/config'
@@ -383,17 +382,6 @@ const filteredProjects = computed(() => {
   return draft.value.projects.filter((p) => (p.name || '').toLowerCase().includes(f))
 })
 
-/** 大尺寸 payload 模板编辑器：记住当前在编哪个 server 的模板 */
-const editingTemplate = ref<{ server: BugServer } | null>(null)
-function openTemplateEditor(server: BugServer) {
-  editingTemplate.value = { server }
-}
-function onTemplateSave(value: string) {
-  if (editingTemplate.value) {
-    editingTemplate.value.server.payloadTemplate = value
-  }
-  editingTemplate.value = null
-}
 
 // === 自动保存：draft 任何深层变化触发 800ms 防抖，再提交到 config 并落盘 ===
 // 沿用了原有 draft 层是为了在用户高频输入（如 URL 模板）期间避免每次 keystroke
@@ -531,59 +519,22 @@ function onPatternsBlur() {
     .filter(Boolean)
 }
 
-function addServer() {
-  if (!activeProject.value) return
-  const s = createDefaultServer(`服务器 ${activeProject.value.servers.length + 1}`)
-  activeProject.value.servers.push(s)
-  if (!activeProject.value.defaultServerId) {
-    activeProject.value.defaultServerId = s.id
-  }
-}
-
-async function removeServer(id: string) {
-  if (!activeProject.value) return
-  const srv = activeProject.value.servers.find((s) => s.id === id)
-  const ok = await confirmDialog({
-    title: `删除服务器「${srv?.name || '(未命名)'}」？`,
-    message: '这台服务器的所有配置（请求 URL / 请求头 / Payload 模板）会被删除，0.8 秒后自动保存。\n如果是当前项目的唯一服务器，删完后这个项目暂时无法上报。',
-    danger: true,
-    confirmText: '确认删除'
-  })
-  if (!ok) return
-  activeProject.value.servers = activeProject.value.servers.filter((s) => s.id !== id)
-  if (activeProject.value.defaultServerId === id) {
-    activeProject.value.defaultServerId = activeProject.value.servers[0]?.id ?? ''
-  }
-}
-
-function headerEntries(s: BugServer): [string, string][] {
-  return Object.entries(s.headers)
-}
-
-function onHeaderKeyChange(s: BugServer, idx: number, newKey: string) {
-  const entry = Object.entries(s.headers)[idx]
-  if (!entry) return
-  const [oldKey, val] = entry
-  if (oldKey === newKey) return
-  delete s.headers[oldKey]
-  s.headers[newKey] = val
-}
-
-function onHeaderValChange(s: BugServer, idx: number, newVal: string) {
-  const entry = Object.entries(s.headers)[idx]
-  if (!entry) return
-  s.headers[entry[0]] = newVal
-}
-
-function addHeader(s: BugServer) {
-  let i = 1
-  while (`Header-${i}` in s.headers) i++
-  s.headers[`Header-${i}`] = ''
-}
-
-function removeHeader(s: BugServer, key: string) {
-  delete s.headers[key]
-}
+// v0.5.3 P1 第 2 步：server / header / payload 模板 CRUD 抽到 composables/useServerCrud.ts
+const {
+  editingTemplate,
+  openTemplateEditor,
+  onTemplateSave,
+  addServer,
+  removeServer,
+  headerEntries,
+  onHeaderKeyChange,
+  onHeaderValChange,
+  addHeader,
+  removeHeader
+} = useServerCrud({
+  activeProject,
+  confirmDialog
+})
 
 // v0.5.3 P1：配置导入/导出抽到 composables/useConfigImportExport.ts
 const { exportConfig, importConfig } = useConfigImportExport({
