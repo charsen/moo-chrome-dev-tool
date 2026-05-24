@@ -22,6 +22,7 @@ import {
   discoverProduct as zentaoDiscoverProduct,
   ensureCookieSession as zentaoEnsureCookie,
   getBug as zentaoGetBug,
+  _clearZentaoCaches,
   type ZentaoEnv,
   type ZentaoBugDetail
 } from '@/background/zentao/client'
@@ -338,6 +339,12 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
           else sendResponse({ ok: false, error: ensured.error })
           break
         }
+        case MSG.ZENTAO_CLEAR_CACHE: {
+          // v0.4.7：Environment 改密码/账号/baseUrl/projectId 后必发，防 envKey 不变导致老 token 复用
+          _clearZentaoCaches()
+          sendResponse({ ok: true })
+          break
+        }
         default: {
           // 编译期 narrow：如果 IncomingMessage 里漏了某个 case，下面的 `never`
           // 赋值会 TS 错误。这是 discriminated union 的关键保护点。
@@ -473,6 +480,9 @@ async function submitBug(req: SubmitBugReq, tabId?: number): Promise<SubmitBugRe
       // 5xx → 尝试进重试队列；超 1MB（带视频）或 multipart 都不入队
       // 必须按 enqueue 真实结果设 queued，否则 toast 撒谎"已加入重试"
       result.queued = await enqueueRetry(server.endpoint, server.method, headers, body)
+    } else if (!resp.ok) {
+      // v0.4.7：4xx 显式 queued = false，让 toast 告诉用户「这种失败不会自动重试」
+      result.queued = false
     }
   } catch (err) {
     // 网络错误 → 同上

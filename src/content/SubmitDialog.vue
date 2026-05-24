@@ -84,8 +84,15 @@
               请打开 <b>DevTools → Moo → 环境</b>，把缺的字段填上后再回来提交。
             </div>
             <!-- cookie 预检状态：依赖用户在浏览器登录禅道。失败时给「一键打开禅道」 -->
+            <!-- v0.4.7：unknown 状态显式「检查中」（之前隐藏让用户以为 OK 点了等 2-5s 才报错） -->
             <div
-              v-else-if="zentaoCookieState !== 'unknown'"
+              v-else-if="zentaoCookieState === 'unknown'"
+              class="zentao-cookie-row checking"
+            >
+              <span>⏳ 正在检查禅道登录状态…</span>
+            </div>
+            <div
+              v-else
               :class="['zentao-cookie-row', zentaoCookieState === 'ok' ? 'ok' : 'fail']"
             >
               <span>{{ zentaoCookieMsg }}</span>
@@ -134,8 +141,9 @@
           <div class="moo-form-row">
             <label for="moo-zentao-module">所属模块</label>
             <div class="zentao-assignee-pick">
-              <select id="moo-zentao-module" v-model.number="zentaoModuleId" class="grow">
+              <select id="moo-zentao-module" v-model.number="zentaoModuleId" class="grow" :disabled="zentaoModulesLoading">
                 <option :value="0">— 根模块（/）—</option>
+                <option v-if="zentaoModulesLoading" disabled>正在拉模块列表…</option>
                 <option v-for="m in zentaoModules" :key="m.id" :value="m.id">
                   {{ m.path || m.name }}
                 </option>
@@ -148,12 +156,17 @@
                 @click="loadZentaoModules"
               >{{ zentaoModulesLoading ? '...' : (zentaoModules.length ? '↻' : '拉列表') }}</button>
             </div>
+            <!-- v0.4.7：拉模块失败显式 inline 提示 -->
+            <div v-if="zentaoModulesError" class="zentao-list-err">
+              ⚠ 拉模块列表失败：{{ zentaoModulesError }}
+            </div>
           </div>
           <div class="moo-form-row">
             <label for="moo-zentao-assignee">指派给</label>
             <div class="zentao-assignee-pick">
-              <select id="moo-zentao-assignee" v-model="zentaoAssignedTo" class="grow">
+              <select id="moo-zentao-assignee" v-model="zentaoAssignedTo" class="grow" :disabled="zentaoUsersLoading">
                 <option value="">— 未指派（按项目规则自动分派）—</option>
+                <option v-if="zentaoUsersLoading" disabled>正在拉用户列表…</option>
                 <option v-for="u in zentaoUsers" :key="u.account" :value="u.account">
                   {{ u.realname }}（{{ u.account }}{{ u.role ? ` · ${u.role}` : '' }}）
                 </option>
@@ -165,6 +178,10 @@
                 :title="zentaoUsers.length ? '重新拉用户列表' : '拉禅道用户列表'"
                 @click="loadZentaoUsers"
               >{{ zentaoUsersLoading ? '...' : (zentaoUsers.length ? '↻' : '拉列表') }}</button>
+            </div>
+            <!-- v0.4.7：拉用户失败显式 inline 提示 -->
+            <div v-if="zentaoUsersError" class="zentao-list-err">
+              ⚠ 拉用户列表失败：{{ zentaoUsersError }}（留空也能提交，按禅道项目规则自动分派）
             </div>
           </div>
         </template>
@@ -275,7 +292,8 @@
           </div>
         </details>
 
-        <details class="moo-attach" v-if="errors.length">
+        <!-- v0.4.7：有错误时默认 open（之前默认收起，用户漏看错误） -->
+        <details class="moo-attach" v-if="errors.length" open>
           <summary class="moo-attach-hd">
             <span class="moo-attach-chev" aria-hidden="true">▸</span>
             <span class="moo-attach-title">附带错误</span>
@@ -347,6 +365,13 @@
           >×</button>
         </div>
         <div class="moo-submit-fail-msg">{{ failureInfo.message }}</div>
+        <!-- v0.4.7：显式队列信号（之前用户读完 toast 闪一下就不知道有没有自动重试） -->
+        <div v-if="failureInfo.queued === true" class="moo-submit-fail-hint">
+          ✓ 已加入<b>自动重试队列</b>（每 5 分钟试一次）。可以关掉这个窗口，或去 设置 Tab 看队列状态。
+        </div>
+        <div v-else-if="failureInfo.queued === false" class="moo-submit-fail-hint">
+          ⚠ 这种失败<b>不会自动重试</b>（4xx / 配置错 / 永久性错误）。关窗后请去 历史 Tab 手动「重新提交」。
+        </div>
         <div v-if="failureInfo.cannotAutoRetry" class="moo-submit-fail-hint">
           这条带录像，body 太大没法进自动重试队列。<b>关闭此窗口后，只能去 DevTools → Moo → 历史 找到这条记录手动「重新提交」</b>。
         </div>
@@ -474,7 +499,7 @@ let successTimer: number | undefined
 /** 提交失败后的内嵌持久横幅。toast 一闪而过，这里给用户「点击重试 / 知道为什么没成」
  *  的稳定锚点。cannotAutoRetry=true 时是「带录像且 body 超 1MB / multipart」这类
  *  background 没法入重试队列的场景，要明示用户「关闭窗口后只能去 历史 tab 重提」。 */
-const failureInfo = ref<{ message: string; cannotAutoRetry: boolean } | null>(null)
+const failureInfo = ref<{ message: string; cannotAutoRetry: boolean; queued?: boolean } | null>(null)
 
 const windowMs = ref(30000)
 const urlFilter = ref('')
@@ -686,7 +711,14 @@ import { shortUrl, statusClass, failClass, durClass, errLevelLabel, errLevelTitl
 const kind = computed(() => props.project.kind ?? 'webhook')
 
 // === zentao 提交字段：每条 bug 可改，初值取 project.zentao default ===
-const zentaoType = ref<string>(props.project.zentao?.defaultType || 'codeerror')
+// v0.4.7：兜底 default 不在 ZENTAO_TYPE_OPTIONS 里时（schema 漂移 / 用户配了禅道侧自定义 type）
+// 下拉显示空，提交可能被禅道服务端拒。fallback 到第一个合法 option
+const zentaoTypeInitial = props.project.zentao?.defaultType || 'codeerror'
+const zentaoType = ref<string>(
+  ZENTAO_TYPE_OPTIONS.some(o => o.value === zentaoTypeInitial)
+    ? zentaoTypeInitial
+    : (ZENTAO_TYPE_OPTIONS[0]?.value ?? 'codeerror')
+)
 const zentaoSeverity = ref<1 | 2 | 3 | 4>((props.project.zentao?.defaultSeverity ?? 3) as 1 | 2 | 3 | 4)
 const zentaoPri = ref<1 | 2 | 3 | 4>((props.project.zentao?.defaultPri ?? 3) as 1 | 2 | 3 | 4)
 // 指派给：每条 bug 由用户在 SubmitDialog 单独选；环境配置不再有项目级默认（用户反馈每条情况不同）
@@ -695,19 +727,26 @@ const zentaoAssignedTo = ref<string>('')
 const zentaoModuleId = ref<number>(props.project.zentao?.moduleId ?? 0)
 const zentaoModules = ref<NonNullable<ZentaoListModulesRes['modules']>>([])
 const zentaoModulesLoading = ref(false)
+// v0.4.7：模块/用户列表拉取错误 inline 显示（之前静默 → 下拉空让用户疑惑）
+const zentaoModulesError = ref('')
 async function loadZentaoModules() {
   const z = props.project.zentao
   if (!z?.baseUrl || !z.account || !z.password || !z.projectId) return
   zentaoModulesLoading.value = true
+  zentaoModulesError.value = ''
   try {
     const res = await safeSendMessage<ZentaoListModulesRes>({
       type: MSG.ZENTAO_LIST_MODULES,
       source: 'content',
       payload: { baseUrl: z.baseUrl, account: z.account, password: z.password, projectId: z.projectId }
     })
-    if (res?.ok && res.modules) zentaoModules.value = res.modules
-  } catch {
-    // 静默；用户可点 ↻ 重试
+    if (res?.ok && res.modules) {
+      zentaoModules.value = res.modules
+    } else if (res && !res.ok) {
+      zentaoModulesError.value = res.error ?? '未知错误'
+    }
+  } catch (e) {
+    zentaoModulesError.value = (e as Error).message
   } finally {
     zentaoModulesLoading.value = false
   }
@@ -746,7 +785,10 @@ async function pingZentaoCookie() {
 // 用户列表（指派给下拉）：第一次 dialog 打开 + kind=zentao 时懒加载，避免不用禅道时浪费请求
 const zentaoUsers = ref<NonNullable<ZentaoListUsersRes['users']>>([])
 const zentaoUsersLoading = ref(false)
+// v0.4.7：拉取错误 inline 显示
+const zentaoUsersError = ref('')
 async function loadZentaoUsers() {
+  zentaoUsersError.value = ''
   const z = props.project.zentao
   if (!z?.baseUrl || !z.account || !z.password) return
   zentaoUsersLoading.value = true
@@ -756,9 +798,13 @@ async function loadZentaoUsers() {
       source: 'content',
       payload: { baseUrl: z.baseUrl, account: z.account, password: z.password }
     })
-    if (res?.ok && res.users) zentaoUsers.value = res.users
-  } catch {
-    // 静默失败 —— 用户可以点按钮再试 / 也可以留空表示「按规则分派」
+    if (res?.ok && res.users) {
+      zentaoUsers.value = res.users
+    } else if (res && !res.ok) {
+      zentaoUsersError.value = res.error ?? '未知错误'
+    }
+  } catch (e) {
+    zentaoUsersError.value = (e as Error).message
   } finally {
     zentaoUsersLoading.value = false
   }
@@ -808,8 +854,9 @@ const canSubmit = computed(() => {
   if (!title.value.trim()) return false
   if (kind.value === 'zentao') {
     if (zentaoMissingList.value) return false
-    // 提交前 cookie 必须有效；预检中状态 'unknown' 也允许（避免 race，BG 会再校验）
-    if (zentaoCookieState.value === 'fail') return false
+    // v0.4.7：cookie 'unknown' 也禁用（之前放行让用户白等 2-5s 才回错）。
+    // ping 预检是 onMounted 立刻跑，正常 < 1s 完成；'unknown' 期间 dialog 顶部已有「检查中…」
+    if (zentaoCookieState.value !== 'ok') return false
     return true
   }
   return !!serverId.value && !serverEndpointMissing.value
@@ -924,7 +971,8 @@ async function onSubmit() {
       // cannotAutoRetry，提示用户关窗后只能去 历史 Tab。判断依据是 background 返回的
       // queued 字段（multipart / body>1MB 时为 false/undefined）
       const cannotAutoRetry = !!req.video && !res.queued
-      failureInfo.value = { message, cannotAutoRetry }
+      // v0.4.7：把 res.queued 透传给 failureInfo，让横幅显示「✓ 已加入队列」or「⚠ 不会自动重试」信号
+      failureInfo.value = { message, cannotAutoRetry, queued: res.queued }
       emit('submitted', false, message)
     }
   } catch (err) {
@@ -969,10 +1017,20 @@ onMounted(() => {
   nextTick(() => titleInput.value?.focus())
 })
 
+// v0.4.7：cookie 预检每 2 分钟刷一次。长时间挂着 dialog 时 cookie 真过期，避免
+// 一直显示「✓ 已登录禅道」骗用户提交后才发现错。
+let cookieRecheckTimer: number | undefined
+if (kind.value === 'zentao' && !zentaoMissingList.value) {
+  cookieRecheckTimer = window.setInterval(() => {
+    if (zentaoCookieState.value === 'ok') void pingZentaoCookie()
+  }, 2 * 60_000)
+}
+
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown, true)
   if (successTimer) clearTimeout(successTimer)
   if (clearElementsConfirmTimer) clearTimeout(clearElementsConfirmTimer)
   if (copyHintTimer) clearTimeout(copyHintTimer)
+  if (cookieRecheckTimer) clearInterval(cookieRecheckTimer)
 })
 </script>

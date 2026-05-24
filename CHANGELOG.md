@@ -2,6 +2,42 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.4.7
+
+2026-05-24 发版。无 BREAKING。**业务专项 review 一波** —— v0.4.6 后跑「拉团队，所有业务复盘」3 agent 并行审，模拟真用户场景找出 28 个业务问题，**修了 19 个，9 个 mini-feature 标 backlog**。
+
+**🔴 严重业务漏洞 8 / 8 全修**：
+
+- **`History.vue:264`：禅道历史「重新提交」错发到 webhook server**（同事真踩 bug）— zentao entry serverId='zentao' 但下拉只渲染 webhook servers → reload 时 fallback 到首个 webhook → 重提把禅道 bug 错发到无关 webhook。改：zentao entry 隐藏「换服务器」下拉 + resubmit 强制走原 zentao project
+- **`popup/App.vue:38-61`：未匹配态完全无截图入口** — 新部署域名 / chrome://newtab 时悬浮球/快捷键/popup 三路全断。改：popup 加「+ 在此页面也启用『XXX 项目』」一键按钮，把当前 host wildcard 加进首个 enabled 项目
+- **`retryQueue.ts:277` drop 正则漏永久错** — 「未关联 product / 项目不存在 / WAF 拦截 / 认证持续失败 / 响应都不识别 / bug 不存在」全漏 → 重试 5x 浪费。抽 `isPermanentFailure` helper 覆盖全部分类
+- **`Environment.vue` 改密码不清 token 缓存** — envKey=baseUrl::account 不变（只改 password）→ 老 token 复用，用错误身份提交。加 MSG.ZENTAO_CLEAR_CACHE message + watch zentao.{baseUrl/account/password/projectId} 变化触发清
+- **`SubmitDialog.vue` canSubmit cookie 'unknown' 不放行** — 之前 race 期间放行让用户等 2-5s 才回错。改：unknown 也禁用提交 + 显式「⏳ 正在检查禅道登录状态…」状态行
+- **`types/config.ts:352` payloadTemplate >64KB 静默 fallback** — 老用户大模板被悄悄替换 → 422 但无提示。加 console.warn
+- **`storage/config.ts` migrateServerTemplate 漏自定义模板** — 自定义模板用户升级后永远拿不到 {{video}} 字段 → 录屏发不出。加 detectCustomTemplateMissingVideo + console.warn
+- **`offscreen/index.ts:146` 录 50MB+ 视频卡 IPC** — chrome IPC ~64MB 上限被 dataUrl 撑爆崩 offscreen。加 hard cap，超 50MB 显式返「录像过大」错误
+
+**🟡 中等 11 / 14 修，3 标 backlog**：
+
+- 模块/指派下拉拉列表前显式 loading 占位
+- 错误 N>0 时默认 open（之前默认收起用户漏看）
+- 失败 footer 加「✓ 已加入重试队列」/「⚠ 不会自动重试」信号
+- cookie 预检 setInterval 每 2 分钟刷一次（防长时间挂着 dialog 时 cookie 真过期）
+- Environment「📋 从禅道拉列表」改名「📋 拉项目列表」（之前文案让用户误以为也拉用户/模块）
+- stripSensitiveProjectFields 加剥 project.token（webhook token 也是敏感字段）
+- SubmitDialog defaultType 不在 ZENTAO_TYPE_OPTIONS 时 fallback 第一个合法 option
+- loadZentaoModules/Users 失败时 inline 错误显示（之前静默下拉空）
+- background 4xx 显式 result.queued = false + appendQueued 区分文案
+- 缩略图 overlay 默认 35% opacity 露出按钮（之前默认 0 → 触屏/不知 hover 用户找不到）
+
+**📋 backlog（v0.5.x 单独做）**：
+- adoptRemoteRecording 监听 RECORD_GLOBAL_STARTED 广播（tab B 看到 tab A 新开始的录屏）
+- chrome.windows.onRemoved 注册录屏紧急 STOP（best-effort 防关窗丢录像）
+- clearHistory/clearQueue 加 24h undo 机制（mini-feature）
+- 重新截图二次确认 / discoverProduct manual invalidate / schemaVersion step ladder（小问题 4 项标 backlog）
+
+**测试**：366 单测 + 7 skipped + 90 e2e + vue-tsc 0 报错。**modify 1 test 期望**（stripSensitive 现在总返新对象，不再保引用）。
+
 ## v0.4.6
 
 2026-05-24 发版。无 BREAKING。**文档专项 review 一波** —— v0.4.5 后跑「拉团队，所有文档优化」3 agent 并行审，找出 22 个文档问题全清 + filter-repo 清 git history PII。**纯文档/工程，无运行时代码改动**（runtime 0 行变化）。

@@ -273,9 +273,16 @@ async function retryZentao(q: QueuedZentao, config: { projects: Project[] }): Pr
     mooVersion: globalThis.chrome.runtime?.getManifest?.()?.version
   })
   if (res.ok) return 'ok'
-  // 认证失败 / 项目配置不全 —— 这种重试也救不了，drop
-  if (/登录失败|缺少必填|未授权|Unauthorized|缺禅道配置/.test(res.error ?? '')) return 'drop'
+  // v0.4.7：扩展 drop 覆盖所有「永久失败」分类，避免无意义重试 5x
+  // 漏过的会被 ⚠️5/5 ⚠️ 暂存浪费队列槽位；都是 deterministic 配置/服务侧问题，重试同样 payload 同样结果
+  if (isPermanentFailure(res.error ?? '')) return 'drop'
   return { error: res.error ?? '未知错误' }
+}
+
+/** v0.4.7：判断错误是否「永久失败」（重试无意义，drop）。
+ *  v0.4.6 之前正则只覆盖 5 类，漏掉 product/项目/WAF/schema/认证持续/bug 不存在 → 重试 5x 浪费。 */
+function isPermanentFailure(error: string): boolean {
+  return /登录失败|缺少必填|未授权|Unauthorized|缺禅道配置|未关联.*product|WAF 拦截|认证持续失败|响应都不识别|项目.*不存在|bug 不存在/.test(error)
 }
 
 /** 只读统计 API：storage 读失败按"空队列"返回，不该把 storage 异常往上抛打断 UI 渲染。 */

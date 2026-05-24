@@ -448,9 +448,12 @@ describe('stripSensitiveProjectFields', () => {
     expect(stripped.zentao?.baseUrl).toBe('https://x.com')
   })
 
-  it('无 zentao 字段时原样返回', () => {
+  it('无 zentao 字段时内容相等（v0.4.7 起总是返新对象，不再保引用）', () => {
     const p = normalizeProject({})
-    expect(stripSensitiveProjectFields(p)).toBe(p)
+    const stripped = stripSensitiveProjectFields(p)
+    expect(stripped).toEqual(p)
+    expect(stripped.zentao).toBeUndefined()
+    expect(stripped.token).toBeFalsy()  // 无 token / token=''
   })
 
   it('返回新对象（不 mutate 原 project）', () => {

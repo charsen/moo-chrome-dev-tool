@@ -4,7 +4,9 @@
 
 ## 一句话现状
 
-**v0.4.6 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.6/moo-chrome-dev-tool-0.4.6.zip)（sha256 `2e989cb5f33e632533f08587483733c90867ed76f0caeee4272aa892e2bb3b7f`）。**文档专项 review 一波** —— 跑「拉团队，所有文档优化」3 agent 并行审找出 22 个文档问题全清 + filter-repo 清 git history PII（z.huijiakeji.com，hard rule 违反）+ HANDOFF 归档 v0.3.0→v0.4.4 简介 + UX_REVIEW/COVERAGE_MATRIX/RELEASE_TEST_CHECKLIST 加历史 banner + CLAUDE.md 主动扩展清单抽象化。**runtime 代码 0 改动**，纯文档/工程。366 单测 + 7 skipped + 90 e2e 全绿。
+**v0.4.7 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.7/moo-chrome-dev-tool-0.4.7.zip)（sha256 待回填）。**业务专项 review 一波** —— 跑「拉团队，所有业务复盘」3 agent 并行模拟真用户场景找出 28 个业务问题，修了 19 个核心 + 9 个 mini-feature 标 backlog。**最严重的同事真踩 bug**：History 禅道「重新提交」错发到 webhook server（v0.2.0 起就在的，4 个月没人发现）。其他严重：popup 未匹配无入口 / retryQueue 永久错重试 5x / Environment 改密码不清 token / SubmitDialog cookie race / 50MB 视频卡 IPC 等。366 单测 + 7 skipped + 90 e2e 全绿。
+
+**v0.4.6 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.6/moo-chrome-dev-tool-0.4.6.zip)（sha256 `2e989cb5f33e632533f08587483733c90867ed76f0caeee4272aa892e2bb3b7f`）。**文档专项 review 一波** —— 跑「拉团队，所有文档优化」3 agent 并行审找出 22 个文档问题全清 + filter-repo 清 git history PII + HANDOFF 归档 + UX_REVIEW/COVERAGE_MATRIX/RELEASE_TEST_CHECKLIST 加历史 banner + CLAUDE.md 主动扩展清单抽象化。**runtime 代码 0 改动**。366 单测 + 7 skipped + 90 e2e 全绿。
 
 **v0.4.5 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.5/moo-chrome-dev-tool-0.4.5.zip)（sha256 `521f13074bf473c9df24429bb51230e072c9ef786fe843ecfa7cb944d0f588e9`）。v0.4.4 后**跑 `/full-team-review` 发现 4 处「我刚做的就有同款 bug」+ 24 累积问题**。讽刺地证明 v0.4.4 的「主动扩展清单」强度不够 —— sender 校验补漏 content/ContentApp、dark mode token 漏 Environment、setTimeout leak 漏 BodyViewer、写检查脚本时正则硬编码 v0.x.x。全修 + CLAUDE.md 清单加固。无 BREAKING。**366 单测 + 7 skipped + 90 e2e 全绿**。
 

@@ -77,5 +77,8 @@ function pickStr(v: unknown): string {
 }
 
 function appendQueued(msg: string, queued?: boolean): string {
-  return queued ? `${msg}\n这条 bug 已存到重试队列，每 5 分钟自动重试一次；也可以去 设置 → 存储 手动「立即重试」` : msg
+  // v0.4.7：queued === false 时显式说「这次不会自动重试」（之前 undefined / false 都隐藏 → 用户以为还在重试）
+  if (queued === true) return `${msg}\n这条 bug 已存到重试队列，每 5 分钟自动重试一次；也可以去 设置 → 存储 手动「立即重试」`
+  if (queued === false) return `${msg}\n这种失败不会自动重试（4xx / 配置错 / 永久性错误）。请检查后到 历史 Tab 手动重新提交`
+  return msg
 }

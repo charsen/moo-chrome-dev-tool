@@ -38,10 +38,12 @@
             <div class="meta url-line">{{ shortUrl(e.url) }}</div>
           </div>
           <div class="actions" @click.stop>
-            <select v-model="resubmitTo[e.id]" class="select" @click.stop>
+            <!-- v0.4.7：禅道 entry 不让换服务器（避免把禅道 bug 错发到 webhook server） -->
+            <select v-if="!isZentaoEntry(e)" v-model="resubmitTo[e.id]" class="select" @click.stop>
               <option v-for="s in servers" :key="s.id" :value="s.id">{{ s.label }}</option>
             </select>
-            <button class="moo-btn moo-btn--sm" @click="resubmit(e)" :disabled="busyId === e.id">
+            <button class="moo-btn moo-btn--sm" @click="resubmit(e)" :disabled="busyId === e.id"
+                    :title="isZentaoEntry(e) ? '用当时抓到的现场重发到原禅道项目' : '用当时抓到的现场重发'">
               {{ busyId === e.id ? '提交中…' : '重新提交' }}
             </button>
             <button class="moo-btn moo-btn--sm moo-btn--danger" @click="remove(e.id)">删除</button>
@@ -213,6 +215,13 @@ const servers = computed(() => {
   return all
 })
 
+/** v0.4.7：判断 entry 是否来自禅道项目（kind='zentao'）。
+ *  禅道 entry 不让换服务器 + 重提时强制走原 project（不走 resubmitTo） */
+function isZentaoEntry(e: BugHistoryEntry): boolean {
+  const p = projects.value.find(p => p.id === e.projectId)
+  return p?.kind === 'zentao'
+}
+
 function toggle(id: string) {
   openId.value = openId.value === id ? '' : id
 }
@@ -261,13 +270,22 @@ async function clearAll() {
 }
 
 async function resubmit(e: BugHistoryEntry) {
-  const newServerId = resubmitTo.value[e.id] || e.serverId
-  // 反查目标 server 所属项目
-  let targetProjectId = e.projectId
-  for (const p of projects.value) {
-    if (p.servers.some((s) => s.id === newServerId)) {
-      targetProjectId = p.id
-      break
+  // v0.4.7：禅道 entry 强制走原 project（serverId='zentao' 是禅道路径 marker，
+  // 不让用户通过下拉把它错发到 webhook server）
+  let newServerId: string
+  let targetProjectId: string
+  if (isZentaoEntry(e)) {
+    newServerId = 'zentao'
+    targetProjectId = e.projectId
+  } else {
+    newServerId = resubmitTo.value[e.id] || e.serverId
+    // 反查目标 server 所属项目
+    targetProjectId = e.projectId
+    for (const p of projects.value) {
+      if (p.servers.some((s) => s.id === newServerId)) {
+        targetProjectId = p.id
+        break
+      }
     }
   }
   busyId.value = e.id

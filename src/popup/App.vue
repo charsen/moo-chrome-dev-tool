@@ -57,7 +57,11 @@
           </li>
         </ul>
       </div>
-      <p class="hint">在 DevTools → <b>Moo</b> → <b>环境</b> 中修改匹配规则后保存。</p>
+      <!-- v0.4.7：未匹配态加快捷入口，一键把当前 host wildcard 加进首个 enabled 项目 -->
+      <button v-if="quickEnableTarget" class="onboard-cta" :disabled="quickEnableBusy" @click="quickEnableHere">
+        {{ quickEnableBusy ? '配置中…' : `+ 在此页面也启用「${quickEnableTarget.name}」` }}
+      </button>
+      <p class="hint">点上面按钮把 <code>{{ quickEnableHostPattern || '当前域名' }}</code> 加进项目；或去 DevTools → <b>Moo</b> → <b>环境</b> 手动改规则。</p>
     </section>
 
     <!-- 3. 完全没配置 = 首次使用引导 -->
@@ -143,7 +147,7 @@
 import { computed, onMounted, ref } from 'vue'
 import type { Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
-import { loadConfig, urlMatches } from '@/storage/config'
+import { loadConfig, saveConfig, urlMatches } from '@/storage/config'
 import { listHistory } from '@/storage/history'
 import { relativeTime } from '@/utils/relativeTime'
 
@@ -167,6 +171,34 @@ const recEnabled = ref(false)
 const recBusy = ref(false)
 const recError = ref('')
 const recent = ref<BugHistoryEntry[]>([])
+// v0.4.7：未匹配态快捷启用 —— 一键把当前 host wildcard 加进首个 enabled 项目的 matchPatterns
+const quickEnableBusy = ref(false)
+const quickEnableTarget = computed(() => projects.value.find(p => p.enabled) ?? null)
+const quickEnableHostPattern = computed(() => {
+  try {
+    const u = new URL(currentUrl.value)
+    return `${u.protocol}//${u.host}/*`
+  } catch { return '' }
+})
+async function quickEnableHere(): Promise<void> {
+  const target = quickEnableTarget.value
+  const pattern = quickEnableHostPattern.value
+  if (!target || !pattern) return
+  quickEnableBusy.value = true
+  try {
+    const cfg = await loadConfig()
+    const project = cfg.projects.find(p => p.id === target.id)
+    if (project && !project.matchPatterns.includes(pattern)) {
+      project.matchPatterns = [...project.matchPatterns, pattern]
+      await saveConfig(cfg)
+    }
+    // 重新跑匹配（不刷 popup，让 chrome.storage.onChanged 自动触发？这里直接 close popup
+    // 让用户切回 tab 时悬浮球自动出现更直观）
+    window.close()
+  } finally {
+    quickEnableBusy.value = false
+  }
+}
 const latest = computed<BugHistoryEntry | undefined>(() => recent.value[0])
 const rest = computed<BugHistoryEntry[]>(() => recent.value.slice(1, 3))
 

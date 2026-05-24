@@ -1153,7 +1153,9 @@ export const SHADOW_CSS = `
   gap: 8px;
   /* 比 --moo-c-scrim 略深：缩略图 hover overlay 要明确遮住缩略图本身才能凸显按钮 */
   background: rgba(15, 23, 42, .66);
-  opacity: 0;
+  /* v0.4.7：默认半透（不再 opacity:0），hover/focus 时完全显示。
+   * 之前默认 0 → 触屏/不知 hover 的用户找不到「重新标注/重新截图」按钮 */
+  opacity: .35;
   transition: opacity .15s;
   line-height: 1.4;
 }

@@ -156,8 +156,8 @@
               class="moo-btn moo-btn--sm"
               @click="loadZentaoProjects"
               :disabled="!!zentaoBusy || !canCallZentao"
-              :title="canCallZentao ? '调禅道 /api.php/v1/projects' : '先填齐地址 / 账号 / 密码'"
-            >📋 从禅道拉列表</button>
+              :title="canCallZentao ? '调禅道 /api.php/v2/projects（用户列表/模块列表在 SubmitDialog 里拉）' : '先填齐地址 / 账号 / 密码'"
+            >📋 拉项目列表</button>
             <span v-if="zentaoStatus" :class="['zentao-status', zentaoStatusKind]">{{ zentaoStatus }}</span>
           </div>
 
@@ -469,6 +469,21 @@ watch(
     zentaoProjectsList.value = []
     if (kind === 'zentao' && activeProject.value && !activeProject.value.zentao) {
       activeProject.value.zentao = { ...DEFAULT_ZENTAO }
+    }
+  }
+)
+
+/** v0.4.7：禅道凭证关键字段（baseUrl/account/password/projectId）变化时清 SW token cache。
+ *  防 envKey=baseUrl::account 不变（仅改 password）时老 token 复用导致用错误身份提交。 */
+watch(
+  () => {
+    const z = activeProject.value?.zentao
+    if (!z) return null
+    return `${z.baseUrl}|${z.account}|${z.password}|${z.projectId}`
+  },
+  (next, prev) => {
+    if (next && prev && next !== prev) {
+      void safeSendMessage({ type: MSG.ZENTAO_CLEAR_CACHE, source: 'devtools' }, { fallback: { ok: false } })
     }
   }
 )

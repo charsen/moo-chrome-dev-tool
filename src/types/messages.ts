@@ -139,6 +139,8 @@ export const MSG = {
   /** content → background：ping cookie session 是否有效（提交链路依赖 cookie，
    *  没登录禅道时整条链路会失败，提交前预检让用户看见「请先登录禅道」而不是失败一脸懵） */
   ZENTAO_PING_COOKIE: 'ZENTAO_PING_COOKIE',
+  /** v0.4.7：清 SW 内存里的 token/product/user cache（Environment 改密码/账号/baseUrl/projectId 后必发，防 envKey 不变导致老 token 被复用） */
+  ZENTAO_CLEAR_CACHE: 'ZENTAO_CLEAR_CACHE',
   /** content → background：拉 product 的 bug 模块列表给 SubmitDialog「所属模块」下拉用 */
   ZENTAO_LIST_MODULES: 'ZENTAO_LIST_MODULES'
 } as const
@@ -228,6 +230,7 @@ export type IncomingMessage =
   | { type: typeof MSG.ZENTAO_LIST_PROJECTS; payload: ZentaoCredsReq }
   | { type: typeof MSG.ZENTAO_LIST_USERS; payload: ZentaoCredsReq }
   | { type: typeof MSG.ZENTAO_PING_COOKIE; payload: ZentaoPingCookieReq }
+  | { type: typeof MSG.ZENTAO_CLEAR_CACHE }
   | { type: typeof MSG.ZENTAO_LIST_MODULES; payload: ZentaoCredsReq }
 
 /** type → response 类型映射。background handler 返回对应类型，caller 侧

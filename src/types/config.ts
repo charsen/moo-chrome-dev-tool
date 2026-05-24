@@ -315,12 +315,16 @@ function sanitizeBugType(raw: unknown): string {
 }
 
 /**
- * Import / export 用：剥掉 zentao.password（避免误传同事）。
+ * Import / export 用：剥掉敏感字段（避免误传同事）。
+ *   - zentao.password（v0.2.0+）
+ *   - project.token（v0.4.7 加：webhook 路径的 token 也是敏感字段，每人一个不应跨人）
  * 调用方决定是否使用——load 流程不要走这个，否则用户每次开浏览器都要重输密码。
  */
 export function stripSensitiveProjectFields(p: Project): Project {
-  if (!p.zentao) return p
-  return { ...p, zentao: { ...p.zentao, password: '' } }
+  const out: Project = { ...p }
+  if (out.zentao) out.zentao = { ...out.zentao, password: '' }
+  if (out.token) out.token = ''
+  return out
 }
 
 /** 限制单条 header key/value 长度，防 4MB 大字段在 multipart 表头里溢出 */
@@ -349,9 +353,17 @@ function normalizeServer(raw: unknown): BugServer {
   const imageField = typeof r.imageField === 'string'
     ? sanitizeImageField(r.imageField)
     : 'image'
-  const payloadTemplate = typeof r.payloadTemplate === 'string' && r.payloadTemplate.length <= PAYLOAD_TEMPLATE_MAX
-    ? r.payloadTemplate
-    : DEFAULT_PAYLOAD_TEMPLATE
+  // v0.4.7：>64KB 静默 fallback 之前会让老用户大模板被悄悄替换 → 422 但无任何提示。
+  // 现在 fallback 时显式 console.warn 给 dev 一个排查抓手。
+  let payloadTemplate: string
+  if (typeof r.payloadTemplate === 'string' && r.payloadTemplate.length <= PAYLOAD_TEMPLATE_MAX) {
+    payloadTemplate = r.payloadTemplate
+  } else {
+    payloadTemplate = DEFAULT_PAYLOAD_TEMPLATE
+    if (typeof r.payloadTemplate === 'string' && r.payloadTemplate.length > PAYLOAD_TEMPLATE_MAX) {
+      console.warn(`[Moo:config] payloadTemplate 长度 ${r.payloadTemplate.length} 超过 ${PAYLOAD_TEMPLATE_MAX} 字节限制，已回退到默认模板。如果你的自定义模板真有这么长，先检查是不是误粘了 base64 / 整段日志进去`)
+    }
+  }
   return {
     id: typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID(),
     name,
