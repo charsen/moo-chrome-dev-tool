@@ -200,7 +200,9 @@ let flushPromise: Promise<number> | null = null
  * 重发会产生重复 bug 单）。加 storage 级 ≤30s hard cooldown 兜底。
  */
 const FLUSH_COOLDOWN_KEY = 'mooLastFlushAt'
-const FLUSH_COOLDOWN_MS = 30_000
+// v0.5.0：从 30s 抬到 90s — 禅道 multipart 上传可能 60s+，30s cooldown 不够覆盖
+// 跨 SW 重启窗口期：老 fetch 还没回，新 SW 已读 mooLastFlushAt ≥30s 放行 → 重复发 bug 单
+const FLUSH_COOLDOWN_MS = 90_000
 
 async function shouldSkipForCooldown(): Promise<boolean> {
   // 不吞 storage 错 —— storage 坏了让 caller 知道（跟 readQueue 一致语义）
@@ -287,7 +289,8 @@ async function retryZentao(q: QueuedZentao, config: { projects: Project[] }): Pr
 
 /** v0.4.7：判断错误是否「永久失败」（重试无意义，drop）。
  *  v0.4.6 之前正则只覆盖 5 类，漏掉 product/项目/WAF/schema/认证持续/bug 不存在 → 重试 5x 浪费。 */
-function isPermanentFailure(error: string): boolean {
+// v0.5.0：导出给单测直接测全部 keyword（之前只有「登录失败」一个 keyword 有回归）
+export function isPermanentFailure(error: string): boolean {
   // v0.4.8 加 3 类禅道 schema/cookie 永久错（agent 第 5 波 review 发现）：
   //   - 「返非 JSON」/「未返响应体」(client.ts schema 错)
   //   - 「缺 user.realname」(login 成功但响应不完整)

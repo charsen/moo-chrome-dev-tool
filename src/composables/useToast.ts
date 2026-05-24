@@ -34,6 +34,9 @@ export interface UseToastOptions<K extends string> {
   initialKind?: K
   /** 自动清空时把 toastKind 重置成什么；不传则保留上次 kind。Content 需要重置成 '' */
   resetKindOnHide?: K
+  /** v0.5.0：按 kind 设默认 duration（不传则 fallback 2600）。
+   *  之前 4 个使用点各写一份 wrapper 做 kind→duration 映射，现在用这个 option 统一 */
+  durationByKind?: Partial<Record<K, number>>
 }
 
 export function useToast<K extends string = DefaultToastKind>(
@@ -49,7 +52,8 @@ export function useToast<K extends string = DefaultToastKind>(
     toast.value = msg
     if (kind !== undefined) toastKind.value = kind
     if (timer) clearTimeout(timer)
-    const ms = durationMs ?? 2600
+    // v0.5.0：优先级 durationMs 显式传 > durationByKind[kind] > 2600 兜底
+    const ms = durationMs ?? (kind !== undefined ? opts.durationByKind?.[kind] : undefined) ?? 2600
     timer = window.setTimeout(() => {
       toast.value = ''
       if (opts.resetKindOnHide !== undefined) toastKind.value = opts.resetKindOnHide

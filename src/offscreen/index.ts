@@ -93,6 +93,15 @@ async function handleStart(streamId: string, tabId?: number): Promise<{ ok: bool
   }
   recordingMeta = { tabId, startedAt: Date.now() }
 
+  // v0.5.0：getUserMedia 2-3s 期间 offscreen document 无 keep-alive（offscreen 不享受
+  // SW 的 sendMessage reply pending 规则，chrome 130+ 可能在此期间回收 offscreen）。
+  // 先 attach 空 MediaStream sink 撑住 offscreen（视频元素 attach 时 chrome 会视为活跃）
+  const keepAlive = document.createElement('video')
+  keepAlive.setAttribute('data-moo-sink', 'keepalive')
+  keepAlive.muted = true
+  keepAlive.playsInline = true
+  document.body.appendChild(keepAlive)
+
   try {
     // tabCapture 拿到的 streamId 走这种"曾用名"路径取流；视频走 mandatory，audio 留给后续可选。
     // 必须显式给 min/max 分辨率：tabCapture 不指定时会默认 640x480，1920+ 的 tab 会被压成中间一小块、四周黑边。

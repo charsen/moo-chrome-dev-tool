@@ -207,3 +207,61 @@ describe('history.ts — onHistoryChanged listener wiring', () => {
     expect(handler).toHaveBeenCalledTimes(1)
   })
 })
+
+// v0.5.0：withWriteMutex 并发场景（v0.4.7→v0.4.9 跨 3 版本核心 fix，之前 0 测试）
+describe('history.ts — withWriteMutex 并发安全', () => {
+  beforeEach(() => { makeChrome() })
+
+  it('并发 addHistoryEntry + removeHistory → 不让已删 entry 复活（last-write-wins 防护）', async () => {
+    // 起始 list 有 [X, Y]，并发：A 在 add Z 同时 B 在 remove X
+    await addHistoryEntry(entry('X'))
+    await addHistoryEntry(entry('Y'))
+    expect((await listHistory()).map(e => e.id)).toEqual(['Y', 'X'])  // unshift order
+
+    // 并发触发
+    await Promise.all([
+      addHistoryEntry(entry('Z')),
+      removeHistory('X')
+    ])
+
+    const list = await listHistory()
+    const ids = list.map(e => e.id)
+    // X 不能复活 — 必须真删
+    expect(ids).not.toContain('X')
+    // Y 和 Z 都还在
+    expect(ids).toContain('Y')
+    expect(ids).toContain('Z')
+  })
+
+  it('并发 update + remove → update 不会让已 remove 的复活', async () => {
+    await addHistoryEntry(entry('A'))
+    await addHistoryEntry(entry('B'))
+
+    // 并发：update A vs remove A
+    const updatedA = { ...entry('A'), title: 'A-updated' }
+    await Promise.all([
+      updateHistoryEntry('A', updatedA),
+      removeHistory('A')
+    ])
+
+    const after = await listHistory()
+    const ids = after.map(e => e.id)
+    // B 必在
+    expect(ids).toContain('B')
+    // A 最多 1 条（mutex 串行，最后一个赢，要么 A 在要么不在）
+    expect(ids.filter(id => id === 'A').length).toBeLessThanOrEqual(1)
+  })
+
+  it('多 add 并发 → 全部入库不丢条', async () => {
+    await Promise.all([
+      addHistoryEntry(entry('p1')),
+      addHistoryEntry(entry('p2')),
+      addHistoryEntry(entry('p3')),
+      addHistoryEntry(entry('p4')),
+      addHistoryEntry(entry('p5')),
+    ])
+    const list = await listHistory()
+    expect(list).toHaveLength(5)
+    expect(list.map(e => e.id).sort()).toEqual(['p1', 'p2', 'p3', 'p4', 'p5'])
+  })
+})

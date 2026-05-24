@@ -58,6 +58,45 @@ describe('redactUrl', () => {
   it('query 参数命中为 0 时 → 原样返回（避免 unnecessary serialize 改变 URL 形态）', () => {
     expect(redactUrl('https://x.com/?a=1&b=2', ['token'])).toBe('https://x.com/?a=1&b=2')
   })
+
+  // v0.5.0：hash fragment 脱敏（OAuth implicit flow `#access_token=...&id_token=...`）
+  it('v0.5.0 · hash fragment 含 access_token 等敏感 key → 脱敏', () => {
+    const r = redactUrl('https://x.com/cb#access_token=abc&id_token=def&state=xyz', ['access_token', 'id_token'])
+    expect(r).toContain('access_token=' + MASK)
+    expect(r).toContain('id_token=' + MASK)
+    expect(r).toContain('state=xyz')  // 非敏感保留
+  })
+
+  it('v0.5.0 · hash fragment 不带 `#!/` 前缀的纯 k=v 形式（OAuth 标准实现）', () => {
+    const r = redactUrl('https://x.com/#token=secret&u=foo', ['token'])
+    expect(r).toContain('token=' + MASK)
+    expect(r).toContain('u=foo')
+  })
+
+  it('v0.5.0 · hash bang routing `#!/route?token=` → 只动 ? 后', () => {
+    const r = redactUrl('https://x.com/app#!/dashboard?token=secret&id=1', ['token'])
+    expect(r).toContain('#!/dashboard?token=' + MASK)
+    expect(r).toContain('id=1')
+  })
+
+  it('v0.5.0 · 同时含 query token 和 hash token → 都脱', () => {
+    const r = redactUrl('https://x.com/api?token=q#token=h', ['token'])
+    expect(r).toContain('?token=' + MASK)
+    expect(r).toContain('#token=' + MASK)
+  })
+
+  it('v0.5.0 · 没 query 也没 hash → 原样返回', () => {
+    expect(redactUrl('https://x.com/path', ['token'])).toBe('https://x.com/path')
+  })
+
+  it('v0.5.0 · hash 但 keys 都不命中 → 不改 URL（不无谓 serialize）', () => {
+    expect(redactUrl('https://x.com/#a=1&b=2', ['token'])).toBe('https://x.com/#a=1&b=2')
+  })
+
+  it('v0.5.0 · hash 字段名大小写不敏感（跟 query 一致语义）', () => {
+    const r = redactUrl('https://x.com/#ACCESS_TOKEN=abc', ['access_token'])
+    expect(r).toContain('ACCESS_TOKEN=' + MASK)
+  })
 })
 
 describe('redactBody', () => {

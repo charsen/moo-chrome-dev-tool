@@ -189,3 +189,78 @@ describe('applyMigrations · payloadTemplate 加 video 字段', () => {
     expect(cfg.projects[0]!.servers).toEqual([])
   })
 })
+
+// v0.5.0 加：mergeRedactDefaults migration（老用户 v0.1.x bodyKeys 不会自动补 v0.4.8 新加 keys）
+describe('mergeRedactDefaults · v0.4.8+ 老用户 redact 默认值合并', () => {
+  it('老用户 bodyKeys 是 v0.1.x 默认 [password,token] → 合并 v0.4.8 新加 keys', async () => {
+    storage.data.mooConfig = {
+      projects: [{
+        id: 'p1', name: 'x', matchPatterns: [],
+        kind: 'webhook',
+        servers: [],
+        defaultServerId: '',
+        capture: { requests: true, consoleErrors: true, storageKeys: [], requestBufferSize: 50 },
+        redact: {
+          headerKeys: ['authorization', 'cookie', 'x-auth-token'],
+          bodyKeys: ['password', 'token'],
+          maskPasswordInputs: true
+        },
+        enabled: true
+      }]
+    }
+    const { loadConfig } = await import('@/storage/config')
+    const cfg = await loadConfig()
+    const newBody = cfg.projects[0]!.redact.bodyKeys
+    // 合并后应该包含 v0.4.8 加的 access_token / refresh_token 等
+    expect(newBody).toContain('access_token')
+    expect(newBody).toContain('refresh_token')
+    expect(newBody).toContain('id_token')
+    expect(newBody).toContain('client_secret')
+    // 原有的也保留
+    expect(newBody).toContain('password')
+    expect(newBody).toContain('token')
+  })
+
+  it('用户自定义过 bodyKeys（非 v0.1.x superset）→ 不动', async () => {
+    storage.data.mooConfig = {
+      projects: [{
+        id: 'p1', name: 'x', matchPatterns: [],
+        kind: 'webhook',
+        servers: [],
+        defaultServerId: '',
+        capture: { requests: true, consoleErrors: true, storageKeys: [], requestBufferSize: 50 },
+        redact: {
+          headerKeys: [],
+          bodyKeys: ['custom-secret-field'],  // 完全自定义
+          maskPasswordInputs: true
+        },
+        enabled: true
+      }]
+    }
+    const { loadConfig } = await import('@/storage/config')
+    const cfg = await loadConfig()
+    expect(cfg.projects[0]!.redact.bodyKeys).toEqual(['custom-secret-field'])
+  })
+
+  it('用户 bodyKeys 包含 v0.1 默认 + 一两个自定义 → 不算 v0.1 superset，不动', async () => {
+    storage.data.mooConfig = {
+      projects: [{
+        id: 'p1', name: 'x', matchPatterns: [],
+        kind: 'webhook',
+        servers: [],
+        defaultServerId: '',
+        capture: { requests: true, consoleErrors: true, storageKeys: [], requestBufferSize: 50 },
+        redact: {
+          headerKeys: [],
+          bodyKeys: ['password', 'token', 'custom-extra'],
+          maskPasswordInputs: true
+        },
+        enabled: true
+      }]
+    }
+    const { loadConfig } = await import('@/storage/config')
+    const cfg = await loadConfig()
+    // 超过 v0.1 默认 length → 不动
+    expect(cfg.projects[0]!.redact.bodyKeys).toEqual(['password', 'token', 'custom-extra'])
+  })
+})

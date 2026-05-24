@@ -78,8 +78,16 @@ async function refreshBadge(): Promise<void> {
 // refreshBadge，所以这里事件回调被自身写入触发是无害的——只是多读一次 storage
 onHistoryChanged(() => { void refreshBadge() })
 
+// v0.5.0：tripwire alarm 名（跟 offscreen 端 setTimeout 双保险）
+const OFFSCREEN_TRIPWIRE_ALARM = 'mooOffscreenTripwire'
+
 chrome.alarms?.onAlarm.addListener((alarm) => {
   if (alarm.name === RETRY_ALARM) void flushRetryQueue()
+  if (alarm.name === OFFSCREEN_TRIPWIRE_ALARM) {
+    // v0.5.0：tripwire — chrome.alarms 不受 SW/offscreen 节流影响（OS 级 cron），
+    // 让长录像在 inactive tab + 系统睡眠时也能强制停。给 offscreen 发 STOP
+    void chrome.runtime.sendMessage({ target: 'offscreen', type: 'STOP' }).catch(() => {})
+  }
 })
 
 // v0.4.8：关 window 时如果 currentRecording 是这个 window 的 tab → 尝试 best-effort 紧急停录
@@ -663,6 +671,11 @@ async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?:
     await closeOffscreenDocument()
     return { ok: false, error: res?.error || '录屏后台进程启动失败，请稍后重试' }
   }
+  // v0.5.0：创建 SW 端 alarm tripwire 双保险 — chrome.alarms 不受 SW/offscreen 节流影响。
+  // 之前只 offscreen 内 setTimeout，inactive tab + 系统睡眠时可能晚 N 倍 fire，录到 1-2 分钟才停
+  try {
+    await chrome.alarms.create(OFFSCREEN_TRIPWIRE_ALARM, { when: Date.now() + 35_000 })
+  } catch { /* alarms API 边缘失败，offscreen 端 setTimeout 仍兜底 */ }
   return { ok: true }
 }
 
@@ -698,12 +711,15 @@ async function rehydrateRecordingFromOffscreen(): Promise<void> {
 }
 
 async function stopTabRecording(): Promise<{ ok: boolean; dataUrl?: string; bytes?: number; mime?: string; error?: string }> {
+  // v0.5.0：先清 tripwire alarm 防误触发
+  try { await chrome.alarms.clear(OFFSCREEN_TRIPWIRE_ALARM) } catch { /* ignore */ }
   const res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'STOP' })
   await closeOffscreenDocument()
   return res ?? { ok: false, error: '录屏后台没响应，可能已经被浏览器卸载。请重新开始录制' }
 }
 
 async function cancelTabRecording(): Promise<void> {
+  try { await chrome.alarms.clear(OFFSCREEN_TRIPWIRE_ALARM) } catch { /* ignore */ }
   try { await chrome.runtime.sendMessage({ target: 'offscreen', type: 'CANCEL' }) } catch { /* ignore */ }
   await closeOffscreenDocument()
 }

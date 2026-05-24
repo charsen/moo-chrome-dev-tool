@@ -233,24 +233,6 @@ export type IncomingMessage =
   | { type: typeof MSG.ZENTAO_CLEAR_CACHE }
   | { type: typeof MSG.ZENTAO_LIST_MODULES; payload: ZentaoCredsReq }
 
-/** type → response 类型映射。background handler 返回对应类型，caller 侧
- *  可以用 `MessageResponse<typeof MSG.X>` 拿到精确返回 shape。 */
-export interface MessageResponseMap {
-  [MSG.CAPTURE_SCREENSHOT]: CaptureScreenshotRes
-  [MSG.MATCH_PROJECT]: MatchProjectRes
-  [MSG.SUBMIT_BUG]: SubmitBugRes
-  [MSG.PREVIEW_PAYLOAD]: PreviewPayloadRes
-  [MSG.REFRESH_HISTORY_STATUS]: RefreshHistoryStatusRes
-  [MSG.RETRY_QUEUE_FLUSH]: RetryQueueFlushRes
-  [MSG.RECORD_START]: RecordStartRes
-  [MSG.RECORD_STOP]: RecordStopRes
-  [MSG.RECORD_CANCEL]: RecordCancelRes
-  [MSG.QUERY_RECORDING_STATE]: QueryRecordingStateRes
-  [MSG.OFFSCREEN_AUTO_STOPPED]: { ok: boolean }
-  [MSG.ZENTAO_TEST_CONNECTION]: ZentaoTestConnectionRes
-  [MSG.ZENTAO_LIST_PROJECTS]: ZentaoListProjectsRes
-  [MSG.ZENTAO_LIST_USERS]: ZentaoListUsersRes
-  [MSG.ZENTAO_PING_COOKIE]: ZentaoPingCookieRes
-  [MSG.ZENTAO_LIST_MODULES]: ZentaoListModulesRes
-}
-export type MessageResponse<K extends keyof MessageResponseMap> = MessageResponseMap[K]
+// （MessageResponseMap / MessageResponse 已删 — v0.5.0：全仓 0 引用，运行时通过
+//  各 case `sendResponse({ ok, ... } satisfies XxxRes)` 直接 satisfies 显式断言，
+//  caller 侧用 `safeSendMessage<XxxRes>` 显式标注泛型。这个映射 type 是冗余抽象层）

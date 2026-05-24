@@ -2,6 +2,39 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.5.0
+
+2026-05-24 发版。无 BREAKING。**第 7 波 review** —— 换 3 个新视角 agent（**lab-tester + code-simplifier + mv3-pro 二次**）找出之前 6 波完全没碰的维度：**测试 debt + 代码重复 + MV3 深陷阱**。修 11 + 5 backlog。
+
+**🔴 5 MV3 深陷阱（前 6 波都没找出）**：
+- `offscreen` 35s tripwire 改 **`chrome.alarms` 双保险**（SW 端 alarm + offscreen 端 setTimeout）— OS 级 cron 不受节流影响，inactive tab + 系统睡眠时也保险
+- `offscreen.handleStart` 加 keep-alive video 元素撑活 — getUserMedia 2-3s 期间防 chrome 130+ 回收 offscreen
+- `retryQueue` cooldown **30s → 90s** — 禅道 multipart 上传可能 60s+，旧值不够覆盖
+- `redactUrl` hash fragment **+7 单测**（v0.4.9 新加但裸奔，OAuth implicit flow `#access_token=` 等 3 种 hash 形式）
+- `withWriteMutex` **+3 并发单测**（v0.4.7→v0.4.9 跨 3 版本核心 fix，之前 0 测试锁住）
+
+**🟡 4 测试 debt 补**：
+- `isPermanentFailure` **+20 用例**全 keyword 回归（14 永久错 + 6 临时错；之前只测「登录失败」1 个）
+- `mergeRedactDefaults` **+3 用例**（v0.4.9 老用户 bodyKeys migration）
+- `history.ts withWriteMutex` **+3 并发用例**（add + remove / update + remove / 5 并发 add）
+- redact fragment **+7 用例**（同上）
+
+**🟡 5 代码简化**：
+- 删 3 处真死代码：`utils/messaging.ts onMessage` + `types/messages.ts MessageResponseMap` + `MessageResponse`
+- `useToast` 加 `durationByKind` 选项（4 处 wrapper 可统一）
+- 其他 3 项 refactor（withZentaoSession / runZentaoOp / countProjectsMatching）工作量大收益边际，标 backlog v0.5.x 单独做
+
+**📋 5 chrome.* API 未来坑文档化**（memory `feedback_chrome_api_future_traps`）：
+- chrome 130+ `getContexts` 错参不 throw 返空
+- `setBadgeBackgroundColor` per-session 跨 SW 失色
+- `alarms periodInMinutes` low-power throttle 到 15min+
+- `tabCapture.getMediaStreamId` chrome 131+ 加 `consumerTabId`
+- content_scripts MAIN world chrome 134+ CSP 行为变更
+
+**第 7 波元教训**：**换 agent 视角 = 找出新维度**。lab-tester / code-simplifier 首次用，挖出之前 6 波都没碰的维度（测试覆盖 + 代码重复 + chrome 未来 API）。比起重复跑同款 general-purpose review，**换专家断面更高 ROI**。
+
+**测试**：**399 单测全绿**（366 → 399 = +33）+ 7 skipped + 90 e2e + vue-tsc 0 报错。
+
 ## v0.4.9
 
 2026-05-24 发版。无 BREAKING。**第 6 波 review** —— 跑「业务复盘 v3」3 agent 聚焦**回归 + a11y/i18n + 性能**找出 13 个问题，**5 个是 v0.4.8 修复未修干净的隐藏漏**。全修。

@@ -39,6 +39,7 @@ const {
   flushRetryQueue,
   getQueueItems,
   removeQueueItem,
+  isPermanentFailure,
   __resetForTest
 } = await import('@/background/retryQueue')
 
@@ -508,5 +509,40 @@ describe('retryQueue — v0.2.0 zentao 路径', () => {
     const list = storage.data.mooRetryQueue as any[]
     expect(list).toHaveLength(1)
     expect(list[0].kind).toBe('webhook')
+  })
+})
+
+// v0.5.0：isPermanentFailure 直接单测全部 keyword（之前只有「登录失败」走 e2e 路径间接测）
+describe('isPermanentFailure · 7+ keyword 永久错全覆盖', () => {
+  const permanentCases = [
+    '登录失败，请检查您的用户名或密码。',
+    '缺少必填字段：title',
+    '未授权访问',
+    'Unauthorized',
+    '缺禅道配置：baseUrl',
+    '该项目未关联任何 product；请先在禅道里给项目绑定 product',
+    '禅道服务端 WAF 拦截（HTTP 566）',
+    '认证持续失败（v2 重 login 后仍 401）',
+    'v2/v1 项目列表响应都不识别',
+    '项目 26 不存在',
+    'bug 不存在或已彻底删除',
+    '禅道返非 JSON',
+    '未返响应体',
+    '缺 user.realname',
+  ]
+  it.each(permanentCases)('永久错文案命中 → drop', (errorMsg) => {
+    expect(isPermanentFailure(errorMsg)).toBe(true)
+  })
+
+  const transientCases = [
+    'HTTP 500',
+    'HTTP 502',
+    'Network error',
+    'timeout after 30s',
+    '禅道服务器繁忙',
+    '',
+  ]
+  it.each(transientCases)('临时错文案不命中 → keep 重试', (errorMsg) => {
+    expect(isPermanentFailure(errorMsg)).toBe(false)
   })
 })

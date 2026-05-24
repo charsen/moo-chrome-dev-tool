@@ -62,8 +62,3 @@ export async function safeSendMessage<T = unknown>(
   }
 }
 
-export function onMessage(handler: (msg: MooMessage) => void): () => void {
-  const listener = (msg: MooMessage) => handler(msg)
-  chrome.runtime.onMessage.addListener(listener)
-  return () => chrome.runtime.onMessage.removeListener(listener)
-}
