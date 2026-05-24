@@ -62,15 +62,6 @@ export async function safeSendMessage<T = unknown>(
   }
 }
 
-export function sendToBackground<T = unknown>(
-  type: string,
-  source: MooSource,
-  payload?: T
-): Promise<unknown> {
-  const msg: MooMessage<T> = { type, source, payload }
-  return safeSendMessage(msg)
-}
-
 export function onMessage(handler: (msg: MooMessage) => void): () => void {
   const listener = (msg: MooMessage) => handler(msg)
   chrome.runtime.onMessage.addListener(listener)

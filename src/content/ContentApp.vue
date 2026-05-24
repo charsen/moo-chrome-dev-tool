@@ -384,7 +384,7 @@ function showToast(msg: string, kind: 'success' | 'error' | 'info') {
 
 // Annotator / SubmitDialog 仅在「截图标注 / 提交」流程才渲染（state=annotating|submitting），
 // 90% 浏览页面用不到。defineAsyncComponent 拆独立 chunk：首注入 content script
-// 从 ~99KB 降到 <60KB；首次按 ⌘⇧B 时本地 chunk 加载 ~50-100ms 内可接受。
+// 从 ~99KB 降到 <60KB；首次触发截图（悬浮球点击 / popup 触发）时本地 chunk 加载 ~50-100ms 内可接受。
 //
 // onError 兜底：扩展刚被重载（chrome://extensions 点 🔄 / 装新版）后，老 tab 里的
 // content script 还在跑，但 chrome-extension://EXTID/assets/<old-hash>.js 已 404。

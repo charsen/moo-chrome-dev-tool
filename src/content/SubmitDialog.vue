@@ -1013,5 +1013,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown, true)
   if (successTimer) clearTimeout(successTimer)
   if (clearElementsConfirmTimer) clearTimeout(clearElementsConfirmTimer)
+  if (copyHintTimer) clearTimeout(copyHintTimer)
 })
 </script>

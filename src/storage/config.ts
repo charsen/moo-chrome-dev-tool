@@ -77,13 +77,6 @@ export async function saveConfig(config: MooConfig): Promise<void> {
   if (import.meta.env.DEV) console.log('[Moo:config] saved', plain)
 }
 
-export async function updateConfig(updater: (cfg: MooConfig) => MooConfig): Promise<MooConfig> {
-  const current = await loadConfig()
-  const next = updater(current)
-  await saveConfig(next)
-  return next
-}
-
 export function onConfigChanged(handler: (config: MooConfig) => void): () => void {
   const listener = (
     changes: Record<string, chrome.storage.StorageChange>,
@@ -124,7 +117,3 @@ export function matchProjects(config: MooConfig, url: string): Project[] {
   )
 }
 
-/** 兼容旧调用方：返回首个匹配项目。 */
-export function matchProject(config: MooConfig, url: string): Project | null {
-  return matchProjects(config, url)[0] ?? null
-}

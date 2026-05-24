@@ -17,5 +17,3 @@ export interface CapturedRequest {
   startedAt: string               // ISO timestamp
   error?: string
 }
-
-export const MAX_BODY_SIZE = 20 * 1024 // 20 KB

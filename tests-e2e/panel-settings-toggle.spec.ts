@@ -24,7 +24,6 @@ function harnessUrl(extensionId: string, seed = 'populated'): string {
 
 async function readConfig(sw: import('@playwright/test').Worker) {
   return await sw.evaluate(async () => {
-    // @ts-expect-error chrome 类型不在 worker scope
     const r = await chrome.storage.local.get('mooConfig')
     return r.mooConfig as {
       globalEnabled: boolean
@@ -39,7 +38,6 @@ async function readConfig(sw: import('@playwright/test').Worker) {
 
 async function readRetryQueue(sw: import('@playwright/test').Worker) {
   return await sw.evaluate(async () => {
-    // @ts-expect-error chrome 类型不在 worker scope
     const r = await chrome.storage.local.get('mooRetryQueue')
     return (r.mooRetryQueue as unknown[] | undefined) ?? []
   })

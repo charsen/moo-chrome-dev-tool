@@ -180,7 +180,7 @@ describe('history.ts — onHistoryChanged listener wiring', () => {
   beforeEach(() => { makeChrome() })
 
   it('addListener / removeListener 都被调到', () => {
-    const onChanged = (globalThis as { chrome: { storage: { onChanged: { addListener: ReturnType<typeof vi.fn> } } } })
+    const onChanged = (globalThis as unknown as { chrome: { storage: { onChanged: { addListener: ReturnType<typeof vi.fn> } } } })
       .chrome.storage.onChanged
     const handler = vi.fn()
     const dispose = onHistoryChanged(handler)
@@ -190,7 +190,7 @@ describe('history.ts — onHistoryChanged listener wiring', () => {
   })
 
   it('监听器只在 mooHistory 这个 key 变化时触发 handler', () => {
-    const onChanged = (globalThis as { chrome: { storage: { onChanged: { addListener: ReturnType<typeof vi.fn> } } } })
+    const onChanged = (globalThis as unknown as { chrome: { storage: { onChanged: { addListener: ReturnType<typeof vi.fn> } } } })
       .chrome.storage.onChanged
     const handler = vi.fn()
     onHistoryChanged(handler)

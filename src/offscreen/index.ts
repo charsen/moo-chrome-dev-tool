@@ -32,10 +32,12 @@
 
 import { canTransition, type State } from './stateMachine'
 
-interface StartMsg { target: 'offscreen'; type: 'START'; streamId: string }
+interface StartMsg { target: 'offscreen'; type: 'START'; streamId: string; tabId?: number }
 interface StopMsg { target: 'offscreen'; type: 'STOP' }
 interface CancelMsg { target: 'offscreen'; type: 'CANCEL' }
-type Msg = StartMsg | StopMsg | CancelMsg
+/** v0.4.4：SW spin-up 后查 offscreen 真实录屏状态（SW currentRecording 内存丢，offscreen 自带 keep-alive 仍在录）*/
+interface QueryStateMsg { target: 'offscreen'; type: 'QUERY_STATE' }
+type Msg = StartMsg | StopMsg | CancelMsg | QueryStateMsg
 
 interface StopResult { ok: boolean; dataUrl?: string; bytes?: number; mime?: string; error?: string }
 
@@ -44,6 +46,8 @@ let recorder: MediaRecorder | null = null
 let chunks: Blob[] = []
 let stream: MediaStream | null = null
 let stopResolver: ((r: StopResult) => void) | null = null
+/** v0.4.4：记录录屏元数据，QUERY_STATE 时回给 SW 恢复 currentRecording */
+let recordingMeta: { tabId?: number; startedAt: number } | null = null
 
 /**
  * 包装 canTransition：合法就提交 module-level state、返回 true；非法返回 false 不改 state。
@@ -57,11 +61,14 @@ function transition(from: State | State[], to: State): boolean {
   return true
 }
 
-chrome.runtime.onMessage.addListener((msg: Msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
+  // 严格校验消息来源（v0.4.4 复盘加固）：同扩展发的 sender.id 必须 === runtime.id。
+  // 任何不匹配（含 undefined / 不同 ext id）直接拒，防恶意页面停别人的录屏。
+  if (sender.id !== chrome.runtime.id) return false
   if (!msg || msg.target !== 'offscreen') return false
 
   if (msg.type === 'START') {
-    handleStart(msg.streamId).then(sendResponse)
+    handleStart(msg.streamId, msg.tabId).then(sendResponse)
     return true
   }
   if (msg.type === 'STOP') {
@@ -73,13 +80,18 @@ chrome.runtime.onMessage.addListener((msg: Msg, _sender, sendResponse) => {
     sendResponse({ ok: true })
     return false
   }
+  if (msg.type === 'QUERY_STATE') {
+    sendResponse({ state, meta: recordingMeta })
+    return false
+  }
   return false
 })
 
-async function handleStart(streamId: string): Promise<{ ok: boolean; error?: string }> {
+async function handleStart(streamId: string, tabId?: number): Promise<{ ok: boolean; error?: string }> {
   if (!transition('idle', 'starting')) {
     return { ok: false, error: `当前状态 ${state}，无法开始新录制。请先停止再试` }
   }
+  recordingMeta = { tabId, startedAt: Date.now() }
 
   try {
     // tabCapture 拿到的 streamId 走这种"曾用名"路径取流；视频走 mandatory，audio 留给后续可选。
@@ -226,6 +238,7 @@ function cleanup(next: State) {
   recorder = null
   chunks = []
   state = next
+  if (next === 'idle') recordingMeta = null
   // 移除可能存在的 video sink
   document.querySelectorAll('video[data-moo-sink]').forEach((v) => v.remove())
 }

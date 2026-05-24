@@ -66,14 +66,12 @@ export const expect = test.expect
  */
 export async function seedStorage(sw: Worker, data: Record<string, unknown>) {
   await sw.evaluate(async (d) => {
-    // @ts-expect-error chrome 类型不在 worker scope，但 SW 里实际可用
     await chrome.storage.local.set(d)
   }, data)
 }
 
 export async function readBadgeText(sw: Worker): Promise<string> {
   return await sw.evaluate(async () => {
-    // @ts-expect-error 同上
     return await chrome.action.getBadgeText({})
   })
 }

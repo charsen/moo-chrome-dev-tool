@@ -2,9 +2,9 @@
 // 挂在 chrome-extension://EXT/.../dialog-harness.html 上，Playwright 跑 ESC / mask /
 // Tab 焦点循环 / 成功保护期 这些键盘 + 鼠标交互。
 //
-// 为啥需要：content 世界 dialog 平时挂在宿主页注入的 closed shadow 里，⌘⇧B 走全局
-// chrome.commands 触发，Playwright 没法跨 chrome:// 边界发系统级快捷键。harness 直接
-// 把组件实例化，绕开「截图 / 录屏」前置步骤直奔 dialog 状态。
+// 为啥需要：content 世界 dialog 平时挂在宿主页注入的 closed shadow 里，截图触发链路
+// （悬浮球 click → 截图 → Annotator → SubmitDialog）很难在 Playwright headless 重现。
+// harness 直接把组件实例化，绕开「截图 / 录屏」前置步骤直奔 dialog 状态。
 //
 // URL query：
 //   ?case=submit                 — 挂 SubmitDialog（初始空表单）

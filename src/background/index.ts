@@ -87,6 +87,8 @@ chrome.alarms?.onAlarm.addListener((alarm) => {
   // SW 每次 spin-up 都同步一次 badge：onStartup 只触发于浏览器启动，
   // SW 30s 闲置回收后再次唤醒时 onStartup 不会再触发，badge 状态会过期
   void refreshBadge()
+  // v0.4.4：从 offscreen 恢复录屏状态（SW 内存丢但 offscreen 还在录的边缘场景）
+  void rehydrateRecordingFromOffscreen()
 })()
 
 // 录屏入口必须由用户手势触发：chrome.commands 命中算手势，并直接把当前 tab 传进来。
@@ -139,10 +141,10 @@ if (import.meta.env.DEV) {
 }
 
 chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
-  // 校验消息来源：MV3 默认只接受同扩展，但 sender.id 为 undefined 时（极少数边缘情况）
-  // 依然要拒。外部扩展 / 网站要发我们的消息必须显式声明 externally_connectable，
-  // 而我们 manifest 没声明 —— 所以任何 sender.id !== runtime.id 一律视为非法。
-  if (sender.id && sender.id !== chrome.runtime.id) {
+  // 严格校验消息来源（v0.4.4 复盘加固，旧代码 `sender.id &&` 短路放过 undefined）：
+  // 我们 manifest 没声明 externally_connectable，所以同扩展发的 sender.id 必须 === runtime.id。
+  // 任何不匹配（含 undefined / 不同 ext id）直接拒。
+  if (sender.id !== chrome.runtime.id) {
     return false
   }
   // raw 来自跨进程 IPC，TS 编译期保证不了；先做最基本 shape 校验再 narrow 为 IncomingMessage。
@@ -590,12 +592,44 @@ async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?:
     return { ok: false, error: (e as Error).message }
   }
 
-  const res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'START', streamId })
+  // v0.4.4：tabId 一并传给 offscreen，SW 30s 闲置回收后能从 QUERY_STATE 拿回原录屏 tab
+  const res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'START', streamId, tabId })
   if (!res?.ok) {
     await closeOffscreenDocument()
     return { ok: false, error: res?.error || '录屏后台进程启动失败，请稍后重试' }
   }
   return { ok: true }
+}
+
+/**
+ * v0.4.4：SW spin-up 时查 offscreen 真实录屏状态。
+ *
+ * 为什么需要：SW 闲置 30s 被回收 → 内存 currentRecording 丢；offscreen document 自带
+ * keep-alive 仍在录。新 SW 唤醒后调 QUERY_RECORDING_STATE 会假返 {recording:false}，
+ * 用户在新 tab 看不到 rec-bar，再按 ⌥⇧R 也撞 offscreen state !== 'idle' 拒绝。
+ *
+ * 修法：spin-up 时调 getContexts 看 offscreen 是否还活着，活着就发 QUERY_STATE 拿
+ * { state, meta: { tabId, startedAt } } 回填 currentRecording。
+ */
+async function rehydrateRecordingFromOffscreen(): Promise<void> {
+  try {
+    const getCtx = (chrome.runtime as any).getContexts
+    if (typeof getCtx !== 'function') return
+    const contexts = await getCtx({ contextTypes: ['OFFSCREEN_DOCUMENT'] })
+    if (!Array.isArray(contexts) || contexts.length === 0) return
+    const res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'QUERY_STATE' })
+    if (!res || typeof res !== 'object') return
+    const { state, meta } = res as { state?: string; meta?: { tabId?: number; startedAt?: number } | null }
+    if ((state === 'recording' || state === 'starting') && meta && meta.startedAt) {
+      currentRecording = {
+        tabId: meta.tabId ?? -1,  // 没传 tabId 时占位（不影响 QUERY_RECORDING_STATE 回 {recording:true}）
+        startedAt: meta.startedAt
+      }
+      console.log('[Moo] SW boot: 从 offscreen 恢复 currentRecording', currentRecording)
+    }
+  } catch (e) {
+    console.warn('[Moo] rehydrateRecordingFromOffscreen failed:', (e as Error).message)
+  }
 }
 
 async function stopTabRecording(): Promise<{ ok: boolean; dataUrl?: string; bytes?: number; mime?: string; error?: string }> {

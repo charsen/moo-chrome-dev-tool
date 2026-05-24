@@ -2,6 +2,40 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.4.4
+
+2026-05-24 发版。无 BREAKING。**v0.4.3 后大团队复盘 + 全面加固一波**。
+
+3 个 agent 并行审（mv3-pro / vue-craft / general-purpose）找出 4 严重 + 7 中等 + 一堆小问题。全修。
+
+**🔴 严重修复**：
+
+- **MV3 安全加固**：`background/index.ts` + `offscreen/index.ts` 的 `onMessage` 把 `sender.id && sender.id !== runtime.id` 改成严格 `sender.id !== runtime.id`（短路 bug：undefined 时不 reject）。同扩展发的 sender.id 必须 === runtime.id，外部/未知来源直接拒
+- **dark mode 颜色硬编码**：`Overview.vue` link-btn 用了不存在的 `--moo-c-link` / `--moo-c-primary` token，fallback 到 hardcode `#4f8df9`，dark 切换不变色。改用现成的 `--moo-c-brand` / `--moo-c-brand-hover`
+- **文档误导同事**：`docs/ZENTAO_SETUP.md` 还写「当前 latest = v0.3.0」（实际 v0.4.3+），同事按链接下错版本。改成「永远去 releases 页拉最新」
+- **`copyHintTimer` leak**：v0.4.1 SubmitDialog 复制反馈 1.5s setTimeout 在 onBeforeUnmount 没清
+
+**🟡 中等修复**：
+
+- **SW spin-up 同步 offscreen 录屏状态**：SW 30s 闲置回收后 currentRecording 丢但 offscreen 自带 keep-alive 仍在录。offscreen 加 `QUERY_STATE` 消息 + 记录 `recordingMeta: { tabId, startedAt }`，SW spin-up 时调 `getContexts` + 查 offscreen state 回填 `currentRecording`
+- **submit.ts 加单测**：之前 464 行编排层零单测。加 `tests/zentaoSubmitBuilders.test.ts` 17 用例覆盖 `buildZentaoEnv` 5 + `buildZentaoStepsHtml` 12（含 ZWS 绕 WAF / XSS escape / 二进制响应 / 截断 1.5KB / 上传失败 cookie 提示等）
+- **`⌘⇧B` 文档误导清干净**：v0.3.1 没清完的 5 处（README / PLAN_v0.2.0 / MCP_TESTING / ContentApp 注释 / dialog-harness 注释）全清。manifest 实际只有 `Alt+Shift+R / Alt+Shift+M`
+- **`docs/PLAN_v0.2.0.md` 归档**：v0.2.0 实施计划早完成，移到 `docs/handoff-archive/`
+- **`tsconfig.tests.json` 加宽松版**：让 `vue-tsc -p tsconfig.tests.json` 覆盖 tests/ + tests-e2e/。修了累积 8 个类型错（unused @ts-expect-error / globalThis cast / QueuedItem narrow / vi.fn 类型签名）
+- **`README.en.md` 占位清理**：从 Gitee 默认模板写成真内容，给非中文读者入口
+
+**🟢 顺手清**：
+
+- 删 6 个真死的 export（`MAX_BODY_SIZE` / `isMediaDevicesAvailable` / `unavailableReason` / `sendToBackground` / `updateConfig` / `matchProject`）
+- `COVERAGE_MATRIX.md` 单测数 161 → 356 更新，并标明 v0.3.x 后单元格未回填
+
+**📋 backlog（不在本波）**：
+
+- `host_permissions: <all_urls>` 改 `optional_host_permissions`（Chrome 商店审核红牌，但当前 gitee 发版没上 Web Store 暂不阻塞，需要 Settings UI 加权限请求按钮，mini-feature v0.5.0 单独做）
+- 3 个 npm 依赖漏洞（rollup / esbuild / vite 都是 dev-time only 不影响用户运行，需要 vite 5→6 + @crxjs 2.0-beta→2.4 major bump，break 风险大，v0.5.0 单独升级波）
+
+**测试**：单测 356 全绿 + 7 skipped（fixture 等同事数据） + 100 e2e + vue-tsc 0 报错（含 src + tests 宽松版）。
+
 ## v0.4.3
 
 2026-05-24 发版。无 BREAKING。

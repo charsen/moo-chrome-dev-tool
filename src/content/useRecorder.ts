@@ -144,14 +144,3 @@ export function useRecorder(opts: { maxSeconds?: number } = {}) {
   return { recording, elapsed, error, start, startExternally, externallyStopped, stop, cancel, maxSec }
 }
 
-/**
- * 走 chrome.tabCapture，**任何页面都能录**，不需要 secure context。
- * 保留这两个工具函数兼容旧调用方。
- */
-export function isMediaDevicesAvailable(): boolean {
-  return true
-}
-
-export function unavailableReason(): string {
-  return ''
-}

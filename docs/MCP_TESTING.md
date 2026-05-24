@@ -50,7 +50,7 @@ list_console_messages → grep "error|Error" → 必须 0 条
 
 - 真宿主网页（不是 harness 页）—— 比如打开你自己的 server 仪表板
 - 触发 floating ball 截图 → Annotator
-- 验证 closed shadow root 内 UI 渲染对、ESC/⌘⇧B 真捕获到
+- 验证 closed shadow root 内 UI 渲染对、ESC 关闭等键盘行为真捕获到
 
 ---
 

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 //    可观察的 vi.fn()，并把注册进去的 callback 留出来手动触发（测 unmount 清 timer 用）
 // 2) node 没 window，但 useToast 用 window.setTimeout 拿 number 返回类型——
 //    stub 一个最小 window 把调用转发到 globalThis 的 setTimeout / clearTimeout
-const onBeforeUnmountMock = vi.fn<(cb: () => void) => void>()
+const onBeforeUnmountMock = vi.fn<[cb: () => void], void>()
 vi.mock('vue', async (importActual) => {
   const actual = await importActual<typeof import('vue')>()
   return { ...actual, onBeforeUnmount: onBeforeUnmountMock }

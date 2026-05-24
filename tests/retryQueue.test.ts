@@ -261,14 +261,21 @@ describe('retryQueue', () => {
 
   it('getQueueItems：返回完整 QueuedRequest 列表（含 bodyString）', async () => {
     storage.data.mooRetryQueue = [
-      { enqueuedAt: 100, attempts: 1, endpoint: 'http://x/a', method: 'POST', headers: { 'x-y': '1' }, bodyString: '{"a":1}' },
-      { enqueuedAt: 200, attempts: 2, endpoint: 'http://x/b', method: 'PUT', headers: {}, bodyString: '{"b":2}' }
+      { kind: 'webhook', enqueuedAt: 100, attempts: 1, endpoint: 'http://x/a', method: 'POST', headers: { 'x-y': '1' }, bodyString: '{"a":1}' },
+      { kind: 'webhook', enqueuedAt: 200, attempts: 2, endpoint: 'http://x/b', method: 'PUT', headers: {}, bodyString: '{"b":2}' }
     ]
     const items = await getQueueItems()
     expect(items).toHaveLength(2)
-    expect(items[0]?.endpoint).toBe('http://x/a')
-    expect(items[0]?.bodyString).toBe('{"a":1}')
-    expect(items[1]?.method).toBe('PUT')
+    const first = items[0]
+    const second = items[1]
+    expect(first?.kind).toBe('webhook')
+    if (first?.kind === 'webhook') {
+      expect(first.endpoint).toBe('http://x/a')
+      expect(first.bodyString).toBe('{"a":1}')
+    }
+    if (second?.kind === 'webhook') {
+      expect(second.method).toBe('PUT')
+    }
   })
 
   it('getQueueItems：storage 空 / 读失败返空数组（只读统计不能让 UI 崩）', async () => {

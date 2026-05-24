@@ -1,10 +1,10 @@
 # 全面排查 · 测试维度矩阵
 
-> 2026-05-20 启动。**目的**：枚举所有可测维度的交叉，找出真值缺口。**不堆 fake spec**。
+> 2026-05-20 启动；2026-05-24 v0.4.4 复盘后更新数字。**目的**：枚举所有可测维度的交叉，找出真值缺口。**不堆 fake spec**。
 >
-> 已有覆盖：vitest 单测 161 + Playwright E2E **77** = **238 case**（含 panel-harness 解锁的 4 Tab 全部 + Overview detail + Environment CRUD + Settings toggle + 4 Tab dark mode）。
+> **当前覆盖**：vitest 单测 **356** + 7 skipped（含禅道 v2 schema fuzz 40 + submit builder 17）+ Playwright E2E **100** = **463 case**。
 >
-> 本文档**活档**：每次新加 spec 或发现新维度都来更新对应单元格。
+> 本文档**活档**：每次新加 spec 或发现新维度都来更新对应单元格。具体维度交叉表（A × B 等）写于 v0.2.0 时代，自 v0.3.x 起未更新单元格，仅作历史 reference 用 —— 现在 fuzz / fixture / 双 MCP 分断面体系跟此表设计无直接 1:1 映射，不强行回填。
 
 ---
 

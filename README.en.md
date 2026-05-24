@@ -1,36 +1,23 @@
-# moo-chrome-dev-tool
+# Moo Dev Tool
 
-#### Description
-前端调试的浏览器插件
+> Internal Chrome extension for frontend / backend bug reporting and reproduction at moo.
 
-#### Software Architecture
-Software architecture description
+Chinese docs are the source of truth — see [README.md](./README.md), [docs/ZENTAO_SETUP.md](./docs/ZENTAO_SETUP.md), [HANDOFF.md](./HANDOFF.md), [CHANGELOG.md](./CHANGELOG.md).
 
-#### Installation
+## What it does
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+Pin a floating ball on any web page → click to capture screenshot, annotate, attach recent network requests / console errors / a 30s screen recording → submit to Zentao (or your own webhook server).
 
-#### Instructions
+For the team, "reporting a bug" goes from "send a screenshot + reproduce verbally" to "click → annotate → submit", with everything the backend needs already attached.
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+## Quick start
 
-#### Contribution
+1. Download the latest zip from [Gitee releases](https://gitee.com/charsen/moo-chrome-dev-tool/releases) (always grab the topmost entry — that's `latest`).
+2. Unzip, open `chrome://extensions`, enable Developer mode, click "Load unpacked", select the unzipped folder.
+3. Open DevTools on any page → "Moo" panel → "Environment" tab → fill in your Zentao base URL + account + project ID.
 
-1.  Fork the repository
-2.  Create Feat_xxx branch
-3.  Commit your code
-4.  Create Pull Request
+Detailed setup (with Zentao quirks): [docs/ZENTAO_SETUP.md](./docs/ZENTAO_SETUP.md) (Chinese).
 
+## Repo language
 
-#### Gitee Feature
-
-1.  You can use Readme\_XXX.md to support different languages, such as Readme\_en.md, Readme\_zh.md
-2.  Gitee blog [blog.gitee.com](https://blog.gitee.com)
-3.  Explore open source project [https://gitee.com/explore](https://gitee.com/explore)
-4.  The most valuable open source project [GVP](https://gitee.com/gvp)
-5.  The manual of Gitee [https://gitee.com/help](https://gitee.com/help)
-6.  The most popular members  [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+This project's primary docs are in Chinese (team is Chinese-speaking). Code comments, commit messages, and CHANGELOG are Chinese as well. This README.en.md exists only to give non-Chinese readers an entry point.

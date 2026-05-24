@@ -1,7 +1,7 @@
 /**
  * 禅道 client（B' 路径）—— SW 跨 origin 提交 bug 的所有禅道 HTTP 调用集中点。
  *
- * 决策见 docs/PLAN_v0.2.0.md：
+ * 决策见 docs/handoff-archive/PLAN_v0.2.0.md（v0.2.0 实施计划，已归档）：
  * - 禅道无 PAT，token 必须 account+password 换。本地存密码，SW 内存缓存 token，
  *   401 自动重 login。
  * - 用 `Token: xxx` header + `X-Requested-With: XMLHttpRequest`，不带 cookie，

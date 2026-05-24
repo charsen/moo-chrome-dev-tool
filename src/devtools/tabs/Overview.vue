@@ -407,15 +407,15 @@ onBeforeUnmount(() => {
 .link-btn {
   background: transparent;
   border: none;
-  color: var(--moo-c-link, var(--moo-c-primary, #4f8df9));
+  color: var(--moo-c-brand);
   cursor: pointer;
   padding: 0;
   font: inherit;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.link-btn:hover { color: var(--moo-c-primary-hover, #6ba0fa); }
-.link-btn:focus-visible { outline: 2px solid var(--moo-c-primary, #4f8df9); outline-offset: 2px; border-radius: 2px; }
+.link-btn:hover { color: var(--moo-c-brand-hover); }
+.link-btn:focus-visible { outline: 2px solid var(--moo-c-brand); outline-offset: 2px; border-radius: 2px; }
 
 /* 类型筛选 chip（请求 / 错误，可独立开关） */
 .kind-filters {

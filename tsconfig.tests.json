@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": false,
+    "types": ["chrome", "vite/client", "node", "vitest/globals"]
+  },
+  "include": [
+    "src/**/*.ts", "src/**/*.tsx", "src/**/*.vue",
+    "tests/**/*.ts", "tests-e2e/**/*.ts",
+    "vite.config.ts"
+  ]
+}
