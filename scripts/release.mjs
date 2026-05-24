@@ -345,6 +345,7 @@ if (dryRun) {
   console.log(`    tag_name: ${tagName}`)
   console.log(`    name: ${releaseTitle}`)
   console.log(`    body: <CHANGELOG ## v${version} 段，${releaseBody.length} 字>`)
+  console.log(`    prerelease: ${prerelease}`)
   console.log(`    target_commitish: master`)
   console.log(`  POST .../releases/{id}/attach_files (multipart)`)
   console.log(`    file: release/${zipName}`)
