@@ -159,8 +159,11 @@ export interface IssueAdapter<K extends AdapterKind = AdapterKind> {
 
   /**
    * retryQueue 触发 flush 时调用 —— payload 是 serializeForRetry 返的那个。
+   *
+   * project 可能 undefined（用户已删项目 / kind 切换）—— adapter 自决处理。
+   * webhook 不依赖 project（payload 自带 endpoint），zentao 必须 project 存在且 kind 匹配。
    */
-  retryFromPayload(payload: AdapterRetryPayload, project: Project): Promise<AdapterRetryOutcome>
+  retryFromPayload(payload: AdapterRetryPayload, project: Project | undefined): Promise<AdapterRetryOutcome>
 }
 
 /**

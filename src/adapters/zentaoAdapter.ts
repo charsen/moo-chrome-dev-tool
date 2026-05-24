@@ -89,8 +89,10 @@ export const zentaoAdapter: IssueAdapter<'zentao'> = {
     if (q.kind !== 'zentao') {
       return { kind: 'drop', reason: 'zentao adapter 收到非 zentao payload' }
     }
+    if (!project) {
+      return { kind: 'drop', reason: 'project 已被删除' }
+    }
     if (project.kind !== 'zentao') {
-      // 项目切回 webhook 了
       return { kind: 'drop', reason: 'project kind 已切换' }
     }
     const res = await submitToZentao(q.req, project, dataUrlToBlob, {

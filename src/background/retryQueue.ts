@@ -24,11 +24,9 @@
 // ============================================================
 
 import type { SubmitBugReq } from '@/types/messages'
-import type { Project } from '@/types/config'
-import { submitToZentao } from '@/background/zentao/submit'
-import { dataUrlToBlob } from '@/utils/dataUrl'
 import { thumbnailize } from '@/utils/image'
 import { loadConfig } from '@/storage/config'
+import { getAdapter } from '@/adapters'
 
 const RETRY_QUEUE_KEY = 'mooRetryQueue'
 
@@ -269,73 +267,42 @@ export async function flushRetryQueue(): Promise<number> {
   return flushPromise
 }
 
-/**
- * 单条重试结果：
- *   'ok'   成功，从队列移除
- *   'drop' 永久放弃（4xx / 认证持久失败 / project 被删 / kind 切换）
- *   object keep 在队列里 attempts++，写 lastStatus / lastError
- */
-type RetryOutcome = 'ok' | 'drop' | { status?: number; error: string }
-
 async function doFlush(): Promise<number> {
   const list = await readQueue()
   if (list.length === 0) return 0
   const remaining: QueuedItem[] = []
   let processed = 0
-  // zentao 路径要 loadConfig 才能拿到 project；只在确实有 zentao 条目时 load
+  // zentao 路径要 loadConfig 才能拿到 project；webhook 也接 project（adapter 自决要不要用）
   let configCache: Awaited<ReturnType<typeof loadConfig>> | null = null
   const getConfig = async () => configCache ?? (configCache = await loadConfig())
 
   for (const q of list) {
     if (q.attempts >= RETRY_MAX_ATTEMPTS) continue
-    const res: RetryOutcome = q.kind === 'webhook'
-      ? await retryWebhook(q)
-      : await retryZentao(q, await getConfig())
-    if (res === 'ok') { processed++; continue }
-    if (res === 'drop') continue
+    const adapter = getAdapter(q.kind)
+    if (!adapter) {
+      // 未注册 adapter（历史 storage 残留 kind） → drop
+      console.warn('[Moo] retry: adapter not found for kind', q.kind)
+      continue
+    }
+    // zentao 路径需要 project 查 baseUrl；webhook payload 自带 endpoint，project undefined 也行
+    const projectId = q.kind === 'zentao' ? (q as QueuedZentao).projectId : undefined
+    const project = projectId ? (await getConfig()).projects.find(p => p.id === projectId) : undefined
+    const outcome = await adapter.retryFromPayload(q, project)
+    if (outcome.kind === 'ok') { processed++; continue }
+    if (outcome.kind === 'drop') continue
     q.attempts++
-    q.lastStatus = res.status
-    q.lastError = res.error
+    q.lastStatus = outcome.status
+    q.lastError = outcome.error
     remaining.push(q)
   }
   await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: remaining })
   return processed
 }
 
-async function retryWebhook(q: QueuedWebhook): Promise<RetryOutcome> {
-  try {
-    const resp = await fetch(q.endpoint, { method: q.method, headers: q.headers, body: q.bodyString })
-    if (resp.ok) return 'ok'
-    if (resp.status >= 400 && resp.status < 500) return 'drop'
-    return { status: resp.status, error: resp.statusText || `HTTP ${resp.status}` }
-  } catch (e) {
-    return { status: undefined, error: (e as Error)?.message || '网络错误' }
-  }
-}
-
-async function retryZentao(q: QueuedZentao, config: { projects: Project[] }): Promise<RetryOutcome> {
-  const project = config.projects.find(p => p.id === q.projectId)
-  if (!project) return 'drop' // project 被删 / 改了 id
-  if (project.kind !== 'zentao') return 'drop' // 项目切回 webhook 了
-  const res = await submitToZentao(q.req, project, dataUrlToBlob, {
-    mooVersion: globalThis.chrome.runtime?.getManifest?.()?.version
-  })
-  if (res.ok) return 'ok'
-  // v0.4.7：扩展 drop 覆盖所有「永久失败」分类，避免无意义重试 5x
-  // 漏过的会被 ⚠️5/5 ⚠️ 暂存浪费队列槽位；都是 deterministic 配置/服务侧问题，重试同样 payload 同样结果
-  if (isPermanentFailure(res.error ?? '')) return 'drop'
-  return { error: res.error ?? '未知错误' }
-}
-
 /** v0.4.7：判断错误是否「永久失败」（重试无意义，drop）。
- *  v0.4.6 之前正则只覆盖 5 类，漏掉 product/项目/WAF/schema/认证持续/bug 不存在 → 重试 5x 浪费。 */
-// v0.5.0：导出给单测直接测全部 keyword（之前只有「登录失败」一个 keyword 有回归）
-export function isPermanentFailure(error: string): boolean {
-  // v0.4.8 加 3 类禅道 schema/cookie 永久错（agent 第 5 波 review 发现）：
-  //   - 「返非 JSON」/「未返响应体」(client.ts schema 错)
-  //   - 「缺 user.realname」(login 成功但响应不完整)
-  return /登录失败|缺少必填|未授权|Unauthorized|缺禅道配置|未关联.*product|WAF 拦截|认证持续失败|响应都不识别|项目.*不存在|bug 不存在|返非 JSON|未返响应体|缺 user/.test(error)
-}
+ *  v0.5.3 IssueAdapter 接入后这个判定下放到 zentaoAdapter.isPermanentFailure；这里保留 re-export
+ *  给测试用例 + 老调用站兼容（不影响 doFlush —— doFlush 走 adapter.retryFromPayload）。 */
+export { isPermanentFailure } from '@/adapters/zentaoAdapter'
 
 /** 只读统计 API：storage 读失败按"空队列"返回，不该把 storage 异常往上抛打断 UI 渲染。 */
 export async function getQueueLength(): Promise<number> {
