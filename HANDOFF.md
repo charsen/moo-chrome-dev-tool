@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.4.5 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.5/moo-chrome-dev-tool-0.4.5.zip)（sha256 待回填）。v0.4.4 后**跑 `/full-team-review` 发现 4 处「我刚做的就有同款 bug」+ 24 累积问题**。讽刺地证明 v0.4.4 的「主动扩展清单」强度不够 —— sender 校验补漏 content/ContentApp、dark mode token 漏 Environment、setTimeout leak 漏 BodyViewer、写检查脚本时正则硬编码 v0.x.x。全修 + CLAUDE.md 清单加固。无 BREAKING。**366 单测 + 7 skipped + 90 e2e 全绿**。
+**v0.4.5 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.5/moo-chrome-dev-tool-0.4.5.zip)（sha256 `521f13074bf473c9df24429bb51230e072c9ef786fe843ecfa7cb944d0f588e9`）。v0.4.4 后**跑 `/full-team-review` 发现 4 处「我刚做的就有同款 bug」+ 24 累积问题**。讽刺地证明 v0.4.4 的「主动扩展清单」强度不够 —— sender 校验补漏 content/ContentApp、dark mode token 漏 Environment、setTimeout leak 漏 BodyViewer、写检查脚本时正则硬编码 v0.x.x。全修 + CLAUDE.md 清单加固。无 BREAKING。**366 单测 + 7 skipped + 90 e2e 全绿**。
 
 **v0.4.4 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.4/moo-chrome-dev-tool-0.4.4.zip)（sha256 `7cf1fd9c07931942aee4e6bd6d72871b56216dba62f77290e62a00ac781a7265`）。v0.4.3 后**大团队复盘** —— 3 个 agent 并行审找出 4 严重 + 7 中等问题全修。包括 MV3 安全加固（onMessage sender 严格校验）+ dark mode token 修复 + SubmitDialog leak + SW/offscreen 状态同步 + submit.ts 加 17 单测 + 文档/类型债清理。无 BREAKING。**356 单测 + 7 skipped + 90 e2e 全绿**。
 
