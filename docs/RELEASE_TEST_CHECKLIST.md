@@ -3,6 +3,27 @@
 > 每次 BREAKING / 大改提交链路的版本，**push 之前**走一遍。
 > 自动化覆盖不了的部分：CORS 预检、真实 chrome-extension 跨域、multipart 上传、SW fetch 重试、UI toast 文案。
 
+## 🤖 自动化护栏（已落地，正常 push 都会过）
+
+`pre-commit` 跑：`pnpm check:versions && pnpm type-check && pnpm test`
+`CI` 跑：版本一致 / type-check / 单测 / build / bundle size / pnpm audit (warn-only)
+
+这些**机械问题**（版本号漂移 / 依赖漏洞 / bundle 爆涨）由脚本守门。下面 checklist 聚焦**机器逮不到的真功能问题**。
+
+## 🧑‍🤝‍🧑 大团队 review（每次发版必跑）
+
+**v0.4.4 后立项**：发版前必跑一次 `/full-team-review` —— 3 个 agent 并行（mv3-pro / vue-craft / general-purpose）扫整仓库找问题。
+
+```
+（在 Claude Code 里）
+/full-team-review
+```
+
+Agent 会出按严重度排序的问题清单。**任何 🔴 严重问题必修才能发版**。
+🟡 中等可选修；🟢 小问题列 backlog。
+
+v0.4.4 首跑战绩：4 严重 + 7 中等 + 一堆小问题，全修后单测 339 → 356，发现 MV3 安全漏洞 / dark mode 硬编码 / 文档版本误导 / setTimeout leak 等单靠 dogfood 看不出的问题。
+
 ## 怎么用
 
 - 不依赖 MCP——chrome-devtools-mcp 用独立 profile + `--disable-extensions`，**测不了真扩展**

@@ -46,8 +46,9 @@ export default defineConfig({
         // 所以做 harness 页面 mock chrome.devtools.* 让 Playwright 能驱动 4 Tab 渲染断言。
         panelHarness: resolve(__dirname, 'src/devtools/panel-harness.html'),
         // content 世界 dialog（SubmitDialog / Annotator cancel-guard）的 E2E harness。
-        // 这两条交互链路涉及 ⌘⇧B 全局快捷键 + 真宿主页 content script 注入，Playwright
-        // 跨边界驱不动。harness 在 chrome-extension:// 页面里复现同款 shadow root 外壳
+        // 这两条交互链路涉及悬浮球 click → 截图 → Annotator → SubmitDialog 全链路 + 真宿主页
+        // content script 注入，Playwright 跨边界驱不动。harness 在 chrome-extension:// 页面里
+        // 复现同款 shadow root 外壳
         // + mock chrome.runtime.sendMessage，让 ESC / mask click / Tab 焦点循环 / 1.5s
         // 成功保护期都能被自动化锁住。
         dialogHarness: resolve(__dirname, 'src/content/dialog-harness.html')

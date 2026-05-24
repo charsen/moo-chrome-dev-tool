@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit",
     "type-check:tests": "vue-tsc --noEmit -p tsconfig.tests.json",
+    "check:versions": "node scripts/check-version-consistency.mjs",
+    "check:bundle-size": "node scripts/check-bundle-size.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -20,7 +22,7 @@
     "prepare": "simple-git-hooks"
   },
   "simple-git-hooks": {
-    "pre-commit": "pnpm type-check && pnpm test"
+    "pre-commit": "pnpm check:versions && pnpm type-check && pnpm test"
   },
   "dependencies": {
     "vue": "^3.4.21"

@@ -27,14 +27,28 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Version consistency (manifest / CHANGELOG / docs)
+        run: pnpm check:versions
+
       - name: Type check (TypeScript + Vue)
         run: pnpm type-check
+
+      - name: Type check (tests, 宽松版)
+        run: pnpm type-check:tests
+        continue-on-error: true  # 测试代码累积类型债，warn-only 不阻塞 master push
 
       - name: Unit tests
         run: pnpm test
 
       - name: Build (produces dist/)
         run: pnpm build
+
+      - name: Bundle size check
+        run: pnpm check:bundle-size
+
+      - name: Dependency audit (warn-only)
+        run: pnpm audit --audit-level high || echo "::warning::pnpm audit 报 high 漏洞，请评估"
+        continue-on-error: true  # high 漏洞 warn，不挡 CI；human 评估是否真影响用户运行
 
       # 不上传 artifact —— dist/ 由本地 pnpm release 流程产出；CI 这里仅做"能 build"验证。
 

@@ -157,3 +157,30 @@ return { ok: false, error: 'v2/v1 xxx 响应都不识别' }
 **例外**：v2 `/users/login` 没有 v1 等价 user 解析 → 字段缺失只跳过 cache 不报错，允许继续工作。
 
 **审计**：v0.4.3 已加固 listProjects / listUsers / getBug / discoverProduct / ping，全部双轨。后续改 client.ts 任何 v2 调用必须遵守。
+
+---
+
+## 🟤 接任务时主动扩展清单（v0.4.4 复盘后立规）
+
+**用户希望我接任务时不只修问题点，而是主动扫周围同类**。规则：每次接任务前按下表自查触发条件，**有命中就主动多干那一步，不需要用户额外提**。
+
+| 任务类型 | 同时要做的事 |
+|---|---|
+| 改 `src/background/zentao/client.ts` | 跑 schema fuzz 单测 + 检查同类 v2 endpoint 是否都有 v1 fallback |
+| 改 `src/background/index.ts` 的 `onMessage` 分支 | 检查 sender.id / sender.tab 校验是否完整（不是 `&&` 短路） |
+| 改 `src/offscreen/index.ts` | 同上 sender 校验 + state machine invariant 是否破坏 |
+| 改 `manifest.json` 权限 | 检查最小化原则；新增 host_permissions 应考虑 optional |
+| 加新 Vue 组件 / 改组件样式 | 检查 dark mode token（不要用不存在的 `--moo-c-link` 类 fallback hex）+ onBeforeUnmount 清 timer/listener |
+| 加 setTimeout / setInterval | 必须在 onBeforeUnmount 加 clear |
+| 改 SubmitDialog / FloatingBall / Annotator | 检查 closed shadow DOM 注入是否泄漏 + tokens.css 一致性 |
+| 改 message 接收方（onMessage / postMessage handler） | 必须校验 origin / source / shape 三件套 |
+| 改 docs/ZENTAO_SETUP.md / README.md 提到的版本号 | 同步检查所有文档版本号一致（version-consistency 脚本会挡） |
+| 修 bug | **顺手扫同类**（类似函数 / 类似 UI / 类似 message handler） — 这是 v0.4.4 大复盘的核心 lesson |
+| 加新 endpoint / message type | 加单测（fuzz 表 + 正常路径），不要让编排层裸奔（v0.4.4 submit.ts 复盘） |
+| 改文档里的快捷键描述 | manifest.json `commands` 是 ground truth，grep 全仓库不一致就改干净（v0.3.1 漏修 5 处的教训） |
+| 重构 / 删 unused export | 跑 type-check + 全单测 + grep 引用确认无遗漏 |
+
+**触发原则**：
+- 「修一个 X，至少 grep 同类 X」—— 不是「扫到才修」，是「主动 grep」
+- 多干的事如果跟主任务无关 / 工作量大 / 不确定该不该 → 用 AskUserQuestion 问，**不要默默拒绝扩展**
+- 拒绝「过度设计」（用户也批评过太激进）—— 只扫真同类，不发明新概念
