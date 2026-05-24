@@ -1,0 +1,158 @@
+/**
+ * IssueAdapter interface 草案（PLAN_v1.0 决策 3 PoC）。
+ *
+ * **状态：type-only，未在生产代码引用**。本文件目的是让用户审接口形状再决定是否实装。
+ * v0.5.2 P0 router 化之后，handler 内 zentao / webhook 双轨已经在 handlers/submit.ts 内 if-else
+ * 分支。三轨（GitHub Issues / Jira / Linear）就会复制粘贴爆炸 → 必须在加第 3 个 adapter 之前先抽接口。
+ *
+ * 实装路线（用户拍板后）：
+ *   1. src/adapters/zentaoAdapter.ts  实装本 interface — 包 submitToZentao + getBug 已有逻辑
+ *   2. src/adapters/webhookAdapter.ts 实装本 interface — 包 handleSubmitBug 现 webhook 分支
+ *   3. handlers/submit.ts 改成 const adapter = registry[project.kind]; return adapter.submit(...)
+ *   4. handlers/historyStatus.ts 改成 adapter.fetchStatus(project, remoteId)
+ *   5. retryQueue.ts 改成 const adapter = registry[item.kind]; return adapter.retry(item.payload, project)
+ *      → 配合 PLAN_v1.0 P3 retryQueue 多轨注册表（task #125）
+ *   6. 实装第 3 个 adapter：GitHub Issues（CWS 评审正向 / 开发者友好）
+ *
+ * 关键设计权衡：
+ *   - 抽不抽 retryQueue 入队 payload 形态？webhook 现在存 bodyString，zentao 存完整 SubmitBugReq。
+ *     方案：adapter 决定自己的 retry payload 类型，retryQueue 持 unknown，dispatch 时回 adapter。
+ *     见 `serializeForRetry` / `retryFromPayload` 这对。
+ *   - adapter 配置（zentao 的 baseUrl/account/password / webhook 的 server/endpoint）放哪？
+ *     方案：仍放 Project 字段（v0.4.x 已立），adapter 接 Project<TKindConfig> 用泛型 narrow。
+ *   - i18n key 命名空间？
+ *     方案：adapter.kind 自带 i18n prefix `<kind>.<event>`（zentao.login.failed）。
+ *
+ * 不在本草案处理：
+ *   - 多 adapter UI（Environment.vue 拆 EnvironmentZentao / EnvironmentWebhook / EnvironmentGitHub）
+ *     —— 那是 PLAN P1 task #127 的事，依赖本接口落地
+ *   - SubmitDialog.vue 的 kind 分支收敛 —— PLAN P2 task #127' 的事
+ */
+
+import type { Project } from '@/types/config'
+import type { SubmitBugReq } from '@/types/messages'
+import type { BugHistoryEntry } from '@/types/history'
+
+/**
+ * adapter 唯一标识。跟 Project.kind / QueuedItem.kind 严格一致。
+ *
+ * 加新 adapter 时 ① 这里追加 union ② 跟 Project.kind 同步加值 ③ retryQueue.QueuedItem
+ * 加新分支 ④ Environment.vue kind 切换器加选项。
+ */
+export type AdapterKind = 'zentao' | 'webhook' | 'github' // 'github' 是 v1.1 候选
+
+/**
+ * adapter.submit 的执行上下文 —— 跨 adapter 通用的 ambient 信息。
+ *
+ * 不传 chrome.* / fetch（adapter 直接用 globalThis），但 mooVersion / tabId 这类
+ * "调用者环境" 信息让 adapter 不用自己去 SW 抓。
+ */
+export interface AdapterSubmitCtx {
+  /** chrome.runtime.getManifest().version —— 拼到 User-Agent / X-Moo-Version 之类 */
+  mooVersion?: string
+  /** 提交触发的 tab id —— webhook adapter 读 page storage 白名单时要 */
+  tabId?: number
+}
+
+/**
+ * adapter.submit 的结果。形态贴合 SubmitBugRes 但收紧字段语义。
+ */
+export interface AdapterSubmitOutcome {
+  ok: boolean
+  /** 服务端返的 bug id（zentao: 数字主键；webhook: 服务端约定 ULID/UUID/数字） */
+  remoteId?: string
+  /** 可点跳详情的 URL（zentao: ${baseUrl}/bug-view-${id}.html / webhook: 服务端给的 viewUrl） */
+  viewUrl?: string
+  /** 失败原因（用户可见 toast 文案 — adapter 应该走 i18n） */
+  error?: string
+  /**
+   * adapter 明确「这条 ok=false 是否值得入队重试」的信号：
+   *   - `true` : 适合入队（瞬时网络错 / 5xx）—— retryQueue 仍可能因配额拒
+   *   - `false`: 永久失败 / 配置错（404 / 401 / 业务 4xx）—— 不入队
+   *   - `undefined`: adapter 没意见，retryQueue 按 HTTP 状态自决（兼容现行行为）
+   */
+  retryable?: boolean
+}
+
+/**
+ * 远程状态回查的结果（History tab 刷新状态用）。
+ *
+ * 走 BugHistoryEntry['remoteStatus'] union（'active' / 'resolved' / 'closed' / ...）
+ * 复用现有类型避免漂移。
+ */
+export type AdapterStatus = BugHistoryEntry['remoteStatus']
+
+/**
+ * retryQueue 入队时序列化的 payload。adapter 自决形态：
+ *   - zentao: 复用完整 SubmitBugReq（multipart 没法 stringify）+ projectId
+ *   - webhook: 序列化后的 bodyString + endpoint + method + headers
+ *   - github: 可能是 issue title + body + repo path（未来设计）
+ *
+ * retryQueue 只持 unknown，发回 adapter 时 adapter 自己 narrow。
+ */
+export type AdapterRetryPayload = unknown
+
+/**
+ * adapter retry 的结果 —— 让 retryQueue 决定 drop / keep / 成功移除。
+ */
+export type AdapterRetryOutcome =
+  | { kind: 'ok' }              // 重试成功，从队列移除
+  | { kind: 'drop'; reason: string }  // 永久放弃（认证失败 / 项目已删 / 4xx 等）
+  | { kind: 'keep'; status?: number; error: string }  // 仍是瞬时错，attempts++ 后保留
+
+/**
+ * 单条 adapter 契约。每个 adapter 一个 module，注册到 registry。
+ *
+ * K 是 adapter kind 标识，让 submit/fetchStatus 的 project 参数能 narrow 到对应 kind。
+ *
+ * @example
+ *   class ZentaoAdapter implements IssueAdapter<'zentao'> { kind = 'zentao' as const; ... }
+ */
+export interface IssueAdapter<K extends AdapterKind = AdapterKind> {
+  /** 唯一标识，跟 Project.kind 一致 */
+  readonly kind: K
+
+  /**
+   * 提交 bug —— 唯一必填方法。
+   *
+   * 失败时 adapter 自己决定要不要 throw —— 但建议捕获在 outcome.error 里返，
+   * 让 handleSubmitBug router 不需要 try/catch。
+   */
+  submit(
+    req: SubmitBugReq,
+    project: Project,
+    ctx: AdapterSubmitCtx
+  ): Promise<AdapterSubmitOutcome>
+
+  /**
+   * 状态回查 —— History tab 刷新用。
+   *
+   * adapter 不支持回查时返 undefined（github 早期可能没接 status webhook）。
+   */
+  fetchStatus?(
+    project: Project,
+    remoteId: string
+  ): Promise<AdapterStatus | undefined>
+
+  /**
+   * retryQueue 入队前调用 —— 把 SubmitBugReq 翻译成 adapter 自己 retry 所需 payload。
+   *
+   * 返 null = adapter 拒绝入队（payload 太大 / multipart 不可序列化）。
+   */
+  serializeForRetry(req: SubmitBugReq, project: Project): AdapterRetryPayload | null
+
+  /**
+   * retryQueue 触发 flush 时调用 —— payload 是 serializeForRetry 返的那个。
+   */
+  retryFromPayload(payload: AdapterRetryPayload, project: Project): Promise<AdapterRetryOutcome>
+}
+
+/**
+ * adapter 注册表。SW 启动时 import 所有 adapter 入注册表，运行时按 project.kind 查表。
+ *
+ * @example
+ *   const adapter = adapterRegistry[project.kind]
+ *   if (!adapter) return { ok: false, error: `不支持的 adapter kind: ${project.kind}` }
+ *   return adapter.submit(req, project, ctx)
+ */
+export type AdapterRegistry = Partial<Record<AdapterKind, IssueAdapter>>
