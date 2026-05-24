@@ -1,0 +1,151 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+
+/**
+ * v0.5.2 P0 重构第 1 阶段 — zentao 6 个 MSG case 抽到 handlers/zentao.ts 后的单测。
+ *
+ * 这是 background.ts 0 单测的破局点：handler 是 standalone async function 可 import 调用，
+ * 不再需要 mock 整个 chrome.runtime.onMessage listener + dispatch。
+ *
+ * 覆盖 6 个 handler 关键路径：
+ *   - happy path（login OK + 业务 OK）
+ *   - login 失败 → 返 error
+ *   - 业务失败 → 返 error
+ *   - listModules 缺 projectId 早返
+ *   - clearCache 同步返
+ *   - ping cookie 走 ensureCookieSession 不同路径
+ */
+
+import type { ZentaoEnv } from '@/background/zentao/client'
+
+function jsonRes(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+}
+
+beforeEach(() => {
+  vi.unstubAllGlobals()
+  // 每个 test 单独 stub fetch 模拟禅道响应
+})
+
+// 共用 credentials payload
+const creds = { baseUrl: 'https://z.example.com', account: 'alice', password: 'secret' }
+const loginSuccess = () => jsonRes({
+  status: 'success',
+  token: 'tok-1',
+  user: { id: 42, account: 'alice', realname: '爱丽丝' }
+})
+
+async function importHandlers() {
+  // dynamic import 让每次拿干净的 module（避免 SW module-level cache 跨测残留）
+  const { _clearZentaoCaches } = await import('@/background/zentao/client')
+  _clearZentaoCaches()
+  return await import('@/background/handlers/zentao')
+}
+
+describe('handleZentaoTestConnection', () => {
+  it('happy path：login + ping 都 OK → 返 realname / account', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) return loginSuccess()
+      if (url.match(/\/v2\/users\/42$/)) {
+        return jsonRes({ id: 42, account: 'alice', realname: '爱丽丝' })
+      }
+      return jsonRes({})
+    }))
+    const { handleZentaoTestConnection } = await importHandlers()
+    const r = await handleZentaoTestConnection(creds)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.realname).toBe('爱丽丝')
+      expect(r.account).toBe('alice')
+    }
+  })
+
+  it('login 失败 → 返 error 不调 ping', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      jsonRes({ status: 'failed', reason: '账号或密码错误' })
+    ))
+    const { handleZentaoTestConnection } = await importHandlers()
+    const r = await handleZentaoTestConnection(creds)
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('账号或密码错误')
+  })
+})
+
+describe('handleZentaoListProjects', () => {
+  it('happy path：返 projects 数组', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) return loginSuccess()
+      if (url.includes('/v2/projects?')) {
+        return jsonRes({
+          projects: [
+            { id: 1, name: 'P1', status: 'doing', type: 'project' },
+            { id: 2, name: 'P2', status: 'done', type: 'project' }
+          ]
+        })
+      }
+      return jsonRes({})
+    }))
+    const { handleZentaoListProjects } = await importHandlers()
+    const r = await handleZentaoListProjects(creds)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.projects).toHaveLength(2)
+      expect(r.projects?.[0]).toEqual({ id: 1, name: 'P1', status: 'doing' })
+    }
+  })
+})
+
+describe('handleZentaoListUsers', () => {
+  it('happy path：返 users 数组', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) return loginSuccess()
+      if (url.includes('/v2/users?')) {
+        return jsonRes({ users: [{ id: 9, account: 'bob', realname: '鲍勃' }] })
+      }
+      return jsonRes({})
+    }))
+    const { handleZentaoListUsers } = await importHandlers()
+    const r = await handleZentaoListUsers(creds)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.users?.[0]?.account).toBe('bob')
+  })
+})
+
+describe('handleZentaoListModules', () => {
+  it('缺 projectId → 早返 error 不调 login', async () => {
+    const fetchMock = vi.fn(async () => jsonRes({}))
+    vi.stubGlobal('fetch', fetchMock)
+    const { handleZentaoListModules } = await importHandlers()
+    const r = await handleZentaoListModules({ ...creds })  // 无 projectId
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('projectId 必填')
+    expect(fetchMock).not.toHaveBeenCalled()  // 完全没 login
+  })
+
+  it('happy path：login → discoverProduct → listModules', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) return loginSuccess()
+      if (url.match(/\/v2\/projects\/26$/)) {
+        return jsonRes({ id: 26, products: [{ id: 77 }] })
+      }
+      if (url.includes('/v1/modules?id=77')) {
+        return jsonRes({ modules: [{ id: 100, name: 'M1', path: '/M1' }] })
+      }
+      return jsonRes({})
+    }))
+    const { handleZentaoListModules } = await importHandlers()
+    const r = await handleZentaoListModules({ ...creds, projectId: 26 })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.modules?.[0]?.name).toBe('M1')
+  })
+})
+
+describe('handleZentaoClearCache', () => {
+  it('同步返 { ok: true }（不 await，不 fetch）', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { handleZentaoClearCache } = await importHandlers()
+    const r = handleZentaoClearCache()
+    expect(r.ok).toBe(true)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})

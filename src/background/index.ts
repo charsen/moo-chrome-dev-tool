@@ -14,15 +14,7 @@ import { parseRemoteId } from '@/utils/remoteHeaders'
 import { updateActionBadge } from '@/utils/badge'
 import { enqueueRetry, enqueueZentaoRetry, flushRetryQueue, getQueueLength } from '@/background/retryQueue'
 import {
-  login as zentaoLogin,
-  ping as zentaoPing,
-  listProjects as zentaoListProjects,
-  listUsers as zentaoListUsers,
-  listModules as zentaoListModules,
-  discoverProduct as zentaoDiscoverProduct,
-  ensureCookieSession as zentaoEnsureCookie,
   getBug as zentaoGetBug,
-  _clearZentaoCaches,
   type ZentaoEnv,
   type ZentaoBugDetail
 } from '@/background/zentao/client'
@@ -31,12 +23,15 @@ import { mapZentaoStatus } from '@/background/zentaoStatus'
 import { dataUrlToBlob } from '@/utils/dataUrl'
 import type { BugServer, MooConfig, Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
-
-/** 「测试连接」/「拉列表」只用 baseUrl+account+password，projectId/moduleId 此时
- *  还没拍板。用 0 占位让 ZentaoEnv 类型满足；这两个 endpoint 不读这两个字段。 */
-function makeZentaoEnv(creds: { baseUrl: string; account: string; password: string }): ZentaoEnv {
-  return { ...creds, projectId: 0, moduleId: 0 }
-}
+// v0.5.2 P0 重构：6 个 ZENTAO_* MSG case 抽到 handlers/zentao.ts
+import {
+  handleZentaoTestConnection,
+  handleZentaoListProjects,
+  handleZentaoListUsers,
+  handleZentaoListModules,
+  handleZentaoPingCookie,
+  handleZentaoClearCache
+} from '@/background/handlers/zentao'
 
 const RETRY_ALARM = 'mooRetry'
 
@@ -309,63 +304,30 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
           sendResponse({ ok: true })
           break
         }
+        // v0.5.2 P0 重构：6 个 ZENTAO_* case 抽到 src/background/handlers/zentao.ts
+        // 单测可独立调用；未来加 zentao MSG 不动主 switch
         case MSG.ZENTAO_TEST_CONNECTION: {
-          const { baseUrl, account, password } = message.payload
-          const loginRes = await zentaoLogin(baseUrl, account, password)
-          if (!loginRes.ok) { sendResponse({ ok: false, error: loginRes.error }); break }
-          const env = makeZentaoEnv(message.payload)
-          const ping = await zentaoPing(env)
-          if (!ping.ok) { sendResponse({ ok: false, error: ping.error }); break }
-          sendResponse({ ok: true, realname: ping.data.realname, account: ping.data.account })
+          sendResponse(await handleZentaoTestConnection(message.payload))
           break
         }
         case MSG.ZENTAO_LIST_PROJECTS: {
-          const { baseUrl, account, password } = message.payload
-          const loginRes = await zentaoLogin(baseUrl, account, password)
-          if (!loginRes.ok) { sendResponse({ ok: false, error: loginRes.error }); break }
-          const env = makeZentaoEnv(message.payload)
-          const list = await zentaoListProjects(env)
-          if (!list.ok) { sendResponse({ ok: false, error: list.error }); break }
-          sendResponse({ ok: true, projects: list.data.map(p => ({ id: p.id, name: p.name, status: p.status })) })
+          sendResponse(await handleZentaoListProjects(message.payload))
           break
         }
         case MSG.ZENTAO_LIST_USERS: {
-          const { baseUrl, account, password } = message.payload
-          const loginRes = await zentaoLogin(baseUrl, account, password)
-          if (!loginRes.ok) { sendResponse({ ok: false, error: loginRes.error }); break }
-          const env = makeZentaoEnv(message.payload)
-          const list = await zentaoListUsers(env)
-          if (!list.ok) { sendResponse({ ok: false, error: list.error }); break }
-          sendResponse({ ok: true, users: list.data })
+          sendResponse(await handleZentaoListUsers(message.payload))
           break
         }
         case MSG.ZENTAO_LIST_MODULES: {
-          const { baseUrl, account, password, projectId } = message.payload
-          if (!projectId) { sendResponse({ ok: false, error: 'projectId 必填' }); break }
-          const loginRes = await zentaoLogin(baseUrl, account, password)
-          if (!loginRes.ok) { sendResponse({ ok: false, error: loginRes.error }); break }
-          // 先 discoverProduct 拿 productId，再 listModules
-          const env: ZentaoEnv = { baseUrl, account, password, projectId, moduleId: 0 }
-          const prod = await zentaoDiscoverProduct(env)
-          if (!prod.ok) { sendResponse({ ok: false, error: prod.error }); break }
-          const modules = await zentaoListModules(env, prod.data)
-          if (!modules.ok) { sendResponse({ ok: false, error: modules.error }); break }
-          sendResponse({ ok: true, modules: modules.data })
+          sendResponse(await handleZentaoListModules(message.payload))
           break
         }
         case MSG.ZENTAO_PING_COOKIE: {
-          // v0.2.3 改：payload 含账号密码 → 调 ensureCookieSession 自动登录（cookie 没在
-          // 就用账号密码 login 同时拿 token+写 cookie）。用户不再需要手动登录禅道。
-          const env = makeZentaoEnv(message.payload)
-          const ensured = await zentaoEnsureCookie(env)
-          if (ensured.ok) sendResponse({ ok: true, realname: ensured.data.realname })
-          else sendResponse({ ok: false, error: ensured.error })
+          sendResponse(await handleZentaoPingCookie(message.payload))
           break
         }
         case MSG.ZENTAO_CLEAR_CACHE: {
-          // v0.4.7：Environment 改密码/账号/baseUrl/projectId 后必发，防 envKey 不变导致老 token 复用
-          _clearZentaoCaches()
-          sendResponse({ ok: true })
+          sendResponse(handleZentaoClearCache())
           break
         }
         default: {
