@@ -125,7 +125,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, toRef } from 'vue'
+import { computed } from 'vue'
 import type { Project } from '@/types/config'
 import { useServerCrud } from '@/composables/useServerCrud'
 import { confirmDialog } from '../components/confirm'
@@ -142,9 +142,10 @@ const emit = defineEmits<{
   (e: 'update:tokenVisible', v: boolean): void
 }>()
 
-// useServerCrud 期望 activeProject 是 Ref<Project | undefined>，
-// 直接 toRef(props, 'modelValue') 拿到响应式 ref，再 wrap 成 computed 让 undefined 兼容
-const activeProject = computed<Project | undefined>(() => toRef(props, 'modelValue').value)
+// useServerCrud 期望 activeProject 是 Ref<Project | undefined>，computed 包一层让 undefined 兼容。
+// props 本身 reactive，computed getter 内直接读 props.modelValue 即可（toRef 之前是 antipattern：
+// 每次 access new ref 立即解引用纯浪费 — general-purpose review 提的 minor）
+const activeProject = computed<Project | undefined>(() => props.modelValue)
 
 const {
   editingTemplate,

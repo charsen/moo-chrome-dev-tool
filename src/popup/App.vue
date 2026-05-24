@@ -167,6 +167,7 @@ import type { BugHistoryEntry } from '@/types/history'
 import { loadConfig, saveConfig, urlMatches } from '@/storage/config'
 import { listHistory } from '@/storage/history'
 import { relativeTime } from '@/utils/relativeTime'
+import { t } from '@/i18n'
 
 const version = ref(chrome.runtime.getManifest().version)
 // 显示尺寸 28px，用 32 比 48 更省字节 + 缩放损失更小（lighthouse image-size-responsive）
@@ -265,7 +266,7 @@ async function toggleRecording() {
       // 才有 user activation；这里 button @click → toggleRecording 是直链。
       const ok = await chrome.permissions.request({ permissions: ['tabCapture'] })
       recEnabled.value = ok
-      if (!ok) recError.value = '已取消授权'
+      if (!ok) recError.value = t('popup.permission.cancelled')
     }
   } catch (e) {
     recError.value = (e as Error).message
@@ -288,7 +289,7 @@ async function toggleHostPermission() {
     } else {
       const ok = await chrome.permissions.request({ origins: ['<all_urls>'] })
       hostEnabled.value = ok
-      if (!ok) hostError.value = '已取消授权'
+      if (!ok) hostError.value = t('popup.permission.cancelled')
     }
   } catch (e) {
     hostError.value = (e as Error).message

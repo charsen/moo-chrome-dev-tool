@@ -247,6 +247,8 @@ function addProject() {
   const p = createDefaultProject(`项目 ${draft.value.projects.length + 1}`)
   draft.value.projects.push(p)
   activeId.value = p.id
+  // 过滤态下新建项目，filteredProjects 不含新项目导致侧栏看不见 — 重置 filter 让用户看到
+  projectFilter.value = ''
 }
 
 async function removeProject(id: string) {

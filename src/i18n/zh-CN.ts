@@ -54,6 +54,9 @@ export const messages = {
 
   // ── host_permission 相关（v0.5.3 #128 改 optional）─────
   'host-permission.required': '上报功能尚未启用。请点击浏览器右上角的 Moo 图标 → 打开「允许向上报服务器发送请求」开关后再试',
+
+  // ── popup 权限开关交互文案 ────────────────────────────
+  'popup.permission.cancelled': '已取消授权',
 } as const
 
 export type MessageKey = keyof typeof messages

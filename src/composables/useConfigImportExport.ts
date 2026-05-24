@@ -105,6 +105,10 @@ export function useConfigImportExport(params: UseConfigImportExportParams) {
         params.activeId.value = params.draft.value.projects[0]?.id ?? ''
       } catch (e) {
         params.showToast(`没能读取这个文件：${(e as Error).message}。请确认是 Moo 导出的 JSON 配置文件`, 'error')
+      } finally {
+        // 解 closure 引用：input 元素没挂 DOM 上，靠 closure 续命；onchange 跑完置 null
+        // 让 GC 能立刻回收（不然多次 importConfig 留 N 个游离 input 元素 + closure）
+        input.onchange = null
       }
     }
     input.click()
