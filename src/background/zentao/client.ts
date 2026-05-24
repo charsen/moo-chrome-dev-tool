@@ -362,23 +362,40 @@ export async function ping(env: ZentaoEnv): Promise<ZentaoResult<ZentaoProfile>>
 /**
  * Settings「从禅道拉列表」用。
  *
- * v0.4.0 改走 v2：`GET /api.php/v2/projects?browseType=all&recPerPage=N&pageID=1`
- *   - browseType=all 必须显式传（v2 默认 undone 会漏掉已完成项目，用户视角丢条目是陷阱）
- *   - 分页参数从 v1 的 `limit` 改成 v2 的 `recPerPage`（v2 不认 limit）
- *   - 响应仍是 `{projects:[...]}`（实测；v2 可能多包一层 status:'success'，解析里兼容）
+ * 双路探测（v0.4.3）：
+ *   1. v2 `GET /api.php/v2/projects?browseType=all&recPerPage=N&pageID=1`
+ *      - browseType=all 防 v2 默认 undone 陷阱；分页用 recPerPage（v2 不认 limit）
+ *   2. v2 拿不到 → fallback v1 `GET /api.php/v1/projects?limit=N`
+ *
+ * 双轨原因：v0.4.0 hard 切换 v2 后多次踩到「不同禅道实例 v2 响应 schema 不一致」陷阱
+ * （ping/discoverProduct/listProjects 同类问题）。v1 endpoint dogfood 多月稳定。
+ * 见 [[feedback_zentao_v2_dual_track_rule]]。
  */
 export async function listProjects(env: ZentaoEnv, limit = 50): Promise<ZentaoResult<ZentaoProjectSummary[]>> {
   return withAuth(env, async (token) => {
-    const url = `${trimBase(env.baseUrl)}/api.php/v2/projects?browseType=all&recPerPage=${limit}&pageID=1`
-    const res = await fetch(url, {
+    // ── 路径 1：v2 ──
+    const v2Url = `${trimBase(env.baseUrl)}/api.php/v2/projects?browseType=all&recPerPage=${limit}&pageID=1`
+    const v2Res = await fetch(v2Url, {
       credentials: 'omit',
       headers: buildHeaders({ 'Token': token })
     })
-    if (res.status === 401) return { _retry: true as const }
-    const body = await readJson(res) as { projects?: ZentaoProjectSummary[]; status?: string; result?: boolean; message?: string } | null
-    if (isV2AuthExpired(body)) return { _retry: true as const }
-    if (res.ok && Array.isArray(body?.projects)) return { ok: true as const, data: body.projects }
-    return { ok: false as const, error: `HTTP ${res.status}` }
+    if (v2Res.status === 401) return { _retry: true as const }
+    if (v2Res.ok) {
+      const body = await readJson(v2Res) as { projects?: ZentaoProjectSummary[]; status?: string; result?: boolean; message?: string } | null
+      if (isV2AuthExpired(body)) return { _retry: true as const }
+      if (Array.isArray(body?.projects)) return { ok: true as const, data: body.projects }
+    }
+    // ── 路径 2：v1 fallback ──
+    const v1Url = `${trimBase(env.baseUrl)}/api.php/v1/projects?limit=${limit}`
+    const v1Res = await fetch(v1Url, {
+      credentials: 'omit',
+      headers: buildHeaders({ 'Token': token })
+    })
+    if (v1Res.status === 401) return { _retry: true as const }
+    if (!v1Res.ok) return { ok: false as const, error: `HTTP ${v1Res.status}（v1 projects fallback）` }
+    const v1Body = await readJson(v1Res) as { projects?: ZentaoProjectSummary[] } | null
+    if (Array.isArray(v1Body?.projects)) return { ok: true as const, data: v1Body!.projects! }
+    return { ok: false as const, error: 'v2/v1 项目列表响应都不识别' }
   })
 }
 
@@ -388,25 +405,39 @@ export async function listProjects(env: ZentaoEnv, limit = 50): Promise<ZentaoRe
  * 拉禅道全公司用户列表。SubmitDialog「指派给」下拉用 —— 实测 v1/v2 都没有「按项目过滤的项目成员」
  * 端点（v1 试过 404），列全公司用户是 next-best：前端搜索过滤即可。
  *
- * v0.4.0 改走 v2：`GET /api.php/v2/users?recPerPage=N&pageID=1`
- *   - 分页改用 recPerPage + pageID（v1 的 limit 不认）
- *   - recPerPage 上限 1000（v2 文档明示），中小公司 < 200 单页够
- *   - 响应 `{status:'success', users:[...]}`（v2 列表端点统一外层 status，解析里兼容）
+ * 双路探测（v0.4.3）：
+ *   1. v2 `GET /api.php/v2/users?recPerPage=N&pageID=1`（recPerPage 上限 1000）
+ *   2. v2 拿不到 → fallback v1 `GET /api.php/v1/users?limit=N`
+ *
+ * 见 [[feedback_zentao_v2_dual_track_rule]]。
  */
 export async function listUsers(env: ZentaoEnv, limit = 200): Promise<ZentaoResult<ZentaoUserSummary[]>> {
   return withAuth(env, async (token) => {
-    const url = `${trimBase(env.baseUrl)}/api.php/v2/users?recPerPage=${limit}&pageID=1`
-    const res = await fetch(url, {
+    const v2Url = `${trimBase(env.baseUrl)}/api.php/v2/users?recPerPage=${limit}&pageID=1`
+    const v2Res = await fetch(v2Url, {
       credentials: 'omit',
       headers: buildHeaders({ 'Token': token })
     })
-    if (res.status === 401) return { _retry: true as const }
-    const body = await readJson(res) as { users?: ZentaoUserSummary[]; status?: string; result?: boolean; message?: string } | null
-    if (isV2AuthExpired(body)) return { _retry: true as const }
-    if (res.ok && Array.isArray(body?.users)) {
-      return { ok: true as const, data: body.users.map(u => ({ id: u.id, account: u.account, realname: u.realname, role: u.role })) }
+    if (v2Res.status === 401) return { _retry: true as const }
+    if (v2Res.ok) {
+      const body = await readJson(v2Res) as { users?: ZentaoUserSummary[]; status?: string; result?: boolean; message?: string } | null
+      if (isV2AuthExpired(body)) return { _retry: true as const }
+      if (Array.isArray(body?.users)) {
+        return { ok: true as const, data: body.users.map(u => ({ id: u.id, account: u.account, realname: u.realname, role: u.role })) }
+      }
     }
-    return { ok: false as const, error: `HTTP ${res.status}` }
+    const v1Url = `${trimBase(env.baseUrl)}/api.php/v1/users?limit=${limit}`
+    const v1Res = await fetch(v1Url, {
+      credentials: 'omit',
+      headers: buildHeaders({ 'Token': token })
+    })
+    if (v1Res.status === 401) return { _retry: true as const }
+    if (!v1Res.ok) return { ok: false as const, error: `HTTP ${v1Res.status}（v1 users fallback）` }
+    const v1Body = await readJson(v1Res) as { users?: ZentaoUserSummary[] } | null
+    if (Array.isArray(v1Body?.users)) {
+      return { ok: true as const, data: v1Body!.users!.map(u => ({ id: u.id, account: u.account, realname: u.realname, role: u.role })) }
+    }
+    return { ok: false as const, error: 'v2/v1 用户列表响应都不识别' }
   })
 }
 
@@ -425,58 +456,67 @@ export interface ZentaoBugDetail {
   lastEditedDate?: string
 }
 
+type BugRawFields = {
+  id?: number; status?: string; subStatus?: string; deleted?: boolean | string
+  assignedTo?: string | { account?: string; realname?: string }
+  resolution?: string; resolvedBy?: string; closedBy?: string; lastEditedDate?: string
+}
+
+function shapeBugDetail(bug: BugRawFields): ZentaoBugDetail {
+  const assignedToObj = typeof bug.assignedTo === 'object' ? bug.assignedTo : null
+  return {
+    id: bug.id as number,
+    status: bug.status ?? 'unknown',
+    subStatus: bug.subStatus || undefined,
+    deleted: bug.deleted === true || bug.deleted === '1' || bug.deleted === 'true',
+    assignedTo: assignedToObj?.account || (typeof bug.assignedTo === 'string' ? bug.assignedTo : undefined),
+    assignedToName: assignedToObj?.realname,
+    resolution: bug.resolution || undefined,
+    resolvedBy: bug.resolvedBy || undefined,
+    closedBy: bug.closedBy || undefined,
+    lastEditedDate: bug.lastEditedDate || undefined
+  }
+}
+
 /**
- * 拉单条 bug 详情 —— 历史 Tab 状态回查用。v0.3.0 新增，v0.4.0 改走 v2。
+ * 拉单条 bug 详情 —— 历史 Tab 状态回查用。v0.3.0 新增，v0.4.0 改走 v2，v0.4.3 双轨化。
  *
- * v2 端点：`GET /api.php/v2/bugs/{bugid}`
- *   - 响应嵌套一层 `{status:'success', bug:{...}}`（v1 是顶层平铺，v2 多包一层）
- *   - 字段集跟 v1 完全一致（subStatus / resolution / resolvedBy / closedBy / lastEditedDate
- *     全部都在），v1 → v2 只是 shape 变化，没新字段
- *   - 同样 token 鉴权
+ * 双路探测：
+ *   1. v2 `GET /api.php/v2/bugs/{bugid}` — 响应嵌套 `{status, bug:{...}}` 或平铺都兜
+ *   2. v2 schema 不识别 → fallback v1 `GET /api.php/v1/bugs/{bugid}`（v1 顶层平铺）
+ *
+ * 见 [[feedback_zentao_v2_dual_track_rule]]。
  */
 export async function getBug(env: ZentaoEnv, bugId: number): Promise<ZentaoResult<ZentaoBugDetail>> {
   return withAuth(env, async (token) => {
-    const url = `${trimBase(env.baseUrl)}/api.php/v2/bugs/${bugId}`
-    const res = await fetch(url, {
+    const v2Url = `${trimBase(env.baseUrl)}/api.php/v2/bugs/${bugId}`
+    const v2Res = await fetch(v2Url, {
       credentials: 'omit',
       headers: buildHeaders({ 'Token': token })
     })
-    if (res.status === 401) return { _retry: true as const }
-    if (res.status === 404) return { ok: false as const, error: 'bug 不存在或已彻底删除' }
-    if (!res.ok) return { ok: false as const, error: `HTTP ${res.status}` }
-    // v2: 嵌套 {status:'success', bug:{...}}；万一禅道实例返平铺（v1 兼容模式），也兜住
-    const body = await readJson(res) as {
-      status?: string
-      result?: boolean; message?: string
-      bug?: {
-        id?: number; status?: string; subStatus?: string; deleted?: boolean | string
-        assignedTo?: string | { account?: string; realname?: string }
-        resolution?: string; resolvedBy?: string; closedBy?: string; lastEditedDate?: string
-      }
-      // 平铺兜底（v1 风格）
-      id?: number; subStatus?: string; deleted?: boolean | string
-      assignedTo?: string | { account?: string; realname?: string }
-      resolution?: string; resolvedBy?: string; closedBy?: string; lastEditedDate?: string
-    } | null
-    if (isV2AuthExpired(body)) return { _retry: true as const }
-    const bug = body?.bug ?? (body && typeof body.id === 'number' ? body : null)
-    if (!bug || typeof bug.id !== 'number') return { ok: false as const, error: 'bug 详情响应格式不对' }
-    const assignedToObj = typeof bug.assignedTo === 'object' ? bug.assignedTo : null
-    return {
-      ok: true as const,
-      data: {
-        id: bug.id,
-        status: bug.status ?? 'unknown',
-        subStatus: bug.subStatus || undefined,
-        deleted: bug.deleted === true || bug.deleted === '1' || bug.deleted === 'true',
-        assignedTo: assignedToObj?.account || (typeof bug.assignedTo === 'string' ? bug.assignedTo : undefined),
-        assignedToName: assignedToObj?.realname,
-        resolution: bug.resolution || undefined,
-        resolvedBy: bug.resolvedBy || undefined,
-        closedBy: bug.closedBy || undefined,
-        lastEditedDate: bug.lastEditedDate || undefined
-      }
+    if (v2Res.status === 401) return { _retry: true as const }
+    if (v2Res.status === 404) return { ok: false as const, error: 'bug 不存在或已彻底删除' }
+    if (v2Res.ok) {
+      const body = await readJson(v2Res) as {
+        status?: string; result?: boolean; message?: string
+        bug?: BugRawFields
+      } & BugRawFields | null
+      if (isV2AuthExpired(body)) return { _retry: true as const }
+      const bug = body?.bug ?? (body && typeof body.id === 'number' ? body : null)
+      if (bug && typeof bug.id === 'number') return { ok: true as const, data: shapeBugDetail(bug) }
     }
+    // ── v1 fallback：顶层平铺 ──
+    const v1Url = `${trimBase(env.baseUrl)}/api.php/v1/bugs/${bugId}`
+    const v1Res = await fetch(v1Url, {
+      credentials: 'omit',
+      headers: buildHeaders({ 'Token': token })
+    })
+    if (v1Res.status === 401) return { _retry: true as const }
+    if (v1Res.status === 404) return { ok: false as const, error: 'bug 不存在或已彻底删除' }
+    if (!v1Res.ok) return { ok: false as const, error: `HTTP ${v1Res.status}（v1 bug fallback）` }
+    const v1Body = await readJson(v1Res) as BugRawFields | null
+    if (!v1Body || typeof v1Body.id !== 'number') return { ok: false as const, error: 'v2/v1 bug 详情响应都不识别' }
+    return { ok: true as const, data: shapeBugDetail(v1Body) }
   })
 }
 
@@ -515,17 +555,18 @@ export async function listModules(env: ZentaoEnv, productId: number): Promise<Ze
 /**
  * 拿 project 关联的 product id。
  *
- * v0.4.0 改走 v2 项目详情：`GET /api.php/v2/projects/{projectid}`
- *   - 期望响应里有 `products` 字段（v2 创建项目接口请求体里有 `"products":[1]` 是强信号，
- *     创建时传得进去意味着对象里持有 products 数组）
- *   - 字段可能是 number[]（ID 列表）也可能是 Array<{id, name}>（对象列表），两种都兼容
- *   - dogfood 实测验证；若禅道实例返不出 products 字段，报「未关联」让用户去禅道里绑
+ * 双路探测：v2 项目详情 → v1 products?project= fallback。
  *
- * 为啥不用 v2 `/v2/products?project=`：v2 product 列表端点**不支持** `project` 过滤参数，
- * 响应里 `projects` 字段是「关联项目**数量**」数字（实测查证），筛不出来。
- * v2 「项目集 → 项目 → 产品」是单向 RESTful nested，不允许从产品反查项目。
+ * 先试 v2 `GET /api.php/v2/projects/{projectid}`：响应里有 `products` 字段就用。
  *
- * 结果按 baseUrl+projectId 缓存 24h（避免每次 submit 都 fetch）。
+ * v0.4.3 fallback：v2 拿不到（200 但 products 字段缺/空/格式不识别 / HTTP 非 401/404 错误）
+ * → 退到 v1 `GET /api.php/v1/products?project={projectid}`（v0.3.x 一直工作）。
+ * 原因：dogfood 发现不同禅道实例 v2 项目详情 schema 差异大，有的实例根本不返 products 字段，
+ * 跟 v0.4.2 ping 的 v2 /users/{id} 是同类问题。v1 endpoint dogfood 多月实测稳定。
+ *
+ * 401/404 不 fallback：401 直接走 retry 链；404 是项目本身不存在，v1 也救不了。
+ *
+ * 结果按 baseUrl+projectId 缓存 24h。
  */
 export async function discoverProduct(env: ZentaoEnv): Promise<ZentaoResult<number>> {
   const pk = projectKey(env)
@@ -534,37 +575,56 @@ export async function discoverProduct(env: ZentaoEnv): Promise<ZentaoResult<numb
     return { ok: true, data: cached.productId }
   }
   return withAuth(env, async (token) => {
-    const url = `${trimBase(env.baseUrl)}/api.php/v2/projects/${env.projectId}`
-    const res = await fetch(url, {
+    // ── 路径 1：v2 项目详情 ──
+    const v2Url = `${trimBase(env.baseUrl)}/api.php/v2/projects/${env.projectId}`
+    const v2Res = await fetch(v2Url, {
       credentials: 'omit',
       headers: buildHeaders({ 'Token': token })
     })
-    if (res.status === 401) return { _retry: true as const }
-    if (res.status === 404) return { ok: false as const, error: `项目 ${env.projectId} 不存在` }
-    if (!res.ok) return { ok: false as const, error: `HTTP ${res.status}` }
-    // v2 项目详情可能嵌套 {status, project:{...}} 也可能平铺，两种都兜
-    const body = await readJson(res) as {
-      status?: string
-      result?: boolean; message?: string
-      project?: { id?: number; products?: Array<number | { id?: number }> }
-      id?: number
-      products?: Array<number | { id?: number }>
+    if (v2Res.status === 401) return { _retry: true as const }
+    if (v2Res.status === 404) return { ok: false as const, error: `项目 ${env.projectId} 不存在` }
+
+    if (v2Res.ok) {
+      const body = await readJson(v2Res) as {
+        status?: string
+        result?: boolean; message?: string
+        project?: { id?: number; products?: Array<number | { id?: number }> }
+        id?: number
+        products?: Array<number | { id?: number }>
+      } | null
+      if (isV2AuthExpired(body)) return { _retry: true as const }
+      const proj = body?.project ?? (body && typeof body.id === 'number' ? body : null)
+      const products = proj?.products
+      if (Array.isArray(products) && products.length > 0) {
+        const firstRaw = products[0]
+        const productId = typeof firstRaw === 'number'
+          ? firstRaw
+          : (firstRaw && typeof firstRaw.id === 'number' ? firstRaw.id : NaN)
+        if (Number.isFinite(productId)) {
+          productCache.set(pk, { productId, cachedAt: Date.now() })
+          return { ok: true as const, data: productId }
+        }
+      }
+      // v2 拿不到 → 进 v1 fallback（不直接报错）
+    }
+
+    // ── 路径 2：v1 fallback ──
+    const v1Url = `${trimBase(env.baseUrl)}/api.php/v1/products?project=${env.projectId}`
+    const v1Res = await fetch(v1Url, {
+      credentials: 'omit',
+      headers: buildHeaders({ 'Token': token })
+    })
+    if (v1Res.status === 401) return { _retry: true as const }
+    if (!v1Res.ok) return { ok: false as const, error: `HTTP ${v1Res.status}（v1 product fallback）` }
+    const v1Body = await readJson(v1Res) as {
+      products?: Array<{ id?: number; name?: string }>
     } | null
-    if (isV2AuthExpired(body)) return { _retry: true as const }
-    const proj = body?.project ?? (body && typeof body.id === 'number' ? body : null)
-    const products = proj?.products
-    if (!Array.isArray(products) || products.length === 0) {
+    const v1First = v1Body?.products?.[0]
+    if (!v1First || typeof v1First.id !== 'number') {
       return { ok: false as const, error: '该项目未关联任何 product；请先在禅道里给项目绑定 product' }
     }
-    const firstRaw = products[0]
-    const productId = typeof firstRaw === 'number'
-      ? firstRaw
-      : (firstRaw && typeof firstRaw.id === 'number' ? firstRaw.id : NaN)
-    if (!Number.isFinite(productId)) {
-      return { ok: false as const, error: 'v2 项目详情响应里 products 字段格式不识别' }
-    }
-    productCache.set(pk, { productId, cachedAt: Date.now() })
-    return { ok: true as const, data: productId }
+    productCache.set(pk, { productId: v1First.id, cachedAt: Date.now() })
+    return { ok: true as const, data: v1First.id }
   })
 }
 

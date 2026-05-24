@@ -165,6 +165,50 @@ describe('getBug — v0.4.0 走 /api.php/v2/bugs/{id} + 嵌套 shape 解析', ()
       expect(r.data.assignedToName).toBe('大卫')
     }
   })
+
+  it('v0.4.3 fallback · v2 schema 不识别 → v1 平铺拿到', async () => {
+    const calls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url)
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/bugs/5555')) {
+        // v2 schema 异常：不返 bug 也不返平铺 id
+        return mockJsonRes({ status: 'success', data: { weirdShape: true } })
+      }
+      if (url.includes('/api.php/v1/bugs/5555')) {
+        return mockJsonRes({ id: 5555, status: 'resolved', resolution: 'fixed', deleted: '0' })
+      }
+      return mockJsonRes({})
+    }))
+    const r = await getBug(env, 5555)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data.id).toBe(5555)
+      expect(r.data.status).toBe('resolved')
+      expect(r.data.resolution).toBe('fixed')
+    }
+    expect(calls.some(u => u.includes('/api.php/v1/bugs/5555'))).toBe(true)
+  })
+
+  it('v0.4.3 fallback · v2 + v1 都不识别 → 报「都不识别」', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/bugs/')) {
+        return mockJsonRes({ status: 'success' })
+      }
+      if (url.includes('/api.php/v1/bugs/')) {
+        return mockJsonRes({ noIdField: true })
+      }
+      return mockJsonRes({})
+    }))
+    const r = await getBug(env, 3333)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('都不识别')
+  })
 })
 
 describe('discoverProduct — v0.4.0 走 /api.php/v2/projects/{pid} 取 products 首条', () => {
@@ -207,27 +251,61 @@ describe('discoverProduct — v0.4.0 走 /api.php/v2/projects/{pid} 取 products
     if (r.ok) expect(r.data).toBe(33)
   })
 
-  it('空 products 数组：报「未关联 product」', async () => {
+  it('v0.4.3 fallback · v2 空 products → 退 v1 拿到', async () => {
+    const calls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url)
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/projects/26')) {
+        return mockJsonRes({ id: 26, products: [] })
+      }
+      if (url.includes('/api.php/v1/products?project=26')) {
+        return mockJsonRes({ products: [{ id: 77, name: '产品 fallback' }] })
+      }
+      return mockJsonRes({})
+    }))
+    const r = await discoverProduct(env)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.data).toBe(77)
+    expect(calls.some(u => u.includes('/api.php/v1/products?project=26'))).toBe(true)
+  })
+
+  it('v0.4.3 fallback · v2 缺 products 字段 → 退 v1 拿到', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url.includes('/users/login')) {
         return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
       }
-      return mockJsonRes({ id: 26, products: [] })
+      if (url.includes('/api.php/v2/projects/26')) {
+        return mockJsonRes({ id: 26 })
+      }
+      if (url.includes('/api.php/v1/products?project=26')) {
+        return mockJsonRes({ products: [{ id: 88, name: 'p' }] })
+      }
+      return mockJsonRes({})
+    }))
+    const r = await discoverProduct(env)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.data).toBe(88)
+  })
+
+  it('v0.4.3 fallback · v2 缺 + v1 也空 → 报「未关联」', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/projects/26')) {
+        return mockJsonRes({ id: 26, products: [] })
+      }
+      if (url.includes('/api.php/v1/products?project=26')) {
+        return mockJsonRes({ products: [] })
+      }
+      return mockJsonRes({})
     }))
     const r = await discoverProduct(env)
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.error).toContain('未关联任何 product')
-  })
-
-  it('响应缺 products 字段：报「未关联 product」', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      if (url.includes('/users/login')) {
-        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
-      }
-      return mockJsonRes({ id: 26 })
-    }))
-    const r = await discoverProduct(env)
-    expect(r.ok).toBe(false)
   })
 
   it('项目不存在（404）：返 projectId 错误', async () => {
@@ -284,13 +362,94 @@ describe('listProjects/listUsers — v0.4.0 URL 走 v2 + 关键查询参数', ()
       if (url.includes('/users/login')) {
         return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
       }
-      capturedUrl = url
-      return mockJsonRes({ users: [] })
+      // 老用例：用响应里有 users:[] 走 v2 成功路径（不进 fallback）
+      if (url.includes('/api.php/v2/users')) {
+        capturedUrl = url
+        return mockJsonRes({ users: [] })
+      }
+      return mockJsonRes({})
     }))
     await listUsers(env, 200)
     expect(capturedUrl).toContain('/api.php/v2/users')
     expect(capturedUrl).toContain('recPerPage=200')
     expect(capturedUrl).not.toContain('limit=')
+  })
+
+  it('v0.4.3 fallback · listProjects v2 schema 不识别 → v1 拿到', async () => {
+    const { listProjects } = await import('@/background/zentao/client')
+    const calls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url)
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/projects')) {
+        return mockJsonRes({ status: 'success', data: {} })
+      }
+      if (url.includes('/api.php/v1/projects')) {
+        return mockJsonRes({ projects: [{ id: 1, name: 'P1', type: 'project', status: 'doing' }] })
+      }
+      return mockJsonRes({})
+    }))
+    const r = await listProjects(env, 50)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.data[0].id).toBe(1)
+    expect(calls.some(u => u.includes('/api.php/v1/projects?limit=50'))).toBe(true)
+  })
+
+  it('v0.4.3 fallback · listProjects v2 + v1 都不识别 → 错误', async () => {
+    const { listProjects } = await import('@/background/zentao/client')
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/projects')) return mockJsonRes({})
+      if (url.includes('/api.php/v1/projects')) return mockJsonRes({ noProjects: true })
+      return mockJsonRes({})
+    }))
+    const r = await listProjects(env, 50)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('都不识别')
+  })
+
+  it('v0.4.3 fallback · listUsers v2 schema 不识别 → v1 拿到', async () => {
+    const { listUsers } = await import('@/background/zentao/client')
+    const calls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url)
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/users')) {
+        return mockJsonRes({ status: 'success', data: { wrongShape: 1 } })
+      }
+      if (url.includes('/api.php/v1/users')) {
+        return mockJsonRes({ users: [{ id: 9, account: 'alice', realname: '爱丽丝', role: 'dev' }] })
+      }
+      return mockJsonRes({})
+    }))
+    const r = await listUsers(env, 200)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data[0].account).toBe('alice')
+      expect(r.data[0].realname).toBe('爱丽丝')
+    }
+    expect(calls.some(u => u.includes('/api.php/v1/users?limit=200'))).toBe(true)
+  })
+
+  it('v0.4.3 fallback · listUsers v2 + v1 都不识别 → 错误', async () => {
+    const { listUsers } = await import('@/background/zentao/client')
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/users')) return mockJsonRes({})
+      if (url.includes('/api.php/v1/users')) return mockJsonRes({ wrongShape: true })
+      return mockJsonRes({})
+    }))
+    const r = await listUsers(env, 200)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('都不识别')
   })
 })
 
