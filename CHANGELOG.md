@@ -2,6 +2,79 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.6.0
+
+2026-05-24 发版。**⚠️ BREAKING** —— `host_permissions` 从 mandatory `<all_urls>` 改 **optional**（CWS 上架关键单点）。**用户明示放行跳手测，按程序化基线 + agent review 结论直接发**。21 commit 累积，按 PLAN_v1.0 完成 P0 router 化 / IssueAdapter 实装 / P1 Environment 拆分 / P3 retryQueue 多轨 / #128 host_permissions optional / i18n 留口子 / +135 单测（406 → 541）。
+
+### ⚠️ BREAKING + 升级指南
+
+- **manifest 改 `optional_host_permissions: ["<all_urls>"]`** — 老用户升级后**第一次启动会自动弹 popup banner**「需要授权才能上报到禅道/webhook」，点 banner 里的「一键启用」按钮即可
+- **若 banner 不见**（已被点过 dismiss / 不在 popup 上下文）→ 手动点 Chrome 工具栏右上角 Moo 图标，popup 顶部会有橙色提示条
+- **不启用会怎样**：上报禅道 / webhook 报「需要授权」；history 浏览 / payload 查看 / 录屏完全不受影响（这些不需要 host 权限）
+- **为什么改**：CWS 政策要求扩展按需声明权限。`<all_urls>` mandatory 会让审核扣分 + 用户安装时看到吓人的「读取所有网站数据」对话框。改 optional 后默认装上 0 权限，用到再问
+
+### 🔵 P0 router 化（onMessage 1000 → 254 行）
+
+- `src/background/index.ts` 1000 → **254** 行，18 个 onMessage case 全部下放到 6 个 handler 文件
+  - `handlers/zentao.ts`（ping / discoverProduct / listProjects / listModules / listUsers / submitBug 6 case）
+  - `handlers/submit.ts`（submit 主路径）
+  - `handlers/historyStatus.ts`（history 重提交 + retry 状态）
+  - `handlers/simple.ts`（ping / getConfig / setConfig / 杂 case）
+  - `handlers/record.ts`（录屏 state 流转 + SW spin-up + 广播 17 单测）
+- 单测开门：handler 层 +45 单测（之前 onMessage 内联无法测）
+- onBeforeUnmount / sender 校验三件套（id + tab + frame）每个 handler 都补齐
+
+### 🔵 IssueAdapter 实装（决策 3）
+
+- `src/background/adapters/IssueAdapter.ts` interface + 4 adapter 文件：
+  - `webhookAdapter.ts`（webhook server 路）
+  - `zentaoAdapter.ts`（禅道 v2 + v1 fallback 路）
+  - `noopAdapter.ts`（未配置兜底）
+  - `index.ts`（dispatch 路由）
+- `handlers/submit` + `handlers/historyStatus` + `retryQueue.doFlush` 全部切 `adapter.submit / adapter.retryFromPayload` dispatch
+- +31 单测覆盖 type-fit + 两个 adapter 主路径 + dispatch 选择
+
+### 🔵 P1 Environment.vue 拆（1206 → 582 行）
+
+- 抽 3 composable：`useZentaoEnvironment` / `useServerCrud` / `useConfigImportExport`
+- 拆 2 子组件：`EnvironmentZentao.vue` + `EnvironmentWebhook.vue`
+- 主文件 1206 → **582** 行，子组件各 < 350 行
+- 单测 +27（composable 层之前裸奔）
+
+### 🔵 P3 retryQueue 多轨（#125）
+
+- `retryQueue.doFlush` 切 `adapter.retryFromPayload` dispatch
+- webhook / 禅道 retry 路径分轨，错误文案带轨道标识
+
+### 🔵 #128 host_permissions optional（CWS 关键 / BREAKING）
+
+- `manifest.json` 改 `optional_host_permissions: ["<all_urls>"]`
+- `popup` 加权限开关 UI + 一键启用 / 撤销按钮
+- `handlers/zentao` 6 路 fetch 前 check `chrome.permissions.contains({ origins })`，没权限直接报「需要授权」不打洞
+- `handlers/submit` + `historyStatus` + `retryQueue` 同款 check
+- `onInstalled` 检测 v0.5.x → v0.6.0 upgrade 路径 → popup 自动弹 banner 引导启用
+
+### 🔵 i18n 留口子
+
+- 建 `src/i18n/` 框架（dict + getText helper + 测试桩）
+- 字典 17 条文案 PoC（录屏边缘 / 禅道错误 / history fallback）
+- 调用站迁移 10 处（先迁高频的，剩余调用点 v0.7.0 渐进）
+- +6 单测覆盖 missing-key fallback + locale switch
+
+### 🟢 单测 +135（406 → 541）
+
+- handler 层 +45（submit / historyStatus / record / simple）
+- IssueAdapter +31
+- composable +27（useZentaoEnvironment + useServerCrud）
+- i18n +6
+- 其他细节 +26（permissions check / onInstalled banner 等）
+
+### 决策小记（跳手测理由）
+
+按 CLAUDE.md 三条标准：① **是 BREAKING**（host_permissions optional）② **全绿**（vitest 541/548 + e2e 100 + type-check + build）③ **没 dogfood**（21 commit 累积）—— 三条不齐。但**用户明示「我没空测了，你们全部搞定吧」**放行，按规则可以跳手测。已通过 release notes 显著标 BREAKING + onInstalled 升级 banner 引导降低用户感知摩擦。
+
+**测试**：541 单测全绿（406 → 541 = +135）+ 7 skipped + 100 e2e + vue-tsc 0 报错 + build pass。
+
 ## v0.5.1
 
 2026-05-24 发版。无 BREAKING。**第 8 波 review** —— 换 3 个新视角 agent：**release-captain（首次）+ Plan（首次）+ vue-craft 三审**。挖出之前 7 波都没碰的工程层 + 战略层维度。修 3 严重 + 11 中等 + 发 docs/PLAN_v1.0.md。

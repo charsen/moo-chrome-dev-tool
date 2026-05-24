@@ -4,7 +4,9 @@
 
 ## 一句话现状
 
-**v0.5.1 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.5.1/moo-chrome-dev-tool-0.5.1.zip)（sha256 `6bafb1570c31316cf5eac113428852ad23a89fc829e5f1ef0b757c4a5a944a6f`）。**第 8 波 review** —— 换 3 个新视角 agent（**release-captain + Plan + vue-craft 三审**）。修 3 严重 release.mjs 工程漏洞（push 失败 rollback / attach_files 失败 exit / e2e 自动跑）+ 6 UI 同款漏扫（PayloadEditorModal focusTrap / popup aria-live / fail vs open token / KeepAlive listener 暂停）+ 5 工程改进（PII git grep / skill 沉淀元教训 / dogfood 节奏明文）+ **发 docs/PLAN_v1.0.md**（v0.5.0 → v1.0 战略路线：CWS 上架 / `<all_urls>` 改 optional / IssueAdapter 抽象 / 节奏改 2-3 周 minor）。399 单测 + 90 e2e。
+**v0.6.0 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.6.0/moo-chrome-dev-tool-0.6.0.zip)（sha256 待回填）。**⚠️ BREAKING** —— host_permissions 改 optional（CWS 关键单点），升级后 popup 自动弹 banner 引导一键启用。21 commit 累积 PLAN_v1.0 推进：P0 router 化（bg/index 1000 → 254 行 / onMessage 18 case 下放 6 handler）+ IssueAdapter 实装（4 adapter + dispatch）+ P1 Environment.vue 拆（1206 → 582 行 + 3 composable + 2 子组件）+ P3 retryQueue 多轨 + #128 host_permissions optional + i18n 留口子 + 单测 +135（406 → 541）。用户明示放行跳手测。541 单测 + 100 e2e。
+
+**v0.5.1 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.5.1/moo-chrome-dev-tool-0.5.1.zip)（sha256 `6bafb1570c31316cf5eac113428852ad23a89fc829e5f1ef0b757c4a5a944a6f`）。**第 8 波 review** —— 换 3 个新视角 agent（**release-captain + Plan + vue-craft 三审**）。修 3 严重 release.mjs 工程漏洞 + 6 UI 同款漏扫 + 5 工程改进 + 发 docs/PLAN_v1.0.md。399 单测 + 90 e2e。
 
 **v0.5.0 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.5.0/moo-chrome-dev-tool-0.5.0.zip)（sha256 `6589763d24a13ddb66d8a7c24cddece19dbc2523d13031e3ca285c46a1840f5d`）。第 7 波 review — 换 lab-tester + code-simplifier + mv3-pro 二次找出测试 debt + 代码重复 + MV3 深陷阱。399 单测（366 → 399 = +33） + 90 e2e。
 
