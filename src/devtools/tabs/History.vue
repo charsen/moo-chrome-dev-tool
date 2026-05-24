@@ -8,7 +8,7 @@
       <button class="moo-btn moo-btn--danger" @click="clearAll" :disabled="!list.length">清空</button>
     </header>
 
-    <div v-if="toast" :class="['moo-toast', `moo-toast--${toastKind}`]">{{ toast }}</div>
+    <div v-if="toast" :class="['moo-toast', `moo-toast--${toastKind}`]" :role="toastKind === 'error' ? 'alert' : 'status'" aria-live="polite">{{ toast }}</div>
 
     <div class="list" v-if="filtered.length">
       <div

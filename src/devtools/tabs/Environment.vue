@@ -1,7 +1,7 @@
 <template>
   <div v-if="!loaded" class="loading">加载配置中…</div>
   <div v-else class="env-wrap">
-    <div v-if="toast" :class="['moo-toast', `moo-toast--${toastKind}`]">{{ toast }}</div>
+    <div v-if="toast" :class="['moo-toast', `moo-toast--${toastKind}`]" :role="toastKind === 'error' ? 'alert' : 'status'" aria-live="polite">{{ toast }}</div>
     <div class="save-bar" :class="`is-${saveState}`">
       <span class="status-msg">
         <template v-if="saveState === 'saving'">保存中…</template>

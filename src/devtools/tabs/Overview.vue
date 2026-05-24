@@ -21,7 +21,8 @@
           <span class="kind-count">{{ errors.length }}</span>
         </button>
       </div>
-      <input v-model="filter" placeholder="按 URL / 错误信息过滤" class="filter" />
+      <!-- v0.4.9：用 filterDraft 做 debounce 防大列表打字延迟（跟 History.vue 拉齐） -->
+      <input v-model="filterDraft" placeholder="按 URL / 错误信息过滤" class="filter" />
       <select v-model.number="windowMs" class="select" aria-label="时间窗口">
         <option :value="5000">最近 5s</option>
         <option :value="15000">最近 15s</option>
@@ -159,7 +160,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import type { CapturedRequest } from '@/types/requests'
 import type { ConsoleError } from '@/types/errors'
 import { MSG, type GetErrorsRes, type GetRequestsRes } from '@/types/messages'
@@ -178,7 +179,11 @@ const requests = ref<CapturedRequest[]>([])
 const errors = ref<ConsoleError[]>([])
 const loading = ref(false)
 const error = ref('')
+// v0.4.9：filterDraft 是 input 双向绑定（每键变），filter 是 150ms debounce 后真用于过滤（防大列表卡）。
+// 同款方案见 History.vue
+const filterDraft = ref('')
 const filter = ref('')
+let filterDebounce: number | undefined
 const windowMs = ref(30000)
 const autoRefresh = ref(true)
 const openId = ref('')
@@ -252,9 +257,12 @@ const timeline = computed<TimelineItem[]>(() => {
   const f = filter.value.trim().toLowerCase()
 
   const items: TimelineItem[] = []
+  // v0.4.9：NaN timestamp 防（损坏 startedAt 让 `if (ts + duration < cutoff)` 始终 false → 永远显示，
+  // 且 sort 含 NaN 行为未定义。fallback 0 让损坏条目显示在最末）
   if (kinds.value.has('request')) {
     for (const r of requests.value) {
-      const ts = new Date(r.startedAt).getTime()
+      const raw = new Date(r.startedAt).getTime()
+      const ts = Number.isFinite(raw) ? raw : 0
       if (ts + r.duration < cutoff) continue
       if (f && !String(r.url ?? '').toLowerCase().includes(f)) continue
       items.push({ kind: 'request', data: r, ts })
@@ -262,7 +270,8 @@ const timeline = computed<TimelineItem[]>(() => {
   }
   if (kinds.value.has('error')) {
     for (const e of errors.value) {
-      const ts = new Date(e.startedAt).getTime()
+      const raw = new Date(e.startedAt).getTime()
+      const ts = Number.isFinite(raw) ? raw : 0
       if (ts < cutoff) continue
       if (f && !e.message.toLowerCase().includes(f)) continue
       items.push({ kind: 'error', data: e, ts })
@@ -327,6 +336,19 @@ function isPanelVisible(): boolean {
   return document.visibilityState === 'visible'
 }
 
+// v0.4.9：filterDraft → filter 150ms debounce
+watch(filterDraft, (next) => {
+  if (filterDebounce) clearTimeout(filterDebounce)
+  filterDebounce = window.setTimeout(() => {
+    filter.value = next
+    filterDebounce = undefined
+  }, 150)
+})
+// 「清空过滤词」按钮要同时清 draft 和 filter
+watch(filter, (next) => {
+  if (next === '' && filterDraft.value !== '') filterDraft.value = ''
+})
+
 onMounted(() => {
   refresh()
   timer = window.setInterval(() => {
@@ -340,8 +362,26 @@ function onVisibilityChange() {
   if (isPanelVisible() && autoRefresh.value) refresh()
 }
 
+// v0.4.9：KeepAlive 下切 tab 时暂停 timer（之前一直跑，4 Tab 全 KeepAlive 等于 4× 后台轮询）
+onDeactivated(() => {
+  if (timer) {
+    clearInterval(timer)
+    timer = undefined
+  }
+})
+onActivated(() => {
+  if (!timer) {
+    timer = window.setInterval(() => {
+      if (autoRefresh.value && isPanelVisible()) refresh()
+    }, 1500)
+  }
+  // 切回时立刻刷一次（避免拿到陈旧数据）
+  if (autoRefresh.value && isPanelVisible()) refresh()
+})
+
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer)
+  if (filterDebounce) clearTimeout(filterDebounce)
   document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 </script>

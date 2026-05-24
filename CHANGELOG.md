@@ -2,6 +2,33 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.4.9
+
+2026-05-24 发版。无 BREAKING。**第 6 波 review** —— 跑「业务复盘 v3」3 agent 聚焦**回归 + a11y/i18n + 性能**找出 13 个问题，**5 个是 v0.4.8 修复未修干净的隐藏漏**。全修。
+
+**🔴 严重 5（回归修）**：
+- **`offscreen` 35s tripwire 不通知 content rec-bar** — v0.4.8 加 tripwire 但既不 resolve stopResolver 也不发 OFFSCREEN_AUTO_STOPPED → inactive tab 用户看 rec-bar 还亮但已停。补 `chrome.runtime.sendMessage` + `mooOffscreenAutoStopped` storage flag
+- **`addHistoryEntry` 不在 withWriteMutex 内** — v0.4.8 修了 remove/clear/update **漏了 add**，tab A 提交时 tab B 删 entry → A 写回让 X 复活。**v0.4.7 修的 4 个月 bug 路径仍开**。补 mutex
+- **`ConfirmModal.vue` 没 focus trap/还原** — onMounted 钩子只剩注释，confirmBtn ref 声明却没 `.focus()`。改用 `useFocusTrap`
+- **`redactUrl` 不脱敏 URL fragment** — OAuth implicit flow `#access_token=...&id_token=...` 整条原文之前进 history/webhook/禅道（v0.4.8 只动 searchParams）。加 `redactFragmentString` 处理 `#k=v&` 和 `#!/route?k=v` 两种形式
+- **老用户 redact.bodyKeys/headerKeys 不会自动补 v0.4.8 新加 7 keys** — normalize 看老 storage 原样保留，v0.1.x → v0.4.9 直跳用户实际仍按 2 key 脱敏。`applyMigrations` 加 `mergeRedactDefaults` step：检测 v0.1.x 默认 superset 时合并新 DEFAULT
+
+**🟡 中等 5**：
+- `manifest.json` 加 `minimum_chrome_version: "109"`（Edge/Brave 旧版用户装上不再静默崩）
+- `Overview.vue` filter 加 150ms debounce（跟 History.vue 拉齐）
+- `Overview.vue` KeepAlive 下 1.5s timer 切 tab 暂停（onActivated/onDeactivated）
+- 4 处 toast 加 `role="status"`/`role="alert"` + `aria-live="polite"`（屏幕阅读器能听到「提交成功」「重试中」）
+- `Panel.vue` 完整 ARIA tabs pattern — roving tabindex + ← / → / Home / End 键盘导航 + `role="tabpanel"` + `aria-controls`/`aria-labelledby`
+
+**🟢 小问题 3**：
+- Overview/History NaN timestamp 防（`new Date('bad').getTime()` 返 NaN → fallback 0 让损坏条目沉底）
+- `tokens.css` 加 `@media (prefers-reduced-motion: reduce)` 全局降级动画/过渡
+- `scripts/release.mjs` 加 SSH 连通性预检（v0.4.8 切 SSH 后才有意义；之前 push 失败已经 build+zip 完污染 release/）
+
+**第 6 波元数据**：找出 13 vs v0.4.8 的 24 — 边际效用真在递减，但「上波修复不完整」类发现（5 个回归）仍是 review 的核心价值。
+
+**测试**：366 单测 + 7 skipped + 90 e2e + vue-tsc 0。
+
 ## v0.4.8
 
 2026-05-24 发版。无 BREAKING。**第 5 波 review** —— v0.4.7 后再跑「业务复盘 v2」3 agent 并行**回归测试 + 找同款 + 长尾维度 + 数据隐私链路**，找出 **24+ 个问题**，其中 **4 个隐私洞 + 1 个 4 个月 bug 复活路径**。

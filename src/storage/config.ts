@@ -1,5 +1,5 @@
 import type { BugServer, MooConfig, Project } from '@/types/config'
-import { normalizeProject } from '@/types/config'
+import { normalizeProject, DEFAULT_REDACT } from '@/types/config'
 
 const CONFIG_KEY = 'mooConfig'
 
@@ -50,15 +50,64 @@ function detectCustomTemplateMissingVideo(s: BugServer): boolean {
 }
 const warnedMissingVideo = new Set<string>()
 
+/** v0.4.9：v0.4.8 加宽 DEFAULT_REDACT.headerKeys/bodyKeys 后，老用户 storage 里的 redact
+ *  原样保留（v0.1.x 老默认 ['authorization','cookie','x-auth-token']/['password','token']），
+ *  新加的 7 个 OAuth/API 常见敏感字段对老用户零作用。
+ *  方案：检测 redact.bodyKeys/headerKeys 是 v0.1.x 老默认 superset 时合并新 DEFAULT 进去
+ *  （只补不删 — 不动用户自定义过的 keys） */
+const V01_HEADER_DEFAULTS = ['authorization', 'cookie', 'x-auth-token']
+const V01_BODY_DEFAULTS = ['password', 'token']
+function isV01DefaultSubset(arr: string[], v01Defaults: string[]): boolean {
+  if (arr.length === 0) return true
+  if (arr.length > v01Defaults.length) return false
+  const lc = new Set(arr.map(s => s.toLowerCase()))
+  return v01Defaults.every(d => lc.has(d))
+}
+function mergeRedactDefaults(p: Project): { project: Project; changed: boolean } {
+  const r = p.redact
+  if (!r) return { project: p, changed: false }
+  let bodyKeysChanged = false
+  let headerKeysChanged = false
+  let newBodyKeys = r.bodyKeys
+  let newHeaderKeys = r.headerKeys
+  // 老用户 bodyKeys 只含 v0.1 默认 → 合并新 DEFAULT
+  if (isV01DefaultSubset(r.bodyKeys, V01_BODY_DEFAULTS)) {
+    const merged = new Set([...r.bodyKeys.map(s => s.toLowerCase()), ...DEFAULT_REDACT.bodyKeys])
+    if (merged.size > r.bodyKeys.length) {
+      newBodyKeys = [...merged]
+      bodyKeysChanged = true
+    }
+  }
+  if (isV01DefaultSubset(r.headerKeys, V01_HEADER_DEFAULTS)) {
+    const merged = new Set([...r.headerKeys.map(s => s.toLowerCase()), ...DEFAULT_REDACT.headerKeys])
+    if (merged.size > r.headerKeys.length) {
+      newHeaderKeys = [...merged]
+      headerKeysChanged = true
+    }
+  }
+  if (!bodyKeysChanged && !headerKeysChanged) return { project: p, changed: false }
+  return {
+    project: { ...p, redact: { ...r, bodyKeys: newBodyKeys, headerKeys: newHeaderKeys } },
+    changed: true
+  }
+}
+
 function applyMigrations(cfg: MooConfig): { config: MooConfig; changed: boolean } {
   let changed = false
   const projects = cfg.projects.map((p) => {
-    if (!Array.isArray(p.servers) || p.servers.length === 0) return p
-    const servers: BugServer[] = p.servers.map((s) => {
+    let cur = p
+    // v0.4.9 migration：老用户 redact defaults 合并
+    const redactResult = mergeRedactDefaults(cur)
+    if (redactResult.changed) {
+      cur = redactResult.project
+      changed = true
+    }
+    if (!Array.isArray(cur.servers) || cur.servers.length === 0) return cur
+    const servers: BugServer[] = cur.servers.map((s) => {
       // v0.4.8：每个 server 只 warn 一次（SW spin-up 多次时不重复刷）
       if (detectCustomTemplateMissingVideo(s) && !warnedMissingVideo.has(s.id)) {
         warnedMissingVideo.add(s.id)
-        console.warn(`[Moo:config] project "${p.name}" server "${s.name}" 用了自定义 payloadTemplate 但缺 {{video}} 占位 — 录屏字段不会发到后端。请手动在模板里加 video / videoDuration / videoBytes 占位符（参考 DEFAULT_PAYLOAD_TEMPLATE）`)
+        console.warn(`[Moo:config] project "${cur.name}" server "${s.name}" 用了自定义 payloadTemplate 但缺 {{video}} 占位 — 录屏字段不会发到后端。请手动在模板里加 video / videoDuration / videoBytes 占位符（参考 DEFAULT_PAYLOAD_TEMPLATE）`)
       }
       const tpl2 = migrateServerTemplate(s.payloadTemplate)
       if (tpl2 !== s.payloadTemplate) {
@@ -67,7 +116,7 @@ function applyMigrations(cfg: MooConfig): { config: MooConfig; changed: boolean 
       }
       return s
     })
-    return changed ? { ...p, servers } : p
+    return servers !== cur.servers || redactResult.changed ? { ...cur, servers } : cur
   })
   return { config: changed ? { ...cfg, projects } : cfg, changed }
 }

@@ -425,6 +425,30 @@ if (!changelogSection) {
 
 // ---------- 真发：Step 4 ----------
 console.log('━━━ Step 4: git tag + push ━━━')
+// v0.4.9：remote 是 SSH 时预检连通性（v0.4.8 remote 切 SSH 后才有意义；HTTPS 跳过）。
+// 之前 push 失败已经 build+zip 完，污染 release/。预检 fail 立即 abort，省 zip 步骤
+try {
+  const remoteUrl = execSync('git remote get-url origin', { cwd: root, encoding: 'utf8' }).trim()
+  if (remoteUrl.startsWith('git@')) {
+    // ssh -T -o BatchMode=yes -o ConnectTimeout=5 git@gitee.com
+    // gitee 即使成功也 exit 1（"GITEE.COM does not provide shell access"），但 stderr 含 "successfully authenticated"
+    let sshOk = false
+    try {
+      execSync('ssh -T -o BatchMode=yes -o ConnectTimeout=5 git@gitee.com', { cwd: root, encoding: 'utf8', stdio: 'pipe' })
+      sshOk = true
+    } catch (e) {
+      const stderr = e && e.stderr ? String(e.stderr) : ''
+      if (/successfully authenticated/i.test(stderr)) sshOk = true
+    }
+    if (!sshOk) {
+      console.error('❌ SSH 预检失败：跑 ssh -T git@gitee.com 看是否能连通。可能 SSH key 没在 ~/.ssh 或没注册到 Gitee')
+      process.exit(1)
+    }
+    console.log('✓ SSH 连通性预检通过')
+  }
+} catch (e) {
+  console.warn('⚠ SSH 预检跳过（remote 解析失败）：', e.message)
+}
 // 检查 tag 是否已存在（本地），存在就跳过创建免重复
 let tagExists = false
 try {

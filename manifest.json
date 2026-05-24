@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
+  "minimum_chrome_version": "109",
   "name": "Moo Dev Tool",
-  "version": "0.4.8",
+  "version": "0.4.9",
   "description": "前后端业务调试工具",
   "action": {
     "default_popup": "src/popup/index.html",

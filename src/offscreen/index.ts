@@ -207,6 +207,14 @@ async function handleStart(streamId: string, tabId?: number): Promise<{ ok: bool
       console.log('[Moo offscreen] 35s tripwire fired — content 端 30s timer 可能被 inactive tab 节流，强制 stop')
       state = 'stopping'
       try { recorder?.stop() } catch { /* ignore */ }
+      // v0.4.9：tripwire 必须通知 SW → broadcast → 所有 tab rec-bar 退（之前漏了，
+      // inactive tab 用户回来看 rec-bar 还亮但已停录，再点 STOP 拿「没有正在进行的录制」错）
+      try {
+        chrome.runtime.sendMessage({ type: 'OFFSCREEN_AUTO_STOPPED' }).catch(() => {})
+      } catch { /* ignore */ }
+      try {
+        chrome.storage.local.set({ mooOffscreenAutoStopped: { at: Date.now() } }).catch(() => {})
+      } catch { /* ignore */ }
     }
   }, TRIPWIRE_MS)
 

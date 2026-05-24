@@ -104,10 +104,14 @@ export async function addHistoryEntry(entry: BugHistoryEntry): Promise<WriteResu
   const shrunk: BugHistoryEntry = entry.image
     ? { ...entry, image: await thumbnailize(entry.image) }
     : entry
-  const list = await read()
-  list.unshift(shrunk)
-  if (list.length > MAX_ENTRIES) list.length = MAX_ENTRIES
-  return write(list)
+  // v0.4.9：包 withWriteMutex（v0.4.8 修了 remove/clear/update 漏了 add）→ 防 tab A 提交时
+  // tab B 删 entry，A 的 snapshot 写回让 X 复活。v0.4.7 4 个月 bug 路径之一仍开
+  return withWriteMutex(async () => {
+    const list = await read()
+    list.unshift(shrunk)
+    if (list.length > MAX_ENTRIES) list.length = MAX_ENTRIES
+    return write(list)
+  })
 }
 
 export async function listHistory(): Promise<BugHistoryEntry[]> {

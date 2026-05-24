@@ -10,13 +10,17 @@
           </div>
         </div>
       </div>
-      <nav class="tabs" role="tablist">
+      <nav class="tabs" role="tablist" aria-label="Moo 主功能" @keydown="onTabKeydown">
         <button
-          v-for="t in tabs"
+          v-for="(t, i) in tabs"
           :key="t.key"
           :class="['tab', { 'is-active': active === t.key }]"
           role="tab"
           :aria-selected="active === t.key"
+          :aria-controls="`moo-tabpanel-${t.key}`"
+          :id="`moo-tab-${t.key}`"
+          :tabindex="active === t.key ? 0 : -1"
+          :ref="el => { if (el) tabRefs[i] = el as HTMLElement }"
           @click="active = t.key"
         >
           <span class="tab-icon" aria-hidden="true">
@@ -49,7 +53,7 @@
         </button>
       </nav>
     </header>
-    <main class="content">
+    <main class="content" role="tabpanel" :id="`moo-tabpanel-${active}`" :aria-labelledby="`moo-tab-${active}`">
       <!-- v0.4.8：用 KeepAlive 保留 tab 状态（filter / openId / scroll position / autoRefresh）。
            之前 v-if 切换每次都 unmount/mount 丢状态 + History 会重触发 syncRemoteStatus 拉远端 -->
       <KeepAlive>
@@ -83,6 +87,26 @@ const tabs = [
 
 type TabKey = typeof tabs[number]['key']
 const active = ref<TabKey>('overview')
+
+// v0.4.9：ARIA tabs pattern 键盘导航 — ← / → 切 tab，Home / End 跳头尾。
+// 配合 roving tabindex（active=0、其余=-1）让屏幕阅读器报「4 个 tab 当前第 N 个」
+const tabRefs: HTMLElement[] = []
+function onTabKeydown(e: KeyboardEvent) {
+  const i = tabs.findIndex(t => t.key === active.value)
+  if (i < 0) return
+  let nextIdx = -1
+  if (e.key === 'ArrowRight') nextIdx = (i + 1) % tabs.length
+  else if (e.key === 'ArrowLeft') nextIdx = (i - 1 + tabs.length) % tabs.length
+  else if (e.key === 'Home') nextIdx = 0
+  else if (e.key === 'End') nextIdx = tabs.length - 1
+  else return
+  e.preventDefault()
+  const nextTab = tabs[nextIdx]
+  if (!nextTab) return
+  active.value = nextTab.key
+  // 等下一帧让 ref 重新挂上正确的 tabindex 再 focus
+  setTimeout(() => tabRefs[nextIdx]?.focus(), 0)
+}
 
 // 把"Tab #1234567"换成实际主机名——对用户有意义得多。
 // 用 chrome.devtools.inspectedWindow.eval 读 location.hostname；导航后 onNavigated 重读。

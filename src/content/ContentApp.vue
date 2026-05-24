@@ -36,7 +36,7 @@
       @recapture="onRecapture"
       @async-load-failed="(msg: string) => showToast(msg, 'error')"
     />
-    <div v-if="toast" :class="['moo-toast', toastKind]">{{ toast }}</div>
+    <div v-if="toast" :class="['moo-toast', toastKind]" :role="toastKind === 'error' ? 'alert' : 'status'" aria-live="polite">{{ toast }}</div>
   </div>
 </template>
 

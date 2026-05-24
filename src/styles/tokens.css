@@ -509,3 +509,14 @@ textarea.moo-field {
 }
 *::-webkit-scrollbar-thumb:hover { background: var(--moo-c-text-dim); background-clip: padding-box; border: 2px solid transparent; }
 *::-webkit-scrollbar-track { background: transparent; }
+
+/* === v0.4.9：prefers-reduced-motion 兼容 ===
+ * 前庭功能敏感用户可在系统设置开启「减少动效」。这里全局降级所有动画/过渡 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

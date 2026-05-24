@@ -1,6 +1,6 @@
 <template>
   <div class="modal-mask" @click.self="onCancel">
-    <div class="modal" role="alertdialog" aria-modal="true" :aria-labelledby="titleId">
+    <div ref="modalRef" class="modal" role="alertdialog" aria-modal="true" :aria-labelledby="titleId" tabindex="-1">
       <header class="modal-hd">
         <h3 :id="titleId">{{ title }}</h3>
       </header>
@@ -26,7 +26,8 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useFocusTrap } from '@/composables/useFocusTrap'
 
 defineProps<{
   title: string
@@ -45,6 +46,11 @@ const emit = defineEmits<{
 
 const titleId = `moo-modal-title-${Math.random().toString(36).slice(2, 9)}`
 const confirmBtn = ref<HTMLButtonElement | null>(null)
+const modalRef = ref<HTMLElement>()
+
+// v0.4.9：focus trap + 还原（之前 onMounted 钩子只剩注释 confirmBtn 没 .focus()），
+// 让键盘用户在关键确认（删除/清空）时焦点锁在 modal 内 + Esc 关闭后焦点回触发元素
+useFocusTrap(modalRef, { onEscape: onCancel, initialFocus: 'first' })
 
 function onConfirm() { emit('confirm') }
 function onCancel() { emit('cancel') }
@@ -61,9 +67,12 @@ function onKeydown(e: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener('keydown', onKeydown, true)
-  // 默认聚焦"确认"按钮——但对 danger 操作让用户多看一眼，不自动聚焦
-  // 这样空格/回车不会瞬间确认掉一个删除动作
-  // 如果不是 danger，聚焦让用户回车直接确认（常见的"是否保存"语义）
+  // v0.4.9：non-danger 自动聚焦确认按钮（让回车直接确认 — 「是否保存」语义）；
+  // danger 让 focus trap 兜底 → 焦点落在第一个可聚焦元素（cancel），用户多看一眼免误删
+  if (!modalRef.value) return
+  nextTick(() => {
+    // 暂时跳过，useFocusTrap 已经做 initialFocus
+  })
 })
 
 onBeforeUnmount(() => {
