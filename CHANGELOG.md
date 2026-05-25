@@ -2,6 +2,50 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.7.3
+
+2026-05-25 发版。无 BREAKING — 跨样式系统对齐 + 严格 a11y + 3 个新视角 agent 7 审找到的 1 P0 + 4 P1 全修。
+
+### 🔴 P0 / P1 修复
+
+- **Environment 800ms debounce 窗口内关 DevTools 改动永久丢失**（general-purpose 7 审找）：onBeforeUnmount 加 `flushSave()` 强制落盘
+- **popup「已启用」文案错觉**：URL 命中 matchPatterns 但 host_permission 未授权时 chrome silent 拒注入，popup 仍显「✓ 已启用」+「悬浮球已在当前页面启用」。改成 hostEnabled 分支 → warn dot + 「⚠ 已匹配但未授权」+ 引导
+- **dynamicScripts syncContentScripts 头部加 hasHostPermission 检查**：跟 retryQueue / handlers/zentao.ts 同款防御。没权限 → unregister existing + early return（保持「无权限 = 无 active register」状态一致）
+- **release.mjs dev-artifact 检测**：v0.7.1 用户撞过 pnpm dev 留下的 service-worker-loader.js 装上立刻炸。build 后 check loader 不含 `localhost:5273` / `@vite/env` / `@crx/client-worker`，命中即 abort
+- **syncContentScripts register 非原子 retry once**（mv3-pro 7 审）：unregister 后 register 抛错（pattern 边界 / quota / API race）会落到「俩都没注册」裸奔态。retry 一次 + 失败 log 等 SW spin-up 兜底
+
+### 跨样式系统对齐 + 严格 a11y AA 4.5:1
+
+vue-craft 7 审跨样式系统扫出 14 条 content world `.moo-btn` vs tokens.css 漂移 + a11y 基础漏，**全推完**：
+
+- **.moo-btn 基础类 6 项对齐** tokens.css :179：gap / height 30→28 / padding / user-select / :active / :focus-visible / transition 加 box-shadow / 加 BEM `.moo-btn--primary` 别名（保留旧 `.primary` 不破代码）
+- **删 2 处 var(--c-brand, #3b82f6) 错色 fallback**（hex 是 blue-500，token 实际 indigo-600 #4f46e5）+ `var(--c-ok-fg, #16a34a)` 改 `var(--c-success-fg)`（前者 alias 表里没定义永远 fallback 死值）
+- **`.moo-close-btn` / `.moo-thumb-action` 加 :focus-visible**
+- **`.moo-toast` 字号 13 → 12** 跟 tokens 对齐
+- **`.req-controls` flex-wrap**（DevTools docked ~350px 窄宿主页下 5 控件挤一行爆）
+- **`.moo-video-preview` max-height 280px → clamp(280, 50vh, 480)**（4K 屏录屏预览不再特别小）
+- **6 个 aria-label 加齐**：FloatingBall 3 + ContentApp rec-bar 2 + SubmitDialog urlFilter 1
+- **`@media (prefers-reduced-motion: reduce)` shadow CSS 也补**：rec-dot / ripple / toast / mask / dialog / success-checkmark 全退化（前庭敏感用户撞红点持续脉动 fix）
+- **rec-bar 按钮中文字符窄宽下竖排 fix**（dogfood 撞过 P0）：`.moo-btn` 加 `white-space: nowrap` + rec-bar 处 `flex-shrink: 0` 防 padding 被吃
+
+### 严格 WCAG AA 4.5:1 系统升级
+
+- `--moo-c-success-fg` 浅模式 `#15803d` (4.32:1) → `#166534` emerald-800 (**5.05:1 ✓ AA**)
+- 所有「彩底 + 文字」组合改用 `-fg`：toast 4 个 kind（tokens + content 两套）/ popup status-dot 「✓」「!」 / BodyViewer search hit mark
+- 不动装饰彩点（switch thumb / dot / chip 无文字组合）
+
+### 新功能（顺手累）
+
+- **录屏鼠标点击涟漪**：state=recording 时 window pointerdown capture，主键点击在 (clientX, clientY) 渲 40px 红圈 800ms 涟漪。视频里同事能看清点了哪。过滤 Moo 自己 UI（composedPath HOST_ID）、只左键、清 timer / unmount 拆 listener
+
+### 工程
+
+- 抽 `HOST_ID` 常量到 styles.ts export（原 4 处 hardcode 统一）
+- storage/config.ts applyMigrations saveConfig 加 `.catch`（fire-and-forget silent fail → 至少 warn）
+- 601 单测 / type-check / e2e dialog 20/20 全过
+
+---
+
 ## v0.7.2
 
 2026-05-25 发版。**🔴 dogfood hotfix** — v0.7.0 dynamic register 链路在实机 chrome 装上即炸（content script 注入但 lazy chunks 加载被 `web_accessible_resources` 拒，悬浮球出不来）。无新 BREAKING，patch + 顺手累一个新功能（录屏点击涟漪）。
