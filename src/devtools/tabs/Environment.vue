@@ -156,6 +156,7 @@ import {
 } from '@/types/config'
 import { clone } from '@/utils/clone'
 import { toChromeMatchPatterns } from '@/background/dynamicScripts'
+import { urlToMatchPattern } from '@/utils/urlToMatchPattern'
 import { confirmDialog } from '../components/confirm'
 import EnvironmentZentao from './EnvironmentZentao.vue'
 import EnvironmentWebhook from './EnvironmentWebhook.vue'
@@ -345,21 +346,15 @@ onBeforeUnmount(() => {
 watch(() => activeProject.value?.id, () => { void evaluateSuggestion() })
 
 /**
- * 拿当前 DevTools inspected tab 的 URL，转成 chrome MV3 match pattern：
- *   https://example.com/foo/bar?q=1#x → https://example.com/*
- * 失败时返 null（chrome:// / file:// / 拿不到 tab / 非 http(s) 都 fall-through 让用户自填）
+ * 拿当前 DevTools inspected tab 的 URL，转 chrome MV3 match pattern。
+ * URL 转换边界 case 见 @/utils/urlToMatchPattern 单测。
  */
 async function currentTabAsMatchPattern(): Promise<string | null> {
   try {
     const tabId = chrome.devtools?.inspectedWindow?.tabId
     if (!tabId) return null
     const tab = await chrome.tabs.get(tabId)
-    const rawUrl = tab.url
-    if (!rawUrl) return null
-    const u = new URL(rawUrl)
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null  // chrome:// / file:// 不符 chrome MV3 match pattern
-    if (!u.host) return null
-    return `${u.protocol}//${u.host}/*`
+    return urlToMatchPattern(tab.url ?? '')
   } catch {
     return null
   }
