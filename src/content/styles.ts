@@ -901,6 +901,9 @@ export const SHADOW_CSS = `
   border-radius: var(--r-md);
   cursor: pointer;
   transition: background .12s, border-color .12s, color .12s;
+  /* v0.7.3：默认禁止换行 —— 中文字符在 flex 容器宽度不够时不至于被强制竖排（rec-bar
+     stop/取消 按钮已实测被踩）。需要 wrap 的特殊场景单独覆盖。 */
+  white-space: nowrap;
 }
 .moo-btn:hover:not(:disabled) {
   background: var(--c-bg-soft);
@@ -1570,6 +1573,9 @@ export const SHADOW_CSS = `
   color: #fff;
   height: 26px;
   padding: 0 12px;
+  /* v0.7.3：窄宿主页（DevTools docked 半屏 / 移动端模拟）下按钮被压缩 → 防 padding
+     被吃后图标 / 文字挤一起。nowrap 已由基础 .moo-btn 保证。 */
+  flex-shrink: 0;
 }
 .moo-rec-bar .moo-btn:hover {
   background: rgba(255, 255, 255, .22);
