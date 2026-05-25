@@ -176,6 +176,10 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
   },
 
   async retryFromPayload(payload, _project): Promise<AdapterRetryOutcome> {
+    // _project 当前 doFlush 永远传 undefined（webhook payload 无 projectId）。
+    // Plan patch 3 audit 结论：「project kind 切换 → drop webhook 队列」需要 payload 加
+    // projectId 字段 + doFlush 改造，工作量超 v0.6.1 范围，攒到 v0.7.0（task #131 备忘）。
+    // 当前路径：依赖 attempts cap (5) 自然停止，无死循环风险。
     const q = payload as WebhookRetryPayload
     if (q.kind !== 'webhook') {
       return { kind: 'drop', reason: 'webhook adapter 收到非 webhook payload' }
