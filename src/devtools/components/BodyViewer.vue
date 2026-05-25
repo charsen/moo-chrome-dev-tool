@@ -190,7 +190,8 @@ onBeforeUnmount(() => {
   color: var(--moo-c-text);
 }
 .bv-pre :deep(mark) {
-  background: var(--moo-c-warn);
+  /* v0.7.3：search hit 高亮文字 严格 AA 4.5:1 → warn-fg 深一档（amber-700 #92400e） */
+  background: var(--moo-c-warn-fg);
   color: var(--moo-c-bg);
   padding: 0 2px;
   border-radius: 2px;

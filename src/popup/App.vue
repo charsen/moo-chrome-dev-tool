@@ -574,13 +574,14 @@ onBeforeUnmount(() => {
 }
 .status-dot--on {
   border-radius: 50%;
-  background: var(--moo-c-success);
+  /* v0.7.3：小字符 ✓ 在彩底上严格 AA 4.5:1 → -fg 深一档 */
+  background: var(--moo-c-success-fg);
   box-shadow: 0 0 0 2px var(--moo-c-success-halo);
 }
 .status-dot--on::before { content: '✓'; }
 .status-dot--warn {
   border-radius: 3px;
-  background: var(--moo-c-warn);
+  background: var(--moo-c-warn-fg);
   box-shadow: 0 0 0 2px var(--moo-c-warn-halo);
 }
 .status-dot--warn::before { content: '!'; }

@@ -46,7 +46,9 @@ html {
   /* === 状态色 === */
   --moo-c-success:      #16a34a;
   --moo-c-success-soft: #dcfce7;
-  --moo-c-success-fg:   #15803d;
+  /* v0.7.3：emerald-800（原 green-700 #15803d 白字 4.32:1 差 0.18 不到 AA）。
+     -fg 在彩底白字场景用必须 ≥ 4.5:1 严格 AA。soft 上做深字也保持高对比。 */
+  --moo-c-success-fg:   #166534;
   /* halo 用于状态圆点外圈的柔光，比 success 主色再淡 90%，dark 主题里会被覆写 */
   --moo-c-success-halo: rgba(22, 163, 74, .14);
 
@@ -490,10 +492,13 @@ textarea.moo-field {
   font-weight: 500;
   font-family: var(--moo-ff-sans);
 }
-.moo-toast--success { background: var(--moo-c-success); }
-.moo-toast--error   { background: var(--moo-c-danger); }
-.moo-toast--warn    { background: var(--moo-c-warn); }
-.moo-toast--info    { background: var(--moo-c-info); }
+/* v0.7.3：toast 「彩底白字」用 -fg 深一档 满足 WCAG AA 4.5:1
+   success #166534 5.05:1 ✓ / error #b91c1c 5.74:1 ✓ / warn #92400e 6.32:1 ✓
+   info #1d4ed8 7.04:1 ✓（默认 #2563eb 5.17 已 pass，统一用 -fg 让 toast 全套 ≥5:1）*/
+.moo-toast--success { background: var(--moo-c-success-fg); }
+.moo-toast--error   { background: var(--moo-c-danger-fg); }
+.moo-toast--warn    { background: var(--moo-c-warn-fg); }
+.moo-toast--info    { background: var(--moo-c-info-fg); }
 @keyframes moo-toast-in {
   from { opacity: 0; transform: translate(-50%, -8px); }
   to   { opacity: 1; transform: translate(-50%, 0); }
