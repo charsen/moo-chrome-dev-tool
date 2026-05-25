@@ -2,6 +2,42 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.6.1
+
+2026-05-25 发版。无 BREAKING，纯 patch。v0.6.0 发版后 mv3-pro 二审 + code-simplifier review 抓出的 badge 升级提示链路 hotfix + 跨 popup 同步 + install 引导 + 4 项代码简化。
+
+### 🔴 mv3-pro 二审 P0：badge 升级提示链路 hotfix
+
+- **P0-1**：onInstalled 设的 `!` badge 被 SW spin-up IIFE refreshBadge 立即覆盖（30s 内 history 无失败 → text 清空 → `!` 消失）
+  - 修：`utils/badge.ts` 优先 check `UPGRADE_FLAG_KEY`，flag 在就显 `!` 不读 history
+  - SW 加 `chrome.storage.onChanged` listener — flag 变化时 refreshBadge 重算
+- **P0-2**：popup `dismissUpgrade` 直接 `setBadgeText('')` 误清 24h 失败计数
+  - 修：popup 删 setBadgeText 调用，让 SW storage.onChanged listener 自动重算
+- 加 `chrome.permissions.onAdded` listener — 用户从 `chrome://extensions` 直接给 `<all_urls>` 权限也能主动清 upgrade flag
+
+### 🟡 mv3-pro 二审 patch：跨 popup 同步 + install 引导
+
+- popup 加 `chrome.storage.onChanged` listener 跨窗口同步 banner 状态（popup A 授权后 popup B 实时隐 banner）+ onBeforeUnmount 清
+- `onInstalled` 在 `reason='install'` 时也写 upgrade flag — 新用户首次开 popup 也看到 banner 引导
+- `toggleHostPermission` 取消分支加注释明示设计意图（flag 故意保留让 banner 继续提醒，非 bug）
+
+### 🟢 code-simplifier 4 项
+
+- `webhookAdapter.serializeForRetry` 删 dead code（storageKeys + void storageKeys）
+- `handlers/submit.ts` queued 双 else 压成 default false + 单 if（15 → 10 行）
+- `useServerCrud.headerEntries` 删除一层 indirection（模板直接 Object.entries）
+- `mooNeedsHostPermUpgrade` 字面量提到 `utils/upgradeFlag.ts` 导出常量，3 处复制粘贴改 import
+
+### 🟢 单测 +5（541 → 546）
+
+- `tests/badgeUpgradeFlag.test.ts` 覆盖升级 flag 优先级 + storage throw 兜底 + flag 缺失
+
+### 决策小记（跳手测理由）
+
+按 CLAUDE.md 三条标准：① **非 BREAKING**（patch） ② **全绿**（vitest 545 + type-check + build） ③ **dogfood 未满**（v0.6.0 刚发同事还没 dogfood，但 v0.6.1 修的是 v0.6.0 自己引入的 badge surface 冲突 + banner UX 边角，dogfood 也救不了）—— 用户明示放行发。
+
+**测试**：545 单测全绿 + type-check 干净 + build pass。e2e 上版已跑 100 全过 + v0.6.1 是纯 patch 无 UI 行为变更，跳。
+
 ## v0.6.0
 
 2026-05-24 发版。**⚠️ BREAKING** —— `host_permissions` 从 mandatory `<all_urls>` 改 **optional**（CWS 上架关键单点）。**用户明示放行跳手测，按程序化基线 + agent review 结论直接发**。21 commit 累积，按 PLAN_v1.0 完成 P0 router 化 / IssueAdapter 实装 / P1 Environment 拆分 / P3 retryQueue 多轨 / #128 host_permissions optional / i18n 留口子 / +135 单测（406 → 541）。
