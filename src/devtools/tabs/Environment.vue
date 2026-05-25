@@ -336,6 +336,10 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  // v0.7.3 P0：800ms debounce 窗口内关 DevTools / 切 inspected tab 时未 fire 的
+  // scheduleSave 会被 useAutoSave 内 onBeforeUnmount 静默 clearTimeout → 用户改动
+  // 永久丢失且无 toast。先 flush 落盘再卸载 listener。
+  void flushSave()
   if (onNavListener) {
     chrome.devtools?.network?.onNavigated?.removeListener?.(onNavListener)
     onNavListener = null

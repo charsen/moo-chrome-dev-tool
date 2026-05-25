@@ -418,6 +418,23 @@ if (missing.length > 0) {
   process.exit(1)
 }
 
+// v0.7.3：dev 产物检测 — `pnpm dev` 留下的 service-worker-loader.js 长这样：
+//   import 'http://localhost:5273/@vite/env'
+//   import 'http://localhost:5273/@crx/client-worker'
+//   import 'http://localhost:5273/src/background/index.ts'
+// 装上后 SW registration 立刻炸（v0.7.1 用户撞过）。--skip-build 或者 pnpm dev
+// 后没 pnpm build 都可能进 release zip。
+const swLoaderPath = resolve(distDir, 'service-worker-loader.js')
+const swLoaderContent = readFileSync(swLoaderPath, 'utf-8')
+if (swLoaderContent.includes('localhost:5273') ||
+    swLoaderContent.includes('@vite/env') ||
+    swLoaderContent.includes('@crx/client-worker')) {
+  console.error('🔴 dist/service-worker-loader.js 是 dev 产物（含 localhost:5273 / @vite / @crx HMR import），')
+  console.error('   装上后 chrome 立刻报 Service worker registration failed Status: 3。中止发版。')
+  console.error('   修法：跑 `pnpm build` 重新出 prod dist/ 再 release。')
+  process.exit(1)
+}
+
 // ---------- 打包 + sha256 ----------
 mkdirSync(releaseDir, { recursive: true })
 if (existsSync(zipPath)) rmSync(zipPath)

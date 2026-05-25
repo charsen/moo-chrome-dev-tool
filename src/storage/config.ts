@@ -127,7 +127,11 @@ export async function loadConfig(): Promise<MooConfig> {
   const { config, changed } = applyMigrations(cfg)
   if (changed) {
     if (import.meta.env.DEV) console.log('[Moo:config] migrated payloadTemplate(s) to include video fields')
-    void saveConfig(config)
+    // v0.7.3 P2：migration 落盘 fire-and-forget 失败会 silent → 每次 loadConfig 重做
+    // migration（noise 但非 data loss）。至少 warn 让 DevTools 能看到
+    void saveConfig(config).catch(e =>
+      console.warn('[Moo:config] applyMigrations 落盘失败，下次 loadConfig 会重做 migration:', (e as Error).message)
+    )
   }
   // 不要在生产打整份 config —— project.token / endpoint 是敏感信息，
   // 用户开 DevTools 或截图分享 console 会泄露。

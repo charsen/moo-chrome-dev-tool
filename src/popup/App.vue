@@ -53,11 +53,17 @@
       <div class="spinner" /> 检测中…
     </div>
 
-    <!-- 1. 已匹配 -->
+    <!-- 1. 已匹配。v0.7.3 P1：title + hint 还要看 hostEnabled — URL 命中
+         matchPatterns 但 host_permission 没授权时，悬浮球实际不会出现（dynamic
+         register 被 chrome silent 拒）。之前文案谎说「已启用」用户摸不着头脑。 -->
     <section v-else-if="matched.length" class="state state--matched">
       <div class="state-head">
-        <span class="status-dot status-dot--on" />
-        <div class="state-title">{{ matched.length > 1 ? `已启用 · 匹配到 ${matched.length} 个项目` : '已启用' }}</div>
+        <span :class="['status-dot', hostEnabled ? 'status-dot--on' : 'status-dot--warn']" />
+        <div class="state-title">
+          <template v-if="!hostEnabled">⚠ 已匹配但未授权</template>
+          <template v-else-if="matched.length > 1">已启用 · 匹配到 {{ matched.length }} 个项目</template>
+          <template v-else>已启用</template>
+        </div>
       </div>
       <div v-for="p in matched" :key="p.id" class="proj-card">
         <div class="proj-name">{{ p.name }}</div>
@@ -66,7 +72,10 @@
         </div>
       </div>
       <p class="hint">
-        <template v-if="matched.length > 1">
+        <template v-if="!hostEnabled">
+          ⚠ 「向上报服务器发送请求」未授权 — 悬浮球不会出现。点上方 banner「一键启用」恢复。
+        </template>
+        <template v-else-if="matched.length > 1">
           点击悬浮球时会让你选择目标项目；快捷键 ⌘/Ctrl + Shift + B 默认走第一个。
         </template>
         <template v-else>
