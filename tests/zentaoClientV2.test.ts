@@ -665,7 +665,7 @@ describe('v0.6.2 dogfood — v1 endpoint 403 cookie cascade', () => {
     if (r.ok) expect(r.data).toHaveLength(1)
   })
 
-  it('listModules: 两次都 403 → 返 r1 错误（不假成）', async () => {
+  it('listModules: 两次都 403 → 返友好文案（同事看懂禅道拒绝）', async () => {
     const { listModules } = await import('@/background/zentao/client')
     let n = 0
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
@@ -681,6 +681,11 @@ describe('v0.6.2 dogfood — v1 endpoint 403 cookie cascade', () => {
     const r = await listModules(env, 14)
     expect(n).toBe(2)
     expect(r.ok).toBe(false)
+    if (!r.ok) {
+      expect(r.error).toContain('禅道服务器拒绝')
+      expect(r.error).toContain('403')
+      expect(r.error).not.toContain('HTTP 403（')  // 不再是技术化的「HTTP X（fallback）」格式
+    }
   })
 
   it('listModules: 第 1 次 200 → 不走 cascade', async () => {
@@ -698,5 +703,78 @@ describe('v0.6.2 dogfood — v1 endpoint 403 cookie cascade', () => {
     }))
     await listModules(env, 14)
     expect(n).toBe(1)  // 不重试
+  })
+
+  it('discoverProduct v1 fallback: 403 cookie cascade 成功', async () => {
+    const { discoverProduct, _clearZentaoCaches } = await import('@/background/zentao/client')
+    _clearZentaoCaches()
+    let attempts = 0
+    let lastCreds: RequestCredentials | undefined
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/v2/projects/')) {
+        // v2 路径返 schema 不识别（无 products 字段）→ fall through v1
+        return mockJsonRes({ id: env.projectId })
+      }
+      if (url.includes('/v1/products?project=')) {
+        attempts++
+        lastCreds = init?.credentials
+        if (attempts === 1) return new Response('forbidden', { status: 403 })
+        return mockJsonRes({ products: [{ id: 77 }] })
+      }
+      return new Response('{}')
+    }))
+    const r = await discoverProduct(env)
+    expect(attempts).toBe(2)
+    expect(lastCreds).toBe('include')
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.data).toBe(77)
+  })
+
+  it('listProjects v1 fallback: 403 cookie cascade 成功', async () => {
+    const { listProjects } = await import('@/background/zentao/client')
+    let attempts = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/v2/projects?')) {
+        return mockJsonRes({ message: 'fall-through' })  // 不含 projects 字段
+      }
+      if (url.includes('/v1/projects?')) {
+        attempts++
+        if (attempts === 1) return new Response('forbidden', { status: 403 })
+        return mockJsonRes({ projects: [{ id: 1, name: 'P1', status: 'doing' }] })
+      }
+      return new Response('{}')
+    }))
+    const r = await listProjects(env)
+    expect(attempts).toBe(2)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.data).toHaveLength(1)
+  })
+
+  it('listUsers v1 fallback: 403 cookie cascade 成功', async () => {
+    const { listUsers } = await import('@/background/zentao/client')
+    let attempts = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.match(/\/v2\/users\?/)) {
+        return mockJsonRes({ message: 'fall-through' })  // 不含 users 字段
+      }
+      if (url.match(/\/v1\/users\?/)) {
+        attempts++
+        if (attempts === 1) return new Response('forbidden', { status: 403 })
+        return mockJsonRes({ users: [{ id: 9, account: 'a', realname: 'A' }] })
+      }
+      return new Response('{}')
+    }))
+    const r = await listUsers(env)
+    expect(attempts).toBe(2)
+    expect(r.ok).toBe(true)
   })
 })
