@@ -1,6 +1,6 @@
 import { createApp } from 'vue'
 import ContentApp from './ContentApp.vue'
-import { SHADOW_CSS } from './styles'
+import { HOST_ID, SHADOW_CSS } from './styles'
 import { clearRequests, getCurrentRequests } from './useRequests'
 import { clearErrors, getCurrentErrors } from './useErrors'
 import { MSG, type GetErrorsRes, type GetRequestsRes, type MooMessage } from '@/types/messages'
@@ -33,7 +33,6 @@ chrome.runtime.onMessage.addListener((msg: MooMessage, sender, sendResponse) => 
 })
 
 // 避免重复注入（HMR / SPA 重复执行）
-const HOST_ID = '__moo_dev_tool_host__'
 if (!document.getElementById(HOST_ID)) {
   const host = document.createElement('div')
   host.id = HOST_ID

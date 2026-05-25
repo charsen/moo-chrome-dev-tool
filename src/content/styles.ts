@@ -16,6 +16,13 @@ const SHARED_TOKENS = (() => {
   return m[1]!.trim()
 })()
 
+/**
+ * content 世界 Moo UI 宿主 div 的 ID（attachShadow 的 host）。
+ * 跨文件需要识别「点击是不是 Moo 自己 UI 内的」时引用这个常量
+ * （v0.7.2：抽出来避免 4 处 hardcode 漂移）。
+ */
+export const HOST_ID = '__moo_dev_tool_host__'
+
 export const SHADOW_CSS = `
 * { box-sizing: border-box; }
 
@@ -1567,5 +1574,30 @@ export const SHADOW_CSS = `
 .moo-rec-bar .moo-btn:hover {
   background: rgba(255, 255, 255, .22);
   border-color: rgba(255, 255, 255, .4);
+}
+
+/* 录屏鼠标点击涟漪（v0.7.2）：录屏视频里让同事看清点了哪儿。
+   只在 state === 'recording' 时挂 listener；只左键触发；800ms 后 timer 清。 */
+.moo-ripple-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483646;
+}
+.moo-ripple {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  margin-left: -20px;
+  margin-top: -20px;
+  border: 2px solid rgba(231, 76, 60, .9);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: moo-ripple-pulse 800ms cubic-bezier(.4, 0, .2, 1) forwards;
+}
+@keyframes moo-ripple-pulse {
+  0%   { transform: scale(.4); opacity: 0; }
+  20%  { opacity: .95; }
+  100% { transform: scale(2); opacity: 0; }
 }
 `

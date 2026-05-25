@@ -37,11 +37,16 @@
       @async-load-failed="(msg: string) => showToast(msg, 'error')"
     />
     <div v-if="toast" :class="['moo-toast', toastKind]" :role="toastKind === 'error' ? 'alert' : 'status'" aria-live="polite">{{ toast }}</div>
+
+    <!-- 录屏鼠标点击涟漪（v0.7.2）：state=recording 时挂 listener；过滤 Moo 自己的 UI 点击 -->
+    <div v-if="state === 'recording'" class="moo-ripple-layer" aria-hidden="true">
+      <div v-for="r in ripples" :key="r.id" class="moo-ripple" :style="{ left: r.x + 'px', top: r.y + 'px' }" />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import FloatingBall from './FloatingBall.vue'
 import { maskPasswordInputs } from './passwordMask'
 import { useRecorder, type RecordingResult } from './useRecorder'
@@ -52,6 +57,7 @@ import { safeSendMessage } from '@/utils/messaging'
 import { useToast } from '@/composables/useToast'
 import { useRequests } from './useRequests'
 import { useErrors, setErrorsEnabled } from './useErrors'
+import { HOST_ID } from './styles'
 
 type State = 'idle' | 'capturing' | 'annotating' | 'recording' | 'submitting'
 
@@ -272,6 +278,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('hashchange', onUrlMaybeChanged)
   window.removeEventListener('keydown', onKeydown, true)
   window.removeEventListener('resize', onWindowResize)
+  window.removeEventListener('pointerdown', onDocPointerDown, { capture: true })
+  clearAllRipples()
   chrome.runtime.onMessage.removeListener(onRuntimeMessage)
   disposeConfigWatcher?.()
   disposeConfigWatcher = null
@@ -280,6 +288,47 @@ onBeforeUnmount(() => {
 function onWindowResize() {
   resizeTick.value++
 }
+
+// ─── 录屏鼠标点击涟漪 (v0.7.2) ────────────────────────────────────────────
+// 录视频时同事看不出点了哪儿；state=recording 时挂 window pointerdown capture，
+// 每次主键点击在坐标画一个 800ms 涟漪。过滤 Moo 自己 UI 内的点（rec-bar / dialog / floating-ball）。
+//
+// 取舍：listener 跨 closed shadow 拿不到 shadow 内 e.target，宿主世界看到的是 host
+// 元素本身 → composedPath().some(n => n.id === HOST_ID) 命中即跳过；点宿主页 button
+// 时 composedPath 不含 host → 画圈。
+const ripples = ref<{ id: number; x: number; y: number }[]>([])
+let nextRippleId = 1
+const rippleTimers = new Map<number, number>()
+
+function onDocPointerDown(e: PointerEvent) {
+  if (e.button !== 0) return  // 只主键
+  const path = e.composedPath()
+  for (const n of path) {
+    if (n instanceof Element && n.id === HOST_ID) return  // 自己 UI 内的点击跳过
+  }
+  const id = nextRippleId++
+  ripples.value.push({ id, x: e.clientX, y: e.clientY })
+  const t = window.setTimeout(() => {
+    ripples.value = ripples.value.filter((r) => r.id !== id)
+    rippleTimers.delete(id)
+  }, 800)
+  rippleTimers.set(id, t)
+}
+
+function clearAllRipples() {
+  for (const t of rippleTimers.values()) clearTimeout(t)
+  rippleTimers.clear()
+  ripples.value = []
+}
+
+watch(state, (s, old) => {
+  if (s === 'recording' && old !== 'recording') {
+    window.addEventListener('pointerdown', onDocPointerDown, { capture: true, passive: true })
+  } else if (s !== 'recording' && old === 'recording') {
+    window.removeEventListener('pointerdown', onDocPointerDown, { capture: true })
+    clearAllRipples()
+  }
+})
 
 async function startCapture() {
   if (state.value !== 'idle') return

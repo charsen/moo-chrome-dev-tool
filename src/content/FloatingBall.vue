@@ -64,6 +64,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import type { Project } from '@/types/config'
+import { HOST_ID } from './styles'
 
 const eagleUrl = chrome.runtime.getURL('icons/eagle-ball.png')
 
@@ -155,7 +156,7 @@ function isBlockedByFixed(x: number, y: number): boolean {
     for (const el of els) {
       if (el === document.documentElement || el === document.body) continue
       // 注意：自己的 shadow host 也会出现在这里，跳过它本身
-      if (el.id === '__moo_dev_tool_host__') continue
+      if (el.id === HOST_ID) continue
       const cs = window.getComputedStyle(el)
       if (cs.position === 'fixed' || cs.position === 'sticky') return true
     }

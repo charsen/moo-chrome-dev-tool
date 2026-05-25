@@ -15,7 +15,7 @@
 // 跟 panel-harness 同样的姿势：mock chrome.* API + shadow root 内挂载 + 不动业务代码。
 
 import { createApp, defineComponent, h, ref } from 'vue'
-import { SHADOW_CSS } from './styles'
+import { HOST_ID, SHADOW_CSS } from './styles'
 
 // ------------------- mock chrome.runtime.sendMessage --------------------------------
 // SubmitDialog onSubmit 走 safeSendMessage(MSG.SUBMIT_BUG) —— 真 SW 在 harness 这种
@@ -64,7 +64,7 @@ const origSendMessage = chrome.runtime.sendMessage.bind(chrome.runtime)
 // ⚠ 模式用 'open' 而非 prod 的 'closed'：Playwright locator 引擎**不穿透 closed shadow**
 // （只穿透 open）。harness 没真实宿主页脚本威胁，open 安全无损。被测组件本身行为
 // 与 shadow 模式无关，所以这一改不会让测试假阳。
-const host = document.getElementById('__moo_dev_tool_host__')!
+const host = document.getElementById(HOST_ID)!
 const shadow = host.attachShadow({ mode: 'open' })
 
 const style = document.createElement('style')
