@@ -33,7 +33,7 @@
 | 字段 | 填什么 | 例子 |
 |---|---|---|
 | 项目名 | 随便起个让你记得住的 | 「公司禅道-企管平台」 |
-| URL 匹配 | 你要在哪些网页用 Moo（每行一个，可用 `*` 当通配符） | `https://app.example.com/*` |
+| URL 匹配 | 你要在哪些网页用 Moo（每行一个 chrome match pattern，必须 `https?://host/path` 形态，v0.7.0 起严格收敛） | `https://app.example.com/*` |
 | 上报方式 | 选「**禅道**」 | — |
 | 禅道地址 | 你公司的禅道首页地址 | `https://yourcompany.chandao.net` |
 | 账号 | 你的禅道账号（手机号 / 邮箱都行） | `13800000000` |

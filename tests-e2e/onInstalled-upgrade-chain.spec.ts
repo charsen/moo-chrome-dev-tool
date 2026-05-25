@@ -222,3 +222,48 @@ test('C2 · popup 跨 SW 同步：SW 写 mooLatestVersionInfo → popup 实时�
 
   await popup.close()
 })
+
+// ---------------------------------------------------------------------------
+// D1. v0.7.0 dropped-banner — 同事老 matchPatterns 升级后被 translator drop 时，
+//     popup 弹 .dropped-banner 引导去环境改。同 v0.6.1 silent 回归同款防护链。
+// ---------------------------------------------------------------------------
+test('D1 · v0.7.0 dropped-banner：SW syncContentScripts drop pattern → popup 实时显示', async ({ context, extensionId, sw }) => {
+  await waitForOnInstalledSettled(sw)
+
+  // 清 upgrade flag — dropped-banner v-else-if 排他于 upgrade-banner
+  await sw.evaluate(async () => {
+    await chrome.storage.local.remove('mooNeedsHostPermUpgrade')
+  })
+
+  const popup = await context.newPage()
+  await popup.goto(`chrome-extension://${extensionId}/src/popup/index.html`)
+  await popup.waitForSelector('main', { timeout: 5000 })
+  await expect(popup.locator('.dropped-banner')).toHaveCount(0)
+
+  // 模拟 SW dynamicScripts.syncContentScripts drop 了用户老 patterns 写 flag
+  await sw.evaluate(async () => {
+    await chrome.storage.local.set({
+      mooDroppedMatchPatterns: {
+        count: 2,
+        samples: ['*', 'example.com/*'],
+        at: Date.now()
+      }
+    })
+  })
+
+  // popup storage.onChanged listener fire → droppedPatternsInfo 赋值 → 渲染
+  await popup.waitForSelector('.dropped-banner', { timeout: 5000 })
+  await expect(popup.locator('.dropped-banner')).toBeVisible()
+  await expect(popup.locator('.dropped-banner .dropped-title')).toContainText('2')
+  await expect(popup.locator('.dropped-banner .dropped-title')).toContainText('v0.7.0 不兼容')
+  await expect(popup.locator('.dropped-banner .dropped-samples')).toContainText('*')
+  await expect(popup.locator('.dropped-banner .dropped-samples')).toContainText('example.com/*')
+
+  // 反向：SW 清 flag → popup 隐藏
+  await sw.evaluate(async () => {
+    await chrome.storage.local.remove('mooDroppedMatchPatterns')
+  })
+  await expect(popup.locator('.dropped-banner')).toHaveCount(0, { timeout: 3000 })
+
+  await popup.close()
+})
