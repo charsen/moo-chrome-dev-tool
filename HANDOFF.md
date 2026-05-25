@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.7.3 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.3/moo-chrome-dev-tool-0.7.3.zip)（sha256 待填）。无 BREAKING — 3 个新视角 agent 7 审找 **1 P0 + 4 P1** 全修（Environment 800ms 内关 DevTools 改动永久丢失 / popup「已启用」错觉 / dynamicScripts 没查 host_permission / release.mjs 缺 dev-artifact 检测 / register 非原子）+ vue-craft 14 条样式 a11y 漂移全清 + 严格 WCAG AA 4.5:1 系统升级。
+**v0.7.3 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.3/moo-chrome-dev-tool-0.7.3.zip)（sha256 `ced27a1f7da6f7f48791a209e56afa930440fc77e0560868f0f18cae27def163`）。无 BREAKING — 3 个新视角 agent 7 审找 **1 P0 + 4 P1** 全修（Environment 800ms 内关 DevTools 改动永久丢失 / popup「已启用」错觉 / dynamicScripts 没查 host_permission / release.mjs 缺 dev-artifact 检测 / register 非原子）+ vue-craft 14 条样式 a11y 漂移全清 + 严格 WCAG AA 4.5:1 系统升级。
 
 **v0.7.2 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.2/moo-chrome-dev-tool-0.7.2.zip)（sha256 `1512f83b39f94e1a8b8518cdd0074e930a12768adb8a6e3a8718f6b9dd476366`）。**🔴 dogfood hotfix** — v0.7.0 dynamic register 链路实机 chrome 装上即炸（content script lazy chunks 被 web_accessible_resources 拒，悬浮球出不来）。修：删 `use_dynamic_url: true`，chunks 走固定 ID URL。顺带新功能：录屏鼠标点击 800ms 红圈涟漪（视频里同事能看清点哪）。
 
