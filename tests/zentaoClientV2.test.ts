@@ -639,3 +639,64 @@ describe('listModules — v0.4.0 决策：单独保留 v1（v2 无 module 端点
     expect(capturedUrl).toContain('type=bug')
   })
 })
+
+describe('v0.6.2 dogfood — v1 endpoint 403 cookie cascade', () => {
+  it('listModules: v1 撞 403 + cookie 重试 200 → cascade 成功', async () => {
+    const { listModules } = await import('@/background/zentao/client')
+    let attemptCount = 0
+    let lastCredentials: RequestCredentials | undefined
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v1/modules')) {
+        attemptCount++
+        lastCredentials = init?.credentials
+        // 第 1 次 omit 撞 403；第 2 次 include 返 200
+        if (attemptCount === 1) return new Response('forbidden', { status: 403 })
+        return mockJsonRes({ modules: [{ id: 9, name: 'M1', path: '/M1', parent: 0 }] })
+      }
+      return new Response('{}')
+    }))
+    const r = await listModules(env, 14)
+    expect(attemptCount).toBe(2)
+    expect(lastCredentials).toBe('include')
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.data).toHaveLength(1)
+  })
+
+  it('listModules: 两次都 403 → 返 r1 错误（不假成）', async () => {
+    const { listModules } = await import('@/background/zentao/client')
+    let n = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v1/modules')) {
+        n++
+        return new Response('forbidden', { status: 403 })
+      }
+      return new Response('{}')
+    }))
+    const r = await listModules(env, 14)
+    expect(n).toBe(2)
+    expect(r.ok).toBe(false)
+  })
+
+  it('listModules: 第 1 次 200 → 不走 cascade', async () => {
+    const { listModules } = await import('@/background/zentao/client')
+    let n = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v1/modules')) {
+        n++
+        return mockJsonRes({ modules: [] })
+      }
+      return new Response('{}')
+    }))
+    await listModules(env, 14)
+    expect(n).toBe(1)  // 不重试
+  })
+})

@@ -118,6 +118,32 @@ function buildHeaders(extra: Record<string, string> = {}): Headers {
 }
 
 /**
+ * v0.6.2 dogfood 暴露：某些禅道实例的 v1 endpoint（products / modules）对 `credentials:'omit'`
+ * + 仅 Token header 的请求返 403（可能 WAF / 自定义中间件要求 cookie 配合 token）。但用户已经
+ * 浏览器登录该禅道（cookie 在 jar 内），只要带上 cookie 就 work。
+ *
+ * 修法：先正常路径（credentials:'omit'）—— 跟过去多月稳定行为对齐；撞 403 时 cascade 再试
+ * `credentials:'include'` 带 cookie 重发。SW 内跨域 fetch 不受 CORS 限制（host_permission 已开
+ * <all_urls>），cookie 跟 token 共发禅道服务器哪个 work 用哪个。
+ *
+ * 不在 v2 endpoint 用此 helper —— v2 是 Token-only 协议（cookie 也无效），增加 include 反而扰动。
+ */
+async function fetchV1WithCookieFallback(url: string, token: string): Promise<Response> {
+  const r1 = await fetch(url, {
+    credentials: 'omit',
+    headers: buildHeaders({ 'Token': token })
+  })
+  // 401 走 withAuth retry；非 403 直接返（200 / 其它 4xx / 5xx 由 caller 处理）
+  if (r1.status !== 403) return r1
+  // 403：cookie cascade。失败仍返 r2（让 caller 看到「都没成」状态码，避免 r1 假成功）
+  const r2 = await fetch(url, {
+    credentials: 'include',
+    headers: buildHeaders({ 'Token': token })
+  })
+  return r2.ok ? r2 : r1
+}
+
+/**
  * 检测禅道 v2 endpoint 鉴权失效的非标响应（v0.4.0 实测发现，在某真禅道实例 biz12 上）。
  *
  * 现象：v2 endpoint 未带 token 或 token 失效时，**不返 401**，而是：
@@ -387,10 +413,8 @@ export async function listProjects(env: ZentaoEnv, limit = 50): Promise<ZentaoRe
     }
     // ── 路径 2：v1 fallback ──
     const v1Url = `${trimBase(env.baseUrl)}/api.php/v1/projects?limit=${limit}`
-    const v1Res = await fetch(v1Url, {
-      credentials: 'omit',
-      headers: buildHeaders({ 'Token': token })
-    })
+    // v0.6.2 dogfood：v1 endpoint cookie cascade 兜底
+    const v1Res = await fetchV1WithCookieFallback(v1Url, token)
     if (v1Res.status === 401) return { _retry: true as const }
     if (!v1Res.ok) return { ok: false as const, error: `HTTP ${v1Res.status}（v1 projects fallback）` }
     const v1Body = await readJson(v1Res) as { projects?: ZentaoProjectSummary[] } | null
@@ -427,10 +451,8 @@ export async function listUsers(env: ZentaoEnv, limit = 200): Promise<ZentaoResu
       }
     }
     const v1Url = `${trimBase(env.baseUrl)}/api.php/v1/users?limit=${limit}`
-    const v1Res = await fetch(v1Url, {
-      credentials: 'omit',
-      headers: buildHeaders({ 'Token': token })
-    })
+    // v0.6.2 dogfood：v1 endpoint cookie cascade 兜底
+    const v1Res = await fetchV1WithCookieFallback(v1Url, token)
     if (v1Res.status === 401) return { _retry: true as const }
     if (!v1Res.ok) return { ok: false as const, error: `HTTP ${v1Res.status}（v1 users fallback）` }
     const v1Body = await readJson(v1Res) as { users?: ZentaoUserSummary[] } | null
@@ -537,10 +559,8 @@ export async function getBug(env: ZentaoEnv, bugId: number): Promise<ZentaoResul
 export async function listModules(env: ZentaoEnv, productId: number): Promise<ZentaoResult<ZentaoModuleSummary[]>> {
   return withAuth(env, async (token) => {
     const url = `${trimBase(env.baseUrl)}/api.php/v1/modules?id=${productId}&type=bug`
-    const res = await fetch(url, {
-      credentials: 'omit',
-      headers: buildHeaders({ 'Token': token })
-    })
+    // v0.6.2 dogfood：某些禅道实例 v1 endpoint 撞 403，cookie cascade 兜底
+    const res = await fetchV1WithCookieFallback(url, token)
     if (res.status === 401) return { _retry: true as const }
     const body = await readJson(res) as { modules?: ZentaoModuleSummary[] } | null
     if (res.ok && Array.isArray(body?.modules)) {
@@ -610,10 +630,8 @@ export async function discoverProduct(env: ZentaoEnv): Promise<ZentaoResult<numb
 
     // ── 路径 2：v1 fallback ──
     const v1Url = `${trimBase(env.baseUrl)}/api.php/v1/products?project=${env.projectId}`
-    const v1Res = await fetch(v1Url, {
-      credentials: 'omit',
-      headers: buildHeaders({ 'Token': token })
-    })
+    // v0.6.2 dogfood：某些禅道实例 v1 endpoint 撞 403，cookie cascade 兜底
+    const v1Res = await fetchV1WithCookieFallback(v1Url, token)
     if (v1Res.status === 401) return { _retry: true as const }
     if (!v1Res.ok) return { ok: false as const, error: `HTTP ${v1Res.status}（v1 product fallback）` }
     const v1Body = await readJson(v1Res) as {
