@@ -14,21 +14,9 @@
 
 **v0.5.0 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.5.0/moo-chrome-dev-tool-0.5.0.zip)（sha256 `6589763d24a13ddb66d8a7c24cddece19dbc2523d13031e3ca285c46a1840f5d`）。第 7 波 review — 换 lab-tester + code-simplifier + mv3-pro 二次找出测试 debt + 代码重复 + MV3 深陷阱。399 单测（366 → 399 = +33） + 90 e2e。
 
-**v0.4.9 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.9/moo-chrome-dev-tool-0.4.9.zip)（sha256 `8a502b4eb0599e4a333709fa89cc67c2f2efc877627f44daab25056ba946e968`）。第 6 波 review — 业务复盘 v3 找出 13 个问题（5 个 v0.4.8 回归），全修。366 单测 + 90 e2e。
+**早期版本简介**：v0.1.x → v0.4.3 见 [docs/handoff-archive/v0.1.x.md](docs/handoff-archive/v0.1.x.md)；v0.4.4 → v0.4.9 见 [docs/handoff-archive/v0.4.4-v0.4.9.md](docs/handoff-archive/v0.4.4-v0.4.9.md)。
 
-**v0.4.8 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.8/moo-chrome-dev-tool-0.4.8.zip)（sha256 `114ee270502b35d72d43770b49cd23d7ad73bd1815b5942b091187687caf5009`）。**第 5 波 review** —— 业务复盘 v2 找出 24+ 问题，含 4 个隐私洞 + v0.4.7 修的 4 个月 bug 复活路径。修了 12 严重 + 9 中等。366 + 90 全绿。
-
-**v0.4.7 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.7/moo-chrome-dev-tool-0.4.7.zip)（sha256 `3f2bbd3dff0f000330476c12cb30d6af2948d54ec5f61fba098f0efafca57227`）。**业务专项 review 一波** —— 跑「业务复盘」3 agent 模拟真用户场景找出 28 个业务问题，修了 19 个核心 + 9 个 mini-feature 标 backlog。最严重：History 禅道「重新提交」错发到 webhook server（v0.2.0 起就在的，4 个月没人发现）。366 单测 + 7 skipped + 90 e2e 全绿。
-
-**v0.4.6 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.6/moo-chrome-dev-tool-0.4.6.zip)（sha256 `2e989cb5f33e632533f08587483733c90867ed76f0caeee4272aa892e2bb3b7f`）。**文档专项 review 一波** —— 跑「拉团队，所有文档优化」3 agent 并行审找出 22 个文档问题全清 + filter-repo 清 git history PII + HANDOFF 归档 + UX_REVIEW/COVERAGE_MATRIX/RELEASE_TEST_CHECKLIST 加历史 banner + CLAUDE.md 主动扩展清单抽象化。**runtime 代码 0 改动**。366 单测 + 7 skipped + 90 e2e 全绿。
-
-**v0.4.5 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.5/moo-chrome-dev-tool-0.4.5.zip)（sha256 `521f13074bf473c9df24429bb51230e072c9ef786fe843ecfa7cb944d0f588e9`）。v0.4.4 后**跑 `/full-team-review` 发现 4 处「我刚做的就有同款 bug」+ 24 累积问题**。讽刺地证明 v0.4.4 的「主动扩展清单」强度不够 —— sender 校验补漏 content/ContentApp、dark mode token 漏 Environment、setTimeout leak 漏 BodyViewer、写检查脚本时正则硬编码 v0.x.x。全修 + CLAUDE.md 清单加固。无 BREAKING。**366 单测 + 7 skipped + 90 e2e 全绿**。
-
-**v0.4.4 已发**（2026-05-24）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.4.4/moo-chrome-dev-tool-0.4.4.zip)（sha256 `7cf1fd9c07931942aee4e6bd6d72871b56216dba62f77290e62a00ac781a7265`）。v0.4.3 后**大团队复盘** —— 3 个 agent 并行审找出 4 严重 + 7 中等问题全修。包括 MV3 安全加固（onMessage sender 严格校验）+ dark mode token 修复 + SubmitDialog leak + SW/offscreen 状态同步 + submit.ts 加 17 单测 + 文档/类型债清理。无 BREAKING。**356 单测 + 7 skipped + 90 e2e 全绿**。
-
-**早期版本简介**（v0.1.x → v0.4.3）已迁到 [docs/handoff-archive/v0.1.x.md](docs/handoff-archive/v0.1.x.md)。
-
-**往前看**：v0.4.5 把 v0.4.4 review 找出的 4 处「同款漏扫」+ 24 累积问题全清。代码护栏（CI / pre-commit / 主动扩展清单 / `/full-team-review` skill）成型。当前没有强迫性 todo。下一波等：① 同事继续 dogfood v0.4.x 看有没有边缘 case ② listModules 啥时候能跟 v2（等禅道补 Module 章节，被动等待）。
+**往前看**：v0.6.x 把 PLAN_v1.0 的 P0 router 化 + IssueAdapter + P1 Environment 拆 + P3 retryQueue 多轨 + #128 host_permissions optional + i18n 留口子 + dogfood hotfix 全做完，单测 406 → 568。**剩 v0.7.0 工作**：① content_scripts 改 chrome.scripting.registerContentScripts 动态注册（CWS 评审对 MV3 静态 `<all_urls>` 容忍度低于 host_permission）② P2 SubmitDialog.vue 1047 行拆 ③ 自托管 telemetry collector。**CWS 上架物料就绪**（docs/cws/）等用户截图 + 后台填表。
 
 ## 这两周做了什么
 
