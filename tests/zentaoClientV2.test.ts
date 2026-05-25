@@ -777,4 +777,49 @@ describe('v0.6.2 dogfood — v1 endpoint 403 cookie cascade', () => {
     expect(attempts).toBe(2)
     expect(r.ok).toBe(true)
   })
+
+  it('getBug v1 fallback: 403 cookie cascade 成功（claude 同款扫描修）', async () => {
+    let attempts = 0
+    let lastCreds: RequestCredentials | undefined
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.match(/\/v2\/bugs\/\d+/)) {
+        return mockJsonRes({ message: 'fall-through' })  // 不含 status/id 字段
+      }
+      if (url.match(/\/v1\/bugs\/\d+/)) {
+        attempts++
+        lastCreds = init?.credentials
+        if (attempts === 1) return new Response('forbidden', { status: 403 })
+        return mockJsonRes({ id: 99, status: 'active', deleted: '0' })
+      }
+      return new Response('{}')
+    }))
+    const r = await getBug(env, 99)
+    expect(attempts).toBe(2)
+    expect(lastCreds).toBe('include')
+    expect(r.ok).toBe(true)
+  })
+
+  it('getBug v1 fallback: 两次都 403 → 返友好文案', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.match(/\/v2\/bugs\/\d+/)) {
+        return mockJsonRes({ message: 'fall-through' })
+      }
+      if (url.match(/\/v1\/bugs\/\d+/)) {
+        return new Response('forbidden', { status: 403 })
+      }
+      return new Response('{}')
+    }))
+    const r = await getBug(env, 99)
+    expect(r.ok).toBe(false)
+    if (!r.ok) {
+      expect(r.error).toContain('禅道服务器拒绝')
+      expect(r.error).toContain('bug 详情')
+    }
+  })
 })

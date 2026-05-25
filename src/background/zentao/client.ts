@@ -144,6 +144,18 @@ async function fetchV1WithCookieFallback(url: string, token: string): Promise<Re
 }
 
 /**
+ * v0.6.3：v1 endpoint 失败时统一错误文案。caller 不再重复写 if 403 友好文案 / else 技术错。
+ * - 403（cookie cascade 都试过仍被拒）：友好文案告诉用户是禅道服务器拒绝，不是 Moo bug
+ * - 其它（5xx / 网络错 / schema 不识别）：保留技术化 `HTTP X（v1 X fallback）` 让 dev 看到状态码 + 哪个 endpoint
+ */
+function zentaoV1ErrorMsg(res: Response, listName: string, fallbackTag: string): string {
+  if (res.status === 403) {
+    return `禅道服务器拒绝访问${listName}（HTTP 403）— 可能账号无权限或禅道 WAF 拦截。请联系禅道管理员`
+  }
+  return `HTTP ${res.status}（${fallbackTag}）`
+}
+
+/**
  * 检测禅道 v2 endpoint 鉴权失效的非标响应（v0.4.0 实测发现，在某真禅道实例 biz12 上）。
  *
  * 现象：v2 endpoint 未带 token 或 token 失效时，**不返 401**，而是：
@@ -315,7 +327,13 @@ export async function uploadEditorFile(
       headers: new Headers({ 'X-Requested-With': 'XMLHttpRequest' }),
       body: fd
     })
-    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+    if (!res.ok) {
+      // v0.6.3 同款扫描：403 给友好文案（同 v1 endpoint cascade 后的拒绝场景）
+      if (res.status === 403) {
+        return { ok: false, error: '禅道服务器拒绝附件上传（HTTP 403）— 可能账号无权限或禅道 WAF 拦截。请确认已登录禅道页面' }
+      }
+      return { ok: false, error: `HTTP ${res.status}` }
+    }
     const text = await res.text()
     if (!text) {
       return { ok: false, error: '禅道未返响应体（请确认浏览器里已登录禅道：附件上传依赖 cookie session）' }
@@ -355,7 +373,13 @@ export async function ping(env: ZentaoEnv): Promise<ZentaoResult<ZentaoProfile>>
       headers: buildHeaders({ 'Token': token })
     })
     if (res.status === 401) return { _retry: true as const }
-    if (!res.ok) return { ok: false as const, error: `HTTP ${res.status}` }
+    if (!res.ok) {
+      // v0.6.3 同款扫描：403 友好文案（ping v2 路径，token 有效但实例拒绝详情读）
+      if (res.status === 403) {
+        return { ok: false as const, error: '禅道服务器拒绝获取当前用户信息（HTTP 403）— 可能 token 权限不足或禅道 WAF 拦截' }
+      }
+      return { ok: false as const, error: `HTTP ${res.status}` }
+    }
     // v2 详情端点平铺响应（实测 + 文档惯例：v2 detail endpoint 直接返对象字段，不嵌套）
     const body = await readJson(res) as {
       result?: boolean; message?: string
@@ -416,12 +440,7 @@ export async function listProjects(env: ZentaoEnv, limit = 50): Promise<ZentaoRe
     // v0.6.2 dogfood：v1 endpoint cookie cascade 兜底
     const v1Res = await fetchV1WithCookieFallback(v1Url, token)
     if (v1Res.status === 401) return { _retry: true as const }
-    if (!v1Res.ok) {
-      if (v1Res.status === 403) {
-        return { ok: false as const, error: '禅道服务器拒绝访问项目列表（HTTP 403）— 可能账号无权限或禅道 WAF 拦截。请联系禅道管理员' }
-      }
-      return { ok: false as const, error: `HTTP ${v1Res.status}（v1 projects fallback）` }
-    }
+    if (!v1Res.ok) return { ok: false as const, error: zentaoV1ErrorMsg(v1Res, '项目列表', 'v1 projects fallback') }
     const v1Body = await readJson(v1Res) as { projects?: ZentaoProjectSummary[] } | null
     if (Array.isArray(v1Body?.projects)) return { ok: true as const, data: v1Body!.projects! }
     return { ok: false as const, error: 'v2/v1 项目列表响应都不识别' }
@@ -459,12 +478,7 @@ export async function listUsers(env: ZentaoEnv, limit = 200): Promise<ZentaoResu
     // v0.6.2 dogfood：v1 endpoint cookie cascade 兜底
     const v1Res = await fetchV1WithCookieFallback(v1Url, token)
     if (v1Res.status === 401) return { _retry: true as const }
-    if (!v1Res.ok) {
-      if (v1Res.status === 403) {
-        return { ok: false as const, error: '禅道服务器拒绝访问用户列表（HTTP 403）— 可能账号无权限或禅道 WAF 拦截' }
-      }
-      return { ok: false as const, error: `HTTP ${v1Res.status}（v1 users fallback）` }
-    }
+    if (!v1Res.ok) return { ok: false as const, error: zentaoV1ErrorMsg(v1Res, '用户列表', 'v1 users fallback') }
     const v1Body = await readJson(v1Res) as { users?: ZentaoUserSummary[] } | null
     if (Array.isArray(v1Body?.users)) {
       return { ok: true as const, data: v1Body!.users!.map(u => ({ id: u.id, account: u.account, realname: u.realname, role: u.role })) }
@@ -538,14 +552,12 @@ export async function getBug(env: ZentaoEnv, bugId: number): Promise<ZentaoResul
       if (bug && typeof bug.id === 'number') return { ok: true as const, data: shapeBugDetail(bug) }
     }
     // ── v1 fallback：顶层平铺 ──
+    // v0.6.3 同款扫描修：之前漏 cookie cascade（跟 listProjects/listUsers/listModules/discoverProduct 同款）
     const v1Url = `${trimBase(env.baseUrl)}/api.php/v1/bugs/${bugId}`
-    const v1Res = await fetch(v1Url, {
-      credentials: 'omit',
-      headers: buildHeaders({ 'Token': token })
-    })
+    const v1Res = await fetchV1WithCookieFallback(v1Url, token)
     if (v1Res.status === 401) return { _retry: true as const }
     if (v1Res.status === 404) return { ok: false as const, error: 'bug 不存在或已彻底删除' }
-    if (!v1Res.ok) return { ok: false as const, error: `HTTP ${v1Res.status}（v1 bug fallback）` }
+    if (!v1Res.ok) return { ok: false as const, error: zentaoV1ErrorMsg(v1Res, 'bug 详情', 'v1 bug fallback') }
     const v1Body = await readJson(v1Res) as BugRawFields | null
     if (!v1Body || typeof v1Body.id !== 'number') return { ok: false as const, error: 'v2/v1 bug 详情响应都不识别' }
     return { ok: true as const, data: shapeBugDetail(v1Body) }
@@ -576,11 +588,7 @@ export async function listModules(env: ZentaoEnv, productId: number): Promise<Ze
     if (res.ok && Array.isArray(body?.modules)) {
       return { ok: true as const, data: body.modules.map(m => ({ id: m.id, name: m.name, path: m.path, parent: m.parent })) }
     }
-    // v0.6.2：403 友好文案（cookie cascade 都试过仍被拒）
-    if (res.status === 403) {
-      return { ok: false as const, error: '禅道服务器拒绝访问模块列表（HTTP 403）— 可能账号无权限或禅道 WAF 拦截' }
-    }
-    return { ok: false as const, error: `HTTP ${res.status}` }
+    return { ok: false as const, error: zentaoV1ErrorMsg(res, '模块列表', 'v1 modules') }
   })
 }
 
@@ -647,13 +655,7 @@ export async function discoverProduct(env: ZentaoEnv): Promise<ZentaoResult<numb
     // v0.6.2 dogfood：某些禅道实例 v1 endpoint 撞 403，cookie cascade 兜底
     const v1Res = await fetchV1WithCookieFallback(v1Url, token)
     if (v1Res.status === 401) return { _retry: true as const }
-    if (!v1Res.ok) {
-      // v0.6.2：403 给同事看得懂的引导文案（cascade 都试过了仍 403 = 真服务器拒绝）
-      if (v1Res.status === 403) {
-        return { ok: false as const, error: '禅道服务器拒绝访问产品列表（HTTP 403）— 可能当前账号在该项目无读权限，或禅道 WAF 拦截。请联系禅道管理员' }
-      }
-      return { ok: false as const, error: `HTTP ${v1Res.status}（v1 product fallback）` }
-    }
+    if (!v1Res.ok) return { ok: false as const, error: zentaoV1ErrorMsg(v1Res, '产品列表', 'v1 product fallback') }
     const v1Body = await readJson(v1Res) as {
       products?: Array<{ id?: number; name?: string }>
     } | null
