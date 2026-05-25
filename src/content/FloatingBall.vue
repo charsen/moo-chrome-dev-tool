@@ -32,6 +32,7 @@
       <button
         class="moo-ball-btn moo-ball-btn--logo"
         :title="logoTitle"
+        :aria-label="logoTitle"
         @click.stop="onLogoClick"
       >
         <img :src="eagleUrl" class="moo-ball-icon" alt="Moo" draggable="false" />
@@ -39,6 +40,7 @@
       <button
         class="moo-ball-btn"
         title="截图"
+        aria-label="截图（截当前页面）"
         @click.stop="onTriggerCapture"
       >
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -49,6 +51,7 @@
       <button
         class="moo-ball-btn moo-ball-btn--with-kbd"
         title="录屏快捷键：⌥⇧R / Alt+Shift+R（Chrome MV3 限制录屏必须由快捷键触发）"
+        aria-label="录屏（快捷键 ⌥⇧R）"
         @click.stop="onTriggerRecord"
       >
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

@@ -112,7 +112,7 @@
                   <option :value="60000">最近 60s</option>
                   <option :value="-1">全部</option>
                 </select>
-                <input v-model="urlFilter" placeholder="按 URL 过滤" class="req-filter" />
+                <input v-model="urlFilter" placeholder="按 URL 过滤" aria-label="按 URL 过滤请求" class="req-filter" />
                 <button class="moo-btn small" @click="selectAll">全选</button>
                 <button class="moo-btn small" @click="selectNone">清空</button>
                 <button

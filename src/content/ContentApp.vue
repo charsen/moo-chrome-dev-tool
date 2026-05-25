@@ -13,8 +13,8 @@
     <div v-if="state === 'recording'" class="moo-rec-bar" :style="recBarStyle">
       <span class="rec-dot" />
       <span class="rec-time">{{ fmtDuration(recordElapsed) }}</span>
-      <button class="moo-btn small" @click="stopRecording">⏹ 停止</button>
-      <button class="moo-btn small" @click="cancelRecording">取消</button>
+      <button class="moo-btn small" aria-label="停止录屏" @click="stopRecording">⏹ 停止</button>
+      <button class="moo-btn small" aria-label="取消录屏（丢弃已录内容）" @click="cancelRecording">取消</button>
     </div>
 
     <Annotator

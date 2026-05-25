@@ -809,7 +809,7 @@ export const SHADOW_CSS = `
   font-size: 11px;
   padding: 2px 7px;
   border-radius: var(--r-sm);
-  background: var(--c-brand, #3b82f6);
+  background: var(--c-brand);
   color: white;
 }
 .zentao-target-base {
@@ -859,7 +859,7 @@ export const SHADOW_CSS = `
 }
 .zentao-cookie-row.ok {
   background: var(--c-bg-elev);
-  color: var(--c-ok-fg, #16a34a);
+  color: var(--c-success-fg);
 }
 .zentao-cookie-row.fail {
   background: var(--c-warn-soft);
@@ -885,13 +885,16 @@ export const SHADOW_CSS = `
   color: var(--c-text);
 }
 
-/* 按钮 */
+/* 按钮 — v0.7.3 跟 tokens.css :179 .moo-btn 对齐：gap / height / padding /
+   user-select / nowrap / :active / :focus-visible 全补齐，避免漂移再撞。
+   旧 .primary 命名保留兼容（content 世界既有调用方未全切 BEM）。 */
 .moo-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 30px;
-  padding: 0 16px;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
   font-size: 12px;
   font-weight: 500;
   font-family: inherit;
@@ -900,22 +903,33 @@ export const SHADOW_CSS = `
   color: var(--c-text);
   border-radius: var(--r-md);
   cursor: pointer;
-  transition: background .12s, border-color .12s, color .12s;
-  /* v0.7.3：默认禁止换行 —— 中文字符在 flex 容器宽度不够时不至于被强制竖排（rec-bar
-     stop/取消 按钮已实测被踩）。需要 wrap 的特殊场景单独覆盖。 */
+  transition: background .12s, border-color .12s, color .12s, box-shadow .12s;
+  user-select: none;
   white-space: nowrap;
 }
 .moo-btn:hover:not(:disabled) {
   background: var(--c-bg-soft);
-  border-color: var(--c-text-dim);
+  border-color: var(--c-text-faint);
 }
-.moo-btn.primary {
+.moo-btn:active:not(:disabled) { background: var(--c-bg-elev); }
+.moo-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
+  border-color: var(--c-brand);
+}
+.moo-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.moo-btn.primary,
+.moo-btn--primary {
   background: var(--c-brand);
   color: var(--moo-c-brand-fg);
   border-color: var(--c-brand);
 }
-.moo-btn.primary:hover:not(:disabled) { background: var(--c-brand-hover); border-color: var(--c-brand-hover); }
-.moo-btn:disabled { opacity: .5; cursor: not-allowed; }
+.moo-btn.primary:hover:not(:disabled),
+.moo-btn--primary:hover:not(:disabled) {
+  background: var(--c-brand-hover);
+  border-color: var(--c-brand-hover);
+}
 
 /* ============================================
    附带请求列表
@@ -936,6 +950,7 @@ export const SHADOW_CSS = `
 }
 .req-controls {
   display: flex;
+  flex-wrap: wrap;   /* v0.7.3：窄宿主页（DevTools docked ~350px）下 5 控件挤一行爆，允许换行 */
   gap: 6px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--c-divider);
@@ -1132,11 +1147,15 @@ export const SHADOW_CSS = `
   cursor: pointer;
   padding: 4px 6px;
   border-radius: var(--r-sm);
-  transition: color .12s, background .12s;
+  transition: color .12s, background .12s, box-shadow .12s;
 }
 .moo-close-btn:hover {
   color: var(--c-text);
   background: var(--c-bg-soft);
+}
+.moo-close-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
 }
 
 /* 缩略图小尺寸：截图作为附件展示，不需要占太大空间 */
@@ -1192,6 +1211,11 @@ export const SHADOW_CSS = `
 /* hover 把半透白加深到全白，跟正常按钮的「bg-soft」语义不同：这里是浮在截图上的玻璃卡 */
 .moo-thumb-action:hover { background: #fff; transform: translateY(-1px); }
 .moo-thumb-action:active { transform: translateY(0); }
+.moo-thumb-action:focus-visible {
+  outline: none;
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
+}
 
 /* Ghost 按钮：用于 dev/debug 二级动作（如"预览请求体"），视觉弱化避免和主提交按钮抢焦点 */
 .moo-btn.ghost {
@@ -1282,7 +1306,7 @@ export const SHADOW_CSS = `
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--c-brand, #3b82f6);
+  color: var(--c-brand);
   background: var(--c-bg-elev);
   border-radius: var(--r-sm);
   text-decoration: none;
@@ -1414,7 +1438,8 @@ export const SHADOW_CSS = `
   color: #fff;
   padding: 11px 18px;
   border-radius: var(--r-md);
-  font-size: 13px;
+  /* v0.7.3 跟 tokens.css :482 toast 字号对齐（之前 13 vs 12 漂）*/
+  font-size: 12px;
   line-height: 1.5;
   max-width: min(560px, calc(100vw - 48px));
   word-break: break-word;
@@ -1518,7 +1543,8 @@ export const SHADOW_CSS = `
 }
 .moo-video-preview {
   width: 100%;
-  max-height: 280px;
+  /* v0.7.3：4K 屏 max-height 280px 显得特别小 → clamp 让大屏多一档 (280 → 50vh，封顶 480) */
+  max-height: clamp(280px, 50vh, 480px);
   /* 视频 letterbox 背景必须是纯黑：跟主题无关，是视频播放器约定 */
   background: #000;
   display: block;
@@ -1605,5 +1631,21 @@ export const SHADOW_CSS = `
   0%   { transform: scale(.4); opacity: 0; }
   20%  { opacity: .95; }
   100% { transform: scale(2); opacity: 0; }
+}
+
+/* v0.7.3：前庭敏感用户 / 系统级减动效设置 — content world 自有 @keyframes 全部退化。
+   tokens.css :515 已对 popup/devtools 同样处理，shadow 这份补齐。 */
+@media (prefers-reduced-motion: reduce) {
+  .rec-dot,
+  .moo-ripple,
+  .moo-toast,
+  .moo-mask,
+  .moo-dialog,
+  .moo-success-checkmark {
+    animation: none !important;
+    transition: none !important;
+  }
+  /* 涟漪改静态描边淡显（让用户至少知道点击命中），不是完全隐藏 */
+  .moo-ripple { opacity: .7; transform: scale(1); }
 }
 `
