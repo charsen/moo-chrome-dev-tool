@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.6.2 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.6.2/moo-chrome-dev-tool-0.6.2.zip)（sha256 待回填）。**🔴 dogfood hotfix** —— 同事撞到禅道 v1 endpoint 403 错，本版修：v1 撞 403 自动 cookie cascade 兜底（带浏览器登录态 cookie + Token 共发，禅道服务器自选）+ 403 错误文案改友好让用户知道是禅道侧问题。无 BREAKING。551 单测 + 100 e2e 全绿。
+**v0.6.2 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.6.2/moo-chrome-dev-tool-0.6.2.zip)（sha256 `046c9d0bc2392594b32c68691615e50ac59ba1bdc31416b0e5ed7fedfb3d10c4`）。**🔴 dogfood hotfix** —— 同事撞到禅道 v1 endpoint 403 错，本版修：v1 撞 403 自动 cookie cascade 兜底（带浏览器登录态 cookie + Token 共发，禅道服务器自选）+ 403 错误文案改友好让用户知道是禅道侧问题。无 BREAKING。551 单测 + 100 e2e 全绿。
 
 **v0.6.1 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.6.1/moo-chrome-dev-tool-0.6.1.zip)（sha256 `9634e5ee62d9f03990623bfbbea88220aa3130e56667207f8cecec42e4f91c09`）。v0.6.0 后 mv3-pro 二审 + code-simplifier review 抓出的 patch：badge 升级提示链路 hotfix（P0 × 2：onInstalled `!` 被 SW IIFE 覆盖 / popup dismiss 误清失败计数）+ 跨 popup storage.onChanged 同步 banner + onInstalled 'install' 路径也写 flag + 4 项简化。546 单测全绿。
 
