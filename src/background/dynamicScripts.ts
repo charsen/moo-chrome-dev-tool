@@ -23,7 +23,6 @@
  */
 
 import { loadConfig, onConfigChanged } from '@/storage/config'
-import { hasHostPermission } from '@/utils/hostPermission'
 
 const SCRIPT_ID_MAIN = 'moo-main-world'
 const SCRIPT_ID_ISO = 'moo-content'
@@ -94,22 +93,10 @@ export async function syncContentScripts(): Promise<void> {
       return
     }
 
-    // v0.7.3 P1：host_permission 未授权时 chrome.scripting.registerContentScripts
-    // silent 拒注入（API 不抛错），导致 popup 误显「已启用」但悬浮球不出来。
-    // 早返 + unregister 已注册的（保持「无权限 = 无 active register」状态一致），
-    // 跟 retryQueue:274 / handlers/zentao.ts 同款防御。
-    // 用户后续授权 → permissions.onAdded → syncContentScripts 再走完整路径。
-    if (!await hasHostPermission()) {
-      const existing = await chrome.scripting.getRegisteredContentScripts({
-        ids: [SCRIPT_ID_MAIN, SCRIPT_ID_ISO]
-      }).catch(() => [])
-      if (existing.length > 0) {
-        await chrome.scripting.unregisterContentScripts({
-          ids: existing.map(s => s.id)
-        }).catch(() => { /* race 时已不存在 OK */ })
-      }
-      return
-    }
+    // v0.7.3 复审：之前加过 hasHostPermission 早返已撤 —— register API 即使
+    // 未授权也接受调用（chrome 内部 declarative，授权后立即生效，无需重 register），
+    // 用户授权 / 撤权由 permissions.onAdded/onRemoved 兜底重 sync。popup 错觉文案
+    // 已由 P1.2 在 popup 层修（hostEnabled 分支）。
 
     const config = await loadConfig()
     // P0-1 mv3-pro 四审：尊重 globalEnabled — popup footer 全局开关关闭后悬浮球应消失
