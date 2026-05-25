@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.7.0 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.0/moo-chrome-dev-tool-0.7.0.zip)（sha256 待回填）。**⚠️ BREAKING** —— content_scripts 改成动态注册（CWS 上架友好，manifest 不再 `<all_urls>` 全站注入）。matchPatterns 规则严格收敛（chrome MV3 要求 `https?://host/path`，单 `*` / 无 scheme / file/ftp 不再支持）+ minimum_chrome_version 109 → 111。translator drop 老 patterns 时 popup 弹 `.dropped-banner` 引导改。4 波 agent review + 主动复盘 3 遗漏全闭环。582 单测 + 106 e2e 全绿。
+**v0.7.0 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.0/moo-chrome-dev-tool-0.7.0.zip)（sha256 `7592872093d3e7dc58187fe56ef02078faf6dae7fa1c6e2d1a5ee28fac7395a9`）。**⚠️ BREAKING** —— content_scripts 改成动态注册（CWS 上架友好，manifest 不再 `<all_urls>` 全站注入）。matchPatterns 规则严格收敛（chrome MV3 要求 `https?://host/path`，单 `*` / 无 scheme / file/ftp 不再支持）+ minimum_chrome_version 109 → 111。translator drop 老 patterns 时 popup 弹 `.dropped-banner` 引导改。4 波 agent review + 主动复盘 3 遗漏全闭环。582 单测 + 106 e2e 全绿。
 
 **v0.6.3 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.6.3/moo-chrome-dev-tool-0.6.3.zip)（sha256 `e0e0d463ee1c8c3017036f2dc5bea2d7e738da368221874b22be2de1f77f7194`）。16 commit 累积 + 4 波 agent review 闭环。新功能：版本检查提示（SW 每天 fetch Gitee latest release，新版 popup 弹 banner — CWS 上架前替代自动更新）。修复：getBug 漏 cookie cascade / uploadEditorFile + ping 403 文案 / e2e fixture race（v0.6.1 silent 回归同款防护）/ popup 跨 SW 同步 VERSION_CHECK_FLAG / badge surface 冲突。+5 onInstalled-upgrade-chain e2e（A2 直挡 v0.6.1 类回归）+ 5 cascade 单测。CWS 物料就绪（docs/cws/）。`.release-pii-deny` 黑名单建立。568 单测 + 105 e2e 全绿。
 
