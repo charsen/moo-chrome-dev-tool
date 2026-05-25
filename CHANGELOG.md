@@ -2,6 +2,34 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.7.1
+
+2026-05-25 发版。无 BREAKING，patch — v0.7.0 BREAKING 升级 UX 改进（小白用户友好化）+ 大量 e2e 锁住新功能防 silent 回归。
+
+### 新功能 / 改进
+
+- **addProject 自动填当前 inspected tab URL**：v0.7.0 BREAKING 后小白用户不知道 matchPatterns 写啥，新建项目时自动从 DevTools inspected tab 拿 URL → 转 `${scheme}//${host}/*` 默认填进 matchPatterns[0]。chrome:// / file:// / 拿不到 tab 静默 fall-through 让用户自填。
+- **suggestPattern banner**：已有项目时进入环境 Tab，当前 inspected URL 不命中任何 enabled 项目 → 顶部 banner 弹「当前页 X 不在任何项目的 URL 匹配里，要不要追加进 [activeProject]」+ 追加 / 不加按钮。监听 `chrome.devtools.network.onNavigated` 切 tab / 页面 navigate 重新评估。session 级 dismiss。
+
+### 测试覆盖（按 v0.6.1 silent 回归同款防护）
+
+- `+14` 单测：urlToMatchPattern helper 14 边界 case（http(s) / 带 query+hash / localhost+port / subdomain / IDN punycode / chrome:// / chrome-extension:// / file:// / about:blank / view-source: / 空串 / 不合法 URL / host 为空）
+- `+3` e2e（content-scripts-dynamic-register.spec.ts，lab-tester 三审）：E1 happy register / E2 translator drop unregister / E3 globalEnabled=false unregister — 锁 SW chrome.scripting register 契约
+- `+3` e2e（panel-environment-crud.spec.ts，v0.7.1 新功能锁）：
+  - C1b：addProject 自动填 → textarea.patterns value 含 `https://harness.local/*`
+  - C1c：suggestPattern banner 自动出现 + 点「追加」消失 + textarea 含新 pattern
+  - C1d：「不加」session 级 dismiss，切 activeProject 不重弹
+
+### panel-harness 增强
+
+- mock `chrome.tabs.get(tabId)` 返 `{ url: 'https://harness.local/test' }`，让 addProject 自动填 + suggestPattern 链路在 harness 内能跑通
+
+### 工程
+
+587 → 601 单测 / 109 → 112 e2e 全过 / type-check / build / PII 扫描全干净。
+
+---
+
 ## v0.7.0
 
 2026-05-25 发版。**⚠️ BREAKING** —— content_scripts 改成动态注册（CWS 上架友好），matchPatterns 规则严格收敛 + minimum_chrome_version 109 → 111。同期塞进 P2 SubmitDialog 拆 + Environment 实时校验。

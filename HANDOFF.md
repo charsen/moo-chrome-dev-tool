@@ -4,6 +4,8 @@
 
 ## 一句话现状
 
+**v0.7.1 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.1/moo-chrome-dev-tool-0.7.1.zip)（sha256 待填）。无 BREAKING — v0.7.0 BREAKING 升级 UX 改进。新功能：① addProject 自动填当前 inspected tab URL 进 matchPatterns[0]（小白友好）② suggestPattern banner — 当前 URL 不命中任何 enabled 项目时顶部弹引导追加 + session 级 dismiss。测试：+14 单测（urlToMatchPattern helper 边界）+ 3 e2e（C1b/C1c/C1d 锁新功能）+ 3 e2e（dynamic register E1/E2/E3 锁 SW 契约）。601 单测 + 112 e2e 全绿。
+
 **v0.7.0 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.0/moo-chrome-dev-tool-0.7.0.zip)（sha256 `7592872093d3e7dc58187fe56ef02078faf6dae7fa1c6e2d1a5ee28fac7395a9`）。**⚠️ BREAKING** —— content_scripts 改成动态注册（CWS 上架友好，manifest 不再 `<all_urls>` 全站注入）。matchPatterns 规则严格收敛（chrome MV3 要求 `https?://host/path`，单 `*` / 无 scheme / file/ftp 不再支持）+ minimum_chrome_version 109 → 111。translator drop 老 patterns 时 popup 弹 `.dropped-banner` 引导改。4 波 agent review + 主动复盘 3 遗漏全闭环。582 单测 + 106 e2e 全绿。
 
 **v0.6.3 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.6.3/moo-chrome-dev-tool-0.6.3.zip)（sha256 `e0e0d463ee1c8c3017036f2dc5bea2d7e738da368221874b22be2de1f77f7194`）。16 commit 累积 + 4 波 agent review 闭环。新功能：版本检查提示（SW 每天 fetch Gitee latest release，新版 popup 弹 banner — CWS 上架前替代自动更新）。修复：getBug 漏 cookie cascade / uploadEditorFile + ping 403 文案 / e2e fixture race（v0.6.1 silent 回归同款防护）/ popup 跨 SW 同步 VERSION_CHECK_FLAG / badge surface 冲突。+5 onInstalled-upgrade-chain e2e（A2 直挡 v0.6.1 类回归）+ 5 cascade 单测。CWS 物料就绪（docs/cws/）。`.release-pii-deny` 黑名单建立。568 单测 + 105 e2e 全绿。
@@ -20,7 +22,7 @@
 
 **早期版本简介**：v0.1.x → v0.4.3 见 [docs/handoff-archive/v0.1.x.md](docs/handoff-archive/v0.1.x.md)；v0.4.4 → v0.4.9 见 [docs/handoff-archive/v0.4.4-v0.4.9.md](docs/handoff-archive/v0.4.4-v0.4.9.md)。
 
-**往前看**：v0.7.0 把 PLAN_v1.0 ① content_scripts 动态注册 ② P2 SubmitDialog.vue 拆 一并塞进。单测 406 → 582 / e2e 90 → 106。**剩 v0.7.1+ 工作**：① 自托管 telemetry collector（PLAN 决策 5） ② web_accessible_resources `<all_urls>` 收窄（CWS 评审风险） ③ Environment matchPatterns 实时校验 UI ④ i18n 全量迁移（v1.2+）。**CWS 上架物料就绪**（docs/cws/）等用户截图 + 后台填表。
+**往前看**：v0.7.1 把 v0.7.0 BREAKING UX 小白化（自动填 URL + suggestPattern banner）+ 测试覆盖补齐（587 → 601 单测 + 109 → 112 e2e）。**剩 v0.7.2+ 工作**：① 自托管 telemetry collector（PLAN 决策 5） ② web_accessible_resources `<all_urls>` 收窄（CWS 评审风险） ③ i18n 全量迁移（v1.2+） ④ 同事 dogfood v0.7.x 反馈。**CWS 上架物料就绪**（docs/cws/）等用户截图 + 后台填表。
 
 ## 这两周做了什么
 
