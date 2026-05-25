@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.7.2 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.2/moo-chrome-dev-tool-0.7.2.zip)（sha256 待填）。**🔴 dogfood hotfix** — v0.7.0 dynamic register 链路实机 chrome 装上即炸（content script lazy chunks 被 web_accessible_resources 拒，悬浮球出不来）。修：删 `use_dynamic_url: true`，chunks 走固定 ID URL。顺带新功能：录屏鼠标点击 800ms 红圈涟漪（视频里同事能看清点哪）。
+**v0.7.2 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.2/moo-chrome-dev-tool-0.7.2.zip)（sha256 `1512f83b39f94e1a8b8518cdd0074e930a12768adb8a6e3a8718f6b9dd476366`）。**🔴 dogfood hotfix** — v0.7.0 dynamic register 链路实机 chrome 装上即炸（content script lazy chunks 被 web_accessible_resources 拒，悬浮球出不来）。修：删 `use_dynamic_url: true`，chunks 走固定 ID URL。顺带新功能：录屏鼠标点击 800ms 红圈涟漪（视频里同事能看清点哪）。
 
 **v0.7.1 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.1/moo-chrome-dev-tool-0.7.1.zip)（sha256 `3bab09370f975a19a167b026a099a96edf9322869cd4007e18857c2b70d6c9bc`）。无 BREAKING — v0.7.0 BREAKING 升级 UX 改进。新功能：① addProject 自动填当前 inspected tab URL 进 matchPatterns[0]（小白友好）② suggestPattern banner — 当前 URL 不命中任何 enabled 项目时顶部弹引导追加 + session 级 dismiss。测试：+14 单测（urlToMatchPattern helper 边界）+ 3 e2e（C1b/C1c/C1d 锁新功能）+ 3 e2e（dynamic register E1/E2/E3 锁 SW 契约）。601 单测 + 112 e2e 全绿。
 
