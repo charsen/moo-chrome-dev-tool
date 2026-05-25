@@ -80,6 +80,13 @@
           @blur="onPatternsBlur"
           placeholder="https://*.example.com/*&#10;http://localhost:8080/*"
         />
+        <!-- v0.7.0：实时校验提示 — 哪些 pattern 会被 chrome MV3 translator drop -->
+        <div v-if="invalidPatternsHint.length" class="patterns-warn" role="alert">
+          ⚠ 这些 pattern 不符合 chrome MV3 动态注册要求（v0.7.0 起），保存后悬浮球不会在这些规则上注入：
+          <ul>
+            <li v-for="(p, i) in invalidPatternsHint" :key="i"><code>{{ p || '(空行)' }}</code></li>
+          </ul>
+        </div>
         <div class="tpl-hint">
           <!-- v0.7.0 BREAKING：matchPatterns 必须严格 https?://host/path 形态（chrome MV3 动态注册要求） -->
           示例：<code>https://*.example.com/*</code> 匹配子域名 ·
@@ -138,6 +145,7 @@ import {
   type Project
 } from '@/types/config'
 import { clone } from '@/utils/clone'
+import { toChromeMatchPatterns } from '@/background/dynamicScripts'
 import { confirmDialog } from '../components/confirm'
 import EnvironmentZentao from './EnvironmentZentao.vue'
 import EnvironmentWebhook from './EnvironmentWebhook.vue'
@@ -215,6 +223,14 @@ watch(
 const activeProject = computed<Project | undefined>(() =>
   draft.value.projects.find((p) => p.id === activeId.value)
 )
+
+// v0.7.0：matchPatterns 实时校验 — 拿 dynamicScripts translator 跑一遍，列出会被 drop 的
+// pattern 给用户改正用。零延迟反馈（不等保存）。
+const invalidPatternsHint = computed<string[]>(() => {
+  if (!activeProject.value) return []
+  const { dropped } = toChromeMatchPatterns(activeProject.value.matchPatterns ?? [])
+  return dropped
+})
 
 /** kind 切到 zentao 时若 zentao 字段不存在则用 default 初始化。 */
 watch(
@@ -548,6 +564,26 @@ const { exportConfig, importConfig } = useConfigImportExport({
    不再 scoped 局部覆盖 */
 
 /* 模板提示 + inline code（URL 匹配示例段用） */
+/* v0.7.0：实时校验提示（哪些 pattern 会被 chrome MV3 translator drop）*/
+.patterns-warn {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--moo-c-warn-soft);
+  background: var(--moo-c-warn-soft);
+  color: var(--moo-c-warn-fg);
+  border-radius: var(--moo-r-md);
+  font-size: var(--moo-fs-xs);
+  line-height: 1.6;
+}
+.patterns-warn ul { margin: 4px 0 0; padding-left: 18px; }
+.patterns-warn code {
+  background: var(--moo-c-bg);
+  padding: 0 4px;
+  border-radius: 3px;
+  font-family: monospace;
+  color: var(--moo-c-text);
+}
+
 .tpl-hint {
   font-size: var(--moo-fs-xs);
   color: var(--moo-c-text-muted);

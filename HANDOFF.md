@@ -4,6 +4,8 @@
 
 ## 一句话现状
 
+**v0.7.0 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.0/moo-chrome-dev-tool-0.7.0.zip)（sha256 待回填）。**⚠️ BREAKING** —— content_scripts 改成动态注册（CWS 上架友好，manifest 不再 `<all_urls>` 全站注入）。matchPatterns 规则严格收敛（chrome MV3 要求 `https?://host/path`，单 `*` / 无 scheme / file/ftp 不再支持）+ minimum_chrome_version 109 → 111。translator drop 老 patterns 时 popup 弹 `.dropped-banner` 引导改。4 波 agent review + 主动复盘 3 遗漏全闭环。582 单测 + 106 e2e 全绿。
+
 **v0.6.3 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.6.3/moo-chrome-dev-tool-0.6.3.zip)（sha256 `e0e0d463ee1c8c3017036f2dc5bea2d7e738da368221874b22be2de1f77f7194`）。16 commit 累积 + 4 波 agent review 闭环。新功能：版本检查提示（SW 每天 fetch Gitee latest release，新版 popup 弹 banner — CWS 上架前替代自动更新）。修复：getBug 漏 cookie cascade / uploadEditorFile + ping 403 文案 / e2e fixture race（v0.6.1 silent 回归同款防护）/ popup 跨 SW 同步 VERSION_CHECK_FLAG / badge surface 冲突。+5 onInstalled-upgrade-chain e2e（A2 直挡 v0.6.1 类回归）+ 5 cascade 单测。CWS 物料就绪（docs/cws/）。`.release-pii-deny` 黑名单建立。568 单测 + 105 e2e 全绿。
 
 **v0.6.2 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.6.2/moo-chrome-dev-tool-0.6.2.zip)（sha256 `046c9d0bc2392594b32c68691615e50ac59ba1bdc31416b0e5ed7fedfb3d10c4`）。**🔴 dogfood hotfix** —— 同事撞到禅道 v1 endpoint 403 错，本版修：v1 撞 403 自动 cookie cascade 兜底（带浏览器登录态 cookie + Token 共发，禅道服务器自选）+ 403 错误文案改友好让用户知道是禅道侧问题。无 BREAKING。551 单测 + 100 e2e 全绿。
@@ -18,7 +20,7 @@
 
 **早期版本简介**：v0.1.x → v0.4.3 见 [docs/handoff-archive/v0.1.x.md](docs/handoff-archive/v0.1.x.md)；v0.4.4 → v0.4.9 见 [docs/handoff-archive/v0.4.4-v0.4.9.md](docs/handoff-archive/v0.4.4-v0.4.9.md)。
 
-**往前看**：v0.6.x 把 PLAN_v1.0 的 P0 router 化 + IssueAdapter + P1 Environment 拆 + P3 retryQueue 多轨 + #128 host_permissions optional + i18n 留口子 + dogfood hotfix 全做完，单测 406 → 568。**剩 v0.7.0 工作**：① content_scripts 改 chrome.scripting.registerContentScripts 动态注册（CWS 评审对 MV3 静态 `<all_urls>` 容忍度低于 host_permission）② P2 SubmitDialog.vue 1047 行拆 ③ 自托管 telemetry collector。**CWS 上架物料就绪**（docs/cws/）等用户截图 + 后台填表。
+**往前看**：v0.7.0 把 PLAN_v1.0 ① content_scripts 动态注册 ② P2 SubmitDialog.vue 拆 一并塞进。单测 406 → 582 / e2e 90 → 106。**剩 v0.7.1+ 工作**：① 自托管 telemetry collector（PLAN 决策 5） ② web_accessible_resources `<all_urls>` 收窄（CWS 评审风险） ③ Environment matchPatterns 实时校验 UI ④ i18n 全量迁移（v1.2+）。**CWS 上架物料就绪**（docs/cws/）等用户截图 + 后台填表。
 
 ## 这两周做了什么
 

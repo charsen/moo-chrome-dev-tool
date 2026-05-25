@@ -37,6 +37,8 @@
 
 ## 装上跑起来
 
+**最低要求**：Chrome **111+**（v0.7.0 起 MAIN world 动态注册要求；多数同事 Chrome 已 ≥ 130，不用单独升级）
+
 **下载安装包**：去 [Releases](https://gitee.com/charsen/moo-chrome-dev-tool/releases) 下最新的 zip 解压。
 
 **加载到 Chrome**：

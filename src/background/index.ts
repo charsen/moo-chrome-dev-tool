@@ -100,17 +100,16 @@ chrome.storage.onChanged.addListener((changes, area) => {
 })
 
 // v0.6.1：用户在系统层面（chrome://extensions / popup）授权 <all_urls> 后主动清升级 flag。
-// 跨 popup 同步 + 用户从 chrome 扩展页直接给权限的情况都能覆盖。
-// TODO(v0.7.0)：claude 二轮同款扫描发现此 listener 单测 + e2e 双 0 覆盖。要测必须把
-// handler 抽出（onHostPermissionAdded export function），单测直接调 + 断言 storage.remove
-// 被调。本版不动以保 v0.6.3 候选 commit 数收敛 — v0.7.0 P2 SubmitDialog 拆同期一并改。
-chrome.permissions?.onAdded?.addListener?.(async (perm) => {
-  if (perm.origins?.some(o => o === '<all_urls>' || o === '*://*/*')) {
-    try {
-      await chrome.storage.local.remove(UPGRADE_FLAG_KEY)
-    } catch { /* storage 读失败兜底 — flag 残留也不致命 */ }
-  }
-})
+// v0.7.0：claude 三轮同款扫描发现 dynamicScripts 也注册了 onAdded → 同一事件 fire 两次。
+// 合并到 onHostPermissionAdded 单 handler，由 installDynamicScriptsListeners 内部聚合 sync。
+// export 让单测可独立调（v0.7.x 加测试）
+export async function onHostPermissionAdded(perm: { origins?: string[] }): Promise<void> {
+  if (!perm.origins?.some(o => o === '<all_urls>' || o === '*://*/*')) return
+  try {
+    await chrome.storage.local.remove(UPGRADE_FLAG_KEY)
+  } catch { /* storage 读失败兜底 — flag 残留也不致命 */ }
+}
+chrome.permissions?.onAdded?.addListener?.(onHostPermissionAdded)
 
 chrome.runtime.onStartup?.addListener(() => {
   void ensureRetryAlarm()

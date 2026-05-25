@@ -24,12 +24,12 @@ Gitee 上 markdown 自动渲染，CWS 评审员能打开看。
 ### 2. 准备 zip 包（已有）
 
 ```bash
-ls -lh release/moo-chrome-dev-tool-0.6.2.zip
+ls -lh release/moo-chrome-dev-tool-0.7.0.zip
 ```
 
 文件已经在 release/ 里，196 KB。直接上传这个。
 
-（如果你想发更新的 v0.6.3 候选，先跑 `pnpm release --publish` 拿新 zip。）
+（如果你想发更新版，先跑 `pnpm release --publish` 拿新 zip。）
 
 ### 3. 拍 5 张截图（最花时间 / AI 不能代）
 
@@ -58,7 +58,7 @@ ls -lh release/moo-chrome-dev-tool-0.6.2.zip
 
 #### Step A: 创建 item
 1. https://chrome.google.com/webstore/devconsole/
-2. 左上角 **New item** → 上传 `moo-chrome-dev-tool-0.6.2.zip`
+2. 左上角 **New item** → 上传 `moo-chrome-dev-tool-0.7.0.zip`
 3. 等 Chrome 解析 manifest（几秒钟）
 
 #### Step B: Store listing

@@ -70,48 +70,14 @@
           </div>
         </div>
 
-        <!-- ⑤ 上报目标：kind 分支 —— zentao 显示禅道信息行，webhook 显示原 server 选择 -->
-        <div class="moo-form-row" v-if="kind === 'zentao'">
-          <label>上报到</label>
-          <div class="server-pick">
-            <div class="zentao-target">
-              <span class="zentao-target-tag">禅道</span>
-              <span class="zentao-target-base">{{ project.zentao?.baseUrl || '(未填地址)' }}</span>
-              <span class="zentao-target-pid">项目 #{{ project.zentao?.projectId || '?' }}</span>
-            </div>
-            <div v-if="zentaoMissingList" class="server-warn">
-              ⚠ 禅道配置不完整，缺：{{ zentaoMissingList }}。<br>
-              请打开 <b>DevTools → Moo → 环境</b>，把缺的字段填上后再回来提交。
-            </div>
-            <!-- cookie 预检状态：依赖用户在浏览器登录禅道。失败时给「一键打开禅道」 -->
-            <!-- v0.4.7：unknown 状态显式「检查中」（之前隐藏让用户以为 OK 点了等 2-5s 才报错） -->
-            <div
-              v-else-if="zentaoCookieState === 'unknown'"
-              class="zentao-cookie-row checking"
-            >
-              <span>⏳ 正在检查禅道登录状态…</span>
-            </div>
-            <div
-              v-else
-              :class="['zentao-cookie-row', zentaoCookieState === 'ok' ? 'ok' : 'fail']"
-            >
-              <span>{{ zentaoCookieMsg }}</span>
-              <a
-                v-if="zentaoCookieState === 'fail' && project.zentao?.baseUrl"
-                class="moo-btn small"
-                :href="project.zentao.baseUrl"
-                target="_blank"
-                rel="noopener noreferrer"
-              >打开禅道登录</a>
-              <button
-                v-if="zentaoCookieState === 'fail'"
-                type="button"
-                class="moo-btn small ghost"
-                @click="pingZentaoCookie"
-              >重新检查</button>
-            </div>
-          </div>
-        </div>
+        <!-- ⑤ 上报目标：kind 分支 —— zentao 路径走 SubmitFormZentao 子组件 -->
+        <SubmitFormZentao
+          v-if="kind === 'zentao'"
+          v-model="zentaoFields"
+          :project="project"
+          :missing-list="zentaoMissingList"
+          @update:cookie-state="(s) => { zentaoCookieState = s }"
+        />
 
         <!-- ⑤.0 录像太大警告（zentao 50M 上限） -->
         <div v-if="videoTooBigForZentao" class="moo-form-row">
@@ -122,84 +88,12 @@
           </div>
         </div>
 
-        <!-- ⑤.1 禅道字段：每条 bug 可改的 type / severity / pri / assignedTo -->
-        <template v-if="kind === 'zentao' && !zentaoMissingList">
-          <div class="moo-form-row moo-zentao-fields">
-            <label>分级</label>
-            <div class="moo-zentao-row">
-              <select v-model="zentaoType" class="zentao-field">
-                <option v-for="t in ZENTAO_TYPE_OPTIONS" :key="t.value" :value="t.value">类型：{{ t.label }}</option>
-              </select>
-              <select v-model.number="zentaoSeverity" class="zentao-field">
-                <option v-for="s in ZENTAO_SEVERITY_OPTIONS" :key="s.value" :value="s.value">严重度 {{ s.label }}</option>
-              </select>
-              <select v-model.number="zentaoPri" class="zentao-field">
-                <option v-for="p in ZENTAO_PRI_OPTIONS" :key="p.value" :value="p.value">优先级 {{ p.label }}</option>
-              </select>
-            </div>
-          </div>
-          <div class="moo-form-row">
-            <label for="moo-zentao-module">所属模块</label>
-            <div class="zentao-assignee-pick">
-              <select id="moo-zentao-module" v-model.number="zentaoModuleId" class="grow" :disabled="zentaoModulesLoading">
-                <option :value="0">— 根模块（/）—</option>
-                <option v-if="zentaoModulesLoading" disabled>正在拉模块列表…</option>
-                <option v-for="m in zentaoModules" :key="m.id" :value="m.id">
-                  {{ m.path || m.name }}
-                </option>
-              </select>
-              <button
-                class="moo-btn zentao-assignee-refresh"
-                type="button"
-                :disabled="zentaoModulesLoading"
-                :title="zentaoModules.length ? '重新拉模块列表' : '拉禅道模块列表'"
-                @click="loadZentaoModules"
-              >{{ zentaoModulesLoading ? '...' : (zentaoModules.length ? '↻' : '拉列表') }}</button>
-            </div>
-            <!-- v0.4.7：拉模块失败显式 inline 提示 -->
-            <div v-if="zentaoModulesError" class="zentao-list-err">
-              ⚠ 拉模块列表失败：{{ zentaoModulesError }}
-            </div>
-          </div>
-          <div class="moo-form-row">
-            <label for="moo-zentao-assignee">指派给</label>
-            <div class="zentao-assignee-pick">
-              <select id="moo-zentao-assignee" v-model="zentaoAssignedTo" class="grow" :disabled="zentaoUsersLoading">
-                <option value="">— 未指派（按项目规则自动分派）—</option>
-                <option v-if="zentaoUsersLoading" disabled>正在拉用户列表…</option>
-                <option v-for="u in zentaoUsers" :key="u.account" :value="u.account">
-                  {{ u.realname }}（{{ u.account }}{{ u.role ? ` · ${u.role}` : '' }}）
-                </option>
-              </select>
-              <button
-                class="moo-btn zentao-assignee-refresh"
-                type="button"
-                :disabled="zentaoUsersLoading"
-                :title="zentaoUsers.length ? '重新拉用户列表' : '拉禅道用户列表'"
-                @click="loadZentaoUsers"
-              >{{ zentaoUsersLoading ? '...' : (zentaoUsers.length ? '↻' : '拉列表') }}</button>
-            </div>
-            <!-- v0.4.7：拉用户失败显式 inline 提示 -->
-            <div v-if="zentaoUsersError" class="zentao-list-err">
-              ⚠ 拉用户列表失败：{{ zentaoUsersError }}（留空也能提交，按禅道项目规则自动分派）
-            </div>
-          </div>
-        </template>
-        <div class="moo-form-row" v-else-if="showServerRow">
-          <label for="moo-server">服务器</label>
-          <div class="server-pick">
-            <select id="moo-server" v-model="serverId">
-              <option v-if="!project.servers.length" disabled value="">还没有上报服务器 —— 请先到 DevTools → Moo → 环境 → 新建一个</option>
-              <option v-for="s in project.servers" :key="s.id" :value="s.id">
-                {{ s.name }} — {{ s.endpoint || '（尚未填请求 URL）' }}
-              </option>
-            </select>
-            <div v-if="serverEndpointMissing" class="server-warn">
-              ⚠ 服务器「{{ currentServer?.name }}」还没填请求 URL，提交会失败。<br>
-              请打开 <b>DevTools → Moo → 环境</b>，找到这个服务器，在「请求 URL」那一行填上后端地址（比如 <code>http://localhost:3000/bugs</code>），然后回来点提交。
-            </div>
-          </div>
-        </div>
+        <!-- webhook 路径：服务器选择行（单个+配置正确时自动隐藏，子组件内部判定） -->
+        <SubmitFormWebhook
+          v-if="kind !== 'zentao'"
+          v-model="serverId"
+          :project="project"
+        />
 
         <!-- ⑥ 附件折叠组：请求 / 错误 / 元素 -->
         <details class="moo-attach" open>
@@ -393,9 +287,9 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import type { Project } from '@/types/config'
 import type { CapturedRequest } from '@/types/requests'
 import type { ConsoleError } from '@/types/errors'
-import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes, type ZentaoListUsersRes, type ZentaoListModulesRes, type ZentaoPingCookieRes } from '@/types/messages'
+import { MSG, type PreviewPayloadReq, type PreviewPayloadRes, type SubmitBugReq, type SubmitBugRes } from '@/types/messages'
 
-import { ZENTAO_TYPE_OPTIONS, ZENTAO_SEVERITY_OPTIONS, ZENTAO_PRI_OPTIONS } from '@/utils/zentaoOptions'
+import { ZENTAO_TYPE_OPTIONS } from '@/utils/zentaoOptions'
 
 /** 禅道 maxUploadSize 实测是 50M（manifest 里写死，普通账号无法改），保守取 49 MB */
 const ZENTAO_MAX_ATTACHMENT_MB = 49
@@ -403,6 +297,9 @@ const ZENTAO_MAX_ATTACHMENT_MB = 49
 import { formatSubmitResult } from '@/utils/submitMessage'
 import { safeSendMessage } from '@/utils/messaging'
 import { redactUrl } from '@/utils/redact'
+import SubmitFormZentao from './components/SubmitFormZentao.vue'
+import SubmitFormWebhook from './components/SubmitFormWebhook.vue'
+import type { ZentaoFormFields } from './components/SubmitFormZentao.types'
 // ElementPicker 只在用户点"选元素"按钮（picking=true）才挂载，默认根本不渲染。
 // 异步拆 chunk 后 SubmitDialog 自身体积也跟着瘦——picker 只用全屏 overlay 那一下。
 // PickedElement 类型仍按 type-only 静态导入，避免编译时依赖触发 chunk 合并。
@@ -715,122 +612,25 @@ const kind = computed(() => props.project.kind ?? 'webhook')
 // v0.4.7：兜底 default 不在 ZENTAO_TYPE_OPTIONS 里时（schema 漂移 / 用户配了禅道侧自定义 type）
 // 下拉显示空，提交可能被禅道服务端拒。fallback 到第一个合法 option
 const zentaoTypeInitial = props.project.zentao?.defaultType || 'codeerror'
-const zentaoType = ref<string>(
-  ZENTAO_TYPE_OPTIONS.some(o => o.value === zentaoTypeInitial)
+/** 每条 bug 可改的禅道字段集合 —— 用 v-model 整体传给 SubmitFormZentao。
+ *  指派给：每条 bug 由用户在 SubmitDialog 单独选；moduleId 初值取项目级默认。 */
+const zentaoFields = ref<ZentaoFormFields>({
+  zentaoType: ZENTAO_TYPE_OPTIONS.some(o => o.value === zentaoTypeInitial)
     ? zentaoTypeInitial
-    : (ZENTAO_TYPE_OPTIONS[0]?.value ?? 'codeerror')
-)
-const zentaoSeverity = ref<1 | 2 | 3 | 4>((props.project.zentao?.defaultSeverity ?? 3) as 1 | 2 | 3 | 4)
-const zentaoPri = ref<1 | 2 | 3 | 4>((props.project.zentao?.defaultPri ?? 3) as 1 | 2 | 3 | 4)
-// 指派给：每条 bug 由用户在 SubmitDialog 单独选；环境配置不再有项目级默认（用户反馈每条情况不同）
-const zentaoAssignedTo = ref<string>('')
-/** 所属模块 id；0 = 根「/」。初值来自 project.zentao.moduleId（项目级默认） */
-const zentaoModuleId = ref<number>(props.project.zentao?.moduleId ?? 0)
-const zentaoModules = ref<NonNullable<ZentaoListModulesRes['modules']>>([])
-const zentaoModulesLoading = ref(false)
-// v0.4.7：模块/用户列表拉取错误 inline 显示（之前静默 → 下拉空让用户疑惑）
-const zentaoModulesError = ref('')
-async function loadZentaoModules() {
-  const z = props.project.zentao
-  if (!z?.baseUrl || !z.account || !z.password || !z.projectId) return
-  zentaoModulesLoading.value = true
-  zentaoModulesError.value = ''
-  try {
-    const res = await safeSendMessage<ZentaoListModulesRes>({
-      type: MSG.ZENTAO_LIST_MODULES,
-      source: 'content',
-      payload: { baseUrl: z.baseUrl, account: z.account, password: z.password, projectId: z.projectId }
-    })
-    if (res?.ok && res.modules) {
-      zentaoModules.value = res.modules
-    } else if (res && !res.ok) {
-      zentaoModulesError.value = res.error ?? '未知错误'
-    }
-  } catch (e) {
-    zentaoModulesError.value = (e as Error).message
-  } finally {
-    zentaoModulesLoading.value = false
-  }
-}
-
-// cookie 预检：用户在浏览器禅道页面 session 是否有效 —— 提交链路依赖 cookie，
-// 失效时让用户看见「请先登录禅道」+「一键打开」按钮，而不是提交完一脸懵
-const zentaoCookieState = ref<'unknown' | 'ok' | 'fail'>('unknown')
-const zentaoCookieMsg = ref('')
-async function pingZentaoCookie() {
-  const z = props.project.zentao
-  if (!z?.baseUrl) return
-  zentaoCookieState.value = 'unknown'
-  zentaoCookieMsg.value = '正在登录禅道…'
-  try {
-    // v0.2.3 改：传账号密码，BG 调 ensureCookieSession（cookie 没在自动登录）—— 用户
-    // 不再需要手动登录禅道页面。Moo SW 用账号密码调 v2 login 同时拿 token + 写 cookie
-    const res = await safeSendMessage<ZentaoPingCookieRes>({
-      type: MSG.ZENTAO_PING_COOKIE,
-      source: 'content',
-      payload: { baseUrl: z.baseUrl, account: z.account, password: z.password }
-    })
-    if (res?.ok) {
-      zentaoCookieState.value = 'ok'
-      zentaoCookieMsg.value = `✓ 已登录禅道（${res.realname ?? '未知用户'}）`
-    } else {
-      zentaoCookieState.value = 'fail'
-      zentaoCookieMsg.value = res?.error ?? '禅道登录失败'
-    }
-  } catch (e) {
-    zentaoCookieState.value = 'fail'
-    zentaoCookieMsg.value = (e as Error).message
-  }
-}
-
-// 用户列表（指派给下拉）：第一次 dialog 打开 + kind=zentao 时懒加载，避免不用禅道时浪费请求
-const zentaoUsers = ref<NonNullable<ZentaoListUsersRes['users']>>([])
-const zentaoUsersLoading = ref(false)
-// v0.4.7：拉取错误 inline 显示
-const zentaoUsersError = ref('')
-async function loadZentaoUsers() {
-  zentaoUsersError.value = ''
-  const z = props.project.zentao
-  if (!z?.baseUrl || !z.account || !z.password) return
-  zentaoUsersLoading.value = true
-  try {
-    const res = await safeSendMessage<ZentaoListUsersRes>({
-      type: MSG.ZENTAO_LIST_USERS,
-      source: 'content',
-      payload: { baseUrl: z.baseUrl, account: z.account, password: z.password }
-    })
-    if (res?.ok && res.users) {
-      zentaoUsers.value = res.users
-    } else if (res && !res.ok) {
-      zentaoUsersError.value = res.error ?? '未知错误'
-    }
-  } catch (e) {
-    zentaoUsersError.value = (e as Error).message
-  } finally {
-    zentaoUsersLoading.value = false
-  }
-}
-// dialog 一打开就预拉一次（kind=zentao 时）—— 注意 onMounted 注册在 setup
-// 同步段，回调在 mount 时执行，那时 zentaoMissingList 已经声明 OK
-onMounted(() => {
-  if (kind.value === 'zentao' && !zentaoMissingList.value) {
-    void pingZentaoCookie()
-    void loadZentaoUsers()
-    void loadZentaoModules()
-  }
+    : (ZENTAO_TYPE_OPTIONS[0]?.value ?? 'codeerror'),
+  zentaoSeverity: (props.project.zentao?.defaultSeverity ?? 3) as 1 | 2 | 3 | 4,
+  zentaoPri: (props.project.zentao?.defaultPri ?? 3) as 1 | 2 | 3 | 4,
+  zentaoAssignedTo: '',
+  zentaoModuleId: props.project.zentao?.moduleId ?? 0
 })
 
-// 前向引用：zentaoMissingList 在下面声明，但 onMounted callback 在 mount 时才执行
+// cookie 预检状态：拉取/复查逻辑都在 SubmitFormZentao 子组件里，父只接收 update:cookie-state
+// 用来 gate canSubmit（'unknown' / 'fail' 期间禁用提交）。
+const zentaoCookieState = ref<'unknown' | 'ok' | 'fail'>('unknown')
 
 const canPreview = computed(() => kind.value === 'webhook' && !!serverId.value)
 const currentServer = computed(() => props.project.servers.find((s) => s.id === serverId.value))
 const serverEndpointMissing = computed(() => !!currentServer.value && !currentServer.value.endpoint?.trim())
-/** 显示服务器选择行的条件（仅 webhook）：0 个 / 多个 / 唯一服务器配错了。
- * 单个且配置正确才隐藏（最常见的场景，减少表单噪音）。 */
-const showServerRow = computed(() => {
-  if (props.project.servers.length !== 1) return true
-  return serverEndpointMissing.value
-})
 
 /** zentao 路径必填字段缺失清单（用于 UI 提示 + canSubmit 判定） */
 const zentaoMissingList = computed(() => {
@@ -948,11 +748,11 @@ async function onSubmit() {
       video: ctx.video ?? undefined,
       // zentao 字段仅 kind=zentao 时填，webhook 路径 BG 会忽略这些字段
       ...(kind.value === 'zentao' ? {
-        zentaoType: zentaoType.value,
-        zentaoSeverity: zentaoSeverity.value,
-        zentaoPri: zentaoPri.value,
-        zentaoAssignedTo: zentaoAssignedTo.value || undefined,
-        zentaoModuleId: zentaoModuleId.value
+        zentaoType: zentaoFields.value.zentaoType,
+        zentaoSeverity: zentaoFields.value.zentaoSeverity,
+        zentaoPri: zentaoFields.value.zentaoPri,
+        zentaoAssignedTo: zentaoFields.value.zentaoAssignedTo || undefined,
+        zentaoModuleId: zentaoFields.value.zentaoModuleId
       } : {})
     }
     const res = (await safeSendMessage({
@@ -1028,20 +828,12 @@ onMounted(() => {
   nextTick(() => titleInput.value?.focus())
 })
 
-// v0.4.7：cookie 预检每 2 分钟刷一次。长时间挂着 dialog 时 cookie 真过期，避免
-// 一直显示「✓ 已登录禅道」骗用户提交后才发现错。
-let cookieRecheckTimer: number | undefined
-if (kind.value === 'zentao' && !zentaoMissingList.value) {
-  cookieRecheckTimer = window.setInterval(() => {
-    if (zentaoCookieState.value === 'ok') void pingZentaoCookie()
-  }, 2 * 60_000)
-}
+// cookie 预检 + 每 2 分钟复查在 SubmitFormZentao 子组件内自管 onMounted/onBeforeUnmount
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown, true)
   if (successTimer) clearTimeout(successTimer)
   if (clearElementsConfirmTimer) clearTimeout(clearElementsConfirmTimer)
   if (copyHintTimer) clearTimeout(copyHintTimer)
-  if (cookieRecheckTimer) clearInterval(cookieRecheckTimer)
 })
 </script>

@@ -2,6 +2,60 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.7.0
+
+2026-05-25 发版。**⚠️ BREAKING** —— content_scripts 改成动态注册（CWS 上架友好），matchPatterns 规则严格收敛 + minimum_chrome_version 109 → 111。同期塞进 P2 SubmitDialog 拆 + Environment 实时校验。
+
+### ⚠️ BREAKING
+
+1. **matchPatterns 规则收严**：v0.6.x 接受任何字符串（包括单 `*` 全宇宙 / 无 scheme `example.com/*` / `chrome-extension://...`），v0.7.0 起 chrome MV3 严格要求 `https?://host/path` 形态。translator 拒掉的 pattern 会在 popup 弹 `.dropped-banner` 引导去环境改。
+2. **minimum_chrome_version 109 → 111**：MAIN world 动态注册 (`chrome.scripting.registerContentScripts` + `world: 'MAIN'`) chrome 111+ 才支持。chrome 109/110 用户安装时 chrome 内核直接拒（manifest 验证不通过）。
+
+**升级指引**：
+- 老 patterns 自动 drop，popup 看到 `.dropped-banner` → 去 DevTools → Moo → 环境 改成 `https://*.example.com/*` 类格式
+- chrome < 111 用户需先升级浏览器
+
+### 新功能 / 改造
+
+- **content_scripts 动态注册**：manifest 不再 `<all_urls>` 静态全站注入。SW 监听用户 config，按 matchPatterns 调 `chrome.scripting.registerContentScripts` 按需注册。CWS 评审看 manifest 第一眼不再撞「全权限」红字。manifest content_scripts 保留 `https://moo.placeholder.example/*`（IANA 保留域永不命中）让 vite/crxjs 仍 build JS entry。
+- **toChromeMatchPatterns translator**：Moo glob → chrome MV3 match pattern 严格转换 + 去重 + 长度上限
+- **syncContentScripts 触发链**：onInstalled / onStartup / SW spin-up + onConfigChanged 200ms debounce + permissions.onAdded/onRemoved
+- **popup `.dropped-banner`**：translator drop pattern 时弹 banner 显示样例 + 引导去环境改
+- **Environment matchPatterns 实时校验**：textarea 下方 v-if invalidPatternsHint 显警告条列出不合规 pattern，零延迟反馈（不等保存）
+- **P2 SubmitDialog 拆**（PLAN_v1.0 P2 同期完成）：1047 → 839 行（-208，-20%）+ `SubmitFormZentao.vue`（259 行：模块/用户/类型/严重度/优先级 + cookie 状态自管）+ `SubmitFormWebhook.vue`（44 行：endpoint 提示）+ `SubmitFormZentao.types.ts`（共享 ZentaoFormFields type）
+- **chrome.permissions.onAdded handler 合并**：旧 background/index.ts 跟 dynamicScripts 各注册一个，合并到单 `onHostPermissionAdded` export function，+5 单测覆盖（claude 三轮同款扫描发现）
+
+### 修复（4 波 review 闭环）
+
+- **mv3-pro 四审 3 P0**：syncContentScripts 没尊重 globalEnabled / updateContentScripts 撞 id 不存在整批 throw → 改幂等 unregister+register / translator drop 静默无 UI 反馈 → 写 storage flag + popup banner
+- **general-purpose UX 4 P0**：Environment placeholder 教用户写 `*` / popup upgrade-banner 硬编码 v0.6.0 / popup 缺 dropped-banner / README 教用户填 `https://*/*`
+- **claude 三轮同款扫描**：ContentApp.vue 过期注释（main-world 已不再 all_urls 静态注入）
+
+### 测试覆盖
+
+- `+14` 单测：toChromeMatchPatterns translator 13 case + sync smoke test
+- `+5` 单测：onHostPermissionAdded 5 case（合并后单测可独立调）
+- `+1` e2e：D1 case 锁 popup `.dropped-banner` 链路（SW drop pattern → 写 flag → popup storage.onChanged → 渲染 banner + 反向清 flag 隐藏）
+- e2e dialog-* spec 20 case 全过验证 P2 SubmitDialog 拆未破行为
+
+### 文档
+
+- `docs/cws/PRIVACY.md` 中英版 Data Accessed 段更新（dynamic register 行为描述）
+- `docs/cws/store-listing.md` `<all_urls>` Permissions Justification 重写（placeholder URL + dynamic register 机制）
+- `docs/ZENTAO_SETUP.md` URL 匹配字段说明改严
+- `README.md` mock 联调示例从 `https://*/*` 改 `http://localhost:*/*`
+
+### 工程
+
+568 → 587 单测 / 105 → 106 e2e 全过 / type-check / build / PII 扫描全干净。
+
+### 文档同步
+
+- `docs/PLAN_v1.0.md` 加「实际进度更新」段（v0.5.1 第 8 波 review 时的 6 minor 6-9 月路线，实际 v0.6.x + v0.7.0 一周内做完代码层）
+- `HANDOFF.md` 顶部 prepend v0.7.0 段 + 「往前看」更新到 v0.7.1+ 剩余 4 项（telemetry / web_accessible_resources / pattern UI / i18n）
+
+---
+
 ## v0.6.3
 
 2026-05-25 发版。无 BREAKING，patch + 大量复盘修复。16 commit 累积，4 波 agent review 闭环。

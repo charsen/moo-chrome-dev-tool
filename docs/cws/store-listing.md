@@ -41,7 +41,7 @@ Moo Dev Tool 是一个面向开发 / QA / 业务测试的 Chrome 扩展，把「
 
 Moo 把这条链路压到 1 次点击：截图 → 自动附带最近 30s 网络请求 + console errors → 你写标题描述 → 提交到禅道 / webhook。
 
-⚙️ 主要功能
+⚙️ 主要功能（v0.7.0+ 起，须先在 DevTools → 环境配项目 URL 匹配，Moo 默认 0 注入）
 
 - 悬浮球截图：在你「事先配置匹配的网页」自动注入悬浮球，点一下截图
 - ⌥⇧R 录屏：MV3 offscreen + tabCapture 录当前标签页
@@ -85,7 +85,7 @@ When testers hit a bug, the usual reporting flow is:
 
 Moo collapses this into one click: screenshot → auto-attach last 30s of network + console errors → write title → submit to Zentao / webhook.
 
-⚙️ Features
+⚙️ Features (v0.7.0+: Moo injects 0 scripts by default; configure project URL patterns in DevTools → Environment first)
 
 - Floating ball screenshot on configured URL patterns
 - ⌥⇧R screen recording (MV3 offscreen + tabCapture)
