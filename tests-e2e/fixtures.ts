@@ -63,9 +63,16 @@ export const expect = test.expect
  * 通过 SW 上下文写 chrome.storage.local（绕过页面 origin 限制）。
  * onHistoryChanged listener 在 background 里会捕到这个变更并刷 badge——
  * 测试中调一次再 sleep ~300ms 就能拿到稳定状态。
+ *
+ * v0.6.3：fresh install 时 onInstalled 会写 mooNeedsHostPermUpgrade=true 让 badge
+ * 显 '!' 优先于失败计数。e2e 跑 fresh install 必撞这个 flag。先等 200ms 让 onInstalled
+ * 写完，再 remove flag + set 测试数据 — 保证 badge 测试聚焦 failure count 行为。
  */
 export async function seedStorage(sw: Worker, data: Record<string, unknown>) {
   await sw.evaluate(async (d) => {
+    // 等 onInstalled 把 upgrade flag 写完（race 防御 — fresh install + permission optional 必走这条路）
+    await new Promise<void>((r) => setTimeout(r, 200))
+    await chrome.storage.local.remove('mooNeedsHostPermUpgrade')
     await chrome.storage.local.set(d)
   }, data)
 }
