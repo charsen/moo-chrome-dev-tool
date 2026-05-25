@@ -18,9 +18,9 @@
 ### English
 
 ```
-Developer bug-reporting tool: screenshot / screen-recording / network-request capture, one-click submit to Zentao or custom webhook.
+Bug-reporting tool: screenshot / recording / network capture, one-click submit to Zentao or your webhook.
 ```
-（128 字符 / 132 字符上限）
+（104 字符 / 132 字符上限，留 NFC normalize ±N 字节余量）
 
 ---
 
@@ -31,7 +31,7 @@ Developer bug-reporting tool: screenshot / screen-recording / network-request ca
 ### 中文版
 
 ```
-Moo Dev Tool 是一个面向开发 / QA / 业务测试的 Chrome 扩展，把「现场截图、关键请求、控制台错误、可选录屏」打成一次 bug 报告，直接发到禅道（v17+）或你自建的上报服务器。
+Moo Dev Tool 是一个面向开发 / QA / 业务测试的 Chrome 扩展，把「现场截图、关键请求、控制台错误、可选录屏」打成一次 bug 报告，直接发到禅道（v17 及以上）或你自建的上报服务器。
 
 🎯 解决什么问题
 
@@ -151,7 +151,7 @@ Used to inject a content script that captures recent fetch/XHR requests and cons
 ### `alarms`
 
 ```
-Used to schedule two background tasks: (1) retry queue for failed submissions, running every 5 minutes when the user is online; (2) version check against the public Gitee releases API, running every 24 hours to notify the user of new versions (since this extension is currently distributed outside the Web Store as well).
+Used to schedule periodic background tasks: (1) retry queue health check for failed submissions, running every 5 minutes to retry transient network failures so the user does not lose bug reports; (2) a low-frequency daily health-check task. Both tasks operate entirely locally — no data is sent outside user-configured destinations.
 ```
 
 ### `offscreen`
@@ -214,15 +214,16 @@ Capture and submit bug reports (screenshot + network requests + console errors +
 
 ## 截图清单（你拍 / 不能让 AI 代拍）
 
-5 张，1280×800 或 640×400 PNG，**严禁真名 / 真实公司域 / 真账号**，建议用一个 demo 项目 + 假数据：
+5-6 张（CWS 上限 5 张，第 6 张可作 promo），1280×800 或 640×400 PNG，**严禁真名 / 真实公司域 / 真账号**，建议用一个 demo 项目 + 假数据：
 
 | # | 截图内容 | 拍摄场景 |
 |---|---|---|
-| 1 | popup 主界面 + 双开关 | 点 toolbar Moo 图标，截 popup 完整页面 |
+| 1 | popup 主界面 + 双开关 | 点 toolbar Moo 图标，截 popup 完整页面（含两个 optional permission switch + 录屏开关） |
 | 2 | DevTools → Moo → 环境 配置 | DevTools 内 Moo 面板「环境」tab，展示 zentao 或 webhook 配置（**截前清空真实信息**）|
 | 3 | 悬浮球 + 截图按钮 | 一个 demo 页面（example.com 之类）右下角悬浮球展开状态 |
 | 4 | SubmitDialog 提交对话框 | 截图后弹出的提交 dialog，含截图缩略图 + 类型 / 优先级下拉 |
-| 5 | History tab 提交历史 | DevTools → Moo → History tab，展示提交记录列表（用 demo 数据）|
+| 5 | 录屏 UI（timer + 停止按钮）| 按 ⌥⇧R 启动录屏后，页面顶部显示的录屏指示条（展示 optional tabCapture 启用前 vs 启用后的 UX 差异 — 评审员关注的点） |
+| 6 | History tab 提交历史 | DevTools → Moo → History tab，展示提交记录列表（用 demo 数据）|
 
 每张右下角可加水印 `v0.6.x` 表明版本。
 

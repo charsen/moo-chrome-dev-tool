@@ -9,8 +9,10 @@
     </header>
 
     <!-- v0.6.0 BREAKING：升级到 v0.6.0 后 <all_urls> 改 optional，老用户首次打开需要主动启用。
-         banner 醒目展示直到用户开启或显式关闭。 -->
-    <div v-if="needsHostPermUpgrade" class="upgrade-banner" role="alert">
+         banner 醒目展示直到用户开启或显式关闭。
+         v0.6.3 vue-craft 三审：加 aria-live polite（banner 在 popup mount 时已渲染，
+         role=alert 静态内容不触发播报，aria-live 才让 screen reader 知会） -->
+    <div v-if="needsHostPermUpgrade" class="upgrade-banner" role="alert" aria-live="polite">
       <div class="upgrade-title">升级到 v0.6.0 — 上报功能需要重新启用</div>
       <div class="upgrade-msg">为符合 Chrome Web Store 评审要求，「向上报服务器发送请求」改为可选权限。点下方按钮一次性启用，之后所有提交照旧工作。</div>
       <button
@@ -23,11 +25,19 @@
     </div>
 
     <!-- v0.6.2 后立：CWS 上架前的版本检查提示（zip 装的扩展不自动升级，SW 每天 fetch Gitee
-         latest release 比对，新版时弹 banner 引导手动下载）-->
-    <div v-if="updateInfo" class="update-banner" role="status">
+         latest release 比对，新版时弹 banner 引导手动下载）
+         v0.6.3 vue-craft 三审：v-else-if 排他于 upgrade-banner（用户连上报都没启用，给「下新版」按钮
+         语义错位 — 下了也用不了。也避免 320px popup 双 banner 视觉过载）+ aria-live polite -->
+    <div v-else-if="updateInfo" class="update-banner" role="status" aria-live="polite">
       <div class="update-title">有新版本 v{{ updateInfo.latest }}（当前 v{{ updateInfo.current }}）</div>
       <div class="update-msg">点链接下载新版 zip 后去 <code>chrome://extensions</code> 重新加载。</div>
-      <a class="moo-btn moo-btn--sm" :href="updateInfo.url" target="_blank" rel="noopener">打开下载页</a>
+      <a
+        class="moo-btn moo-btn--sm"
+        :href="updateInfo.url"
+        target="_blank"
+        rel="noopener noreferrer"
+        :aria-label="`打开下载页 v${updateInfo.latest}（新窗口）`"
+      >打开下载页</a>
       <button type="button" class="upgrade-dismiss" @click="dismissUpdate">稍后再说</button>
     </div>
 
@@ -403,11 +413,25 @@ onMounted(async () => {
   }
 
   // v0.6.1：跨 popup 窗口同步 — 监听 flag 变化 + 权限变化
+  // v0.6.3 mv3-pro 三审 fix 1：补 VERSION_CHECK_FLAG_KEY 监听（popup 开着时 SW alarm fire
+  // 写新版 flag 不同步）
   storageWatcher = (changes, area) => {
     if (area !== 'local') return
     if (UPGRADE_FLAG_KEY in changes && changes[UPGRADE_FLAG_KEY]!.newValue === undefined) {
-      // flag 被外部清除（另一 popup / SW permissions.onAdded）→ 隐藏 banner
+      // upgrade flag 被外部清除（另一 popup / SW permissions.onAdded）→ 隐藏 banner
       needsHostPermUpgrade.value = false
+    }
+    if (VERSION_CHECK_FLAG_KEY in changes) {
+      const newVal = changes[VERSION_CHECK_FLAG_KEY]!.newValue
+      if (newVal === undefined) {
+        // SW runVersionCheck 发现已是最新 → 清 flag → 隐藏 banner
+        updateInfo.value = null
+      } else if (newVal && typeof newVal === 'object') {
+        const info = newVal as LatestVersionInfo
+        if (info.latest && info.url) {
+          updateInfo.value = info
+        }
+      }
     }
   }
   chrome.storage.onChanged.addListener(storageWatcher)
@@ -746,7 +770,7 @@ onBeforeUnmount(() => {
   padding: 10px 12px;
   border: 1px solid var(--moo-c-warn-soft);
   background: var(--moo-c-warn-soft);
-  border-radius: 6px;
+  border-radius: var(--moo-r-md);
   color: var(--moo-c-warn-fg);
   font-size: var(--moo-fs-xs);
 }
@@ -768,7 +792,7 @@ onBeforeUnmount(() => {
   padding: 8px 12px;
   border: 1px solid var(--moo-c-border);
   background: var(--moo-c-bg-soft);
-  border-radius: 6px;
+  border-radius: var(--moo-r-md);
   font-size: var(--moo-fs-xs);
 }
 .update-title { font-weight: 600; margin-bottom: 4px; color: var(--moo-c-text); }

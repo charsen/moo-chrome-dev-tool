@@ -320,6 +320,13 @@ function onAnnotated(dataUrl: string) {
 
 // 悬浮球点录屏 —— 受 Chrome MV3 限制无法在 content script 链路保留 user gesture，
 // 这里显示中性提示（不是错误）。按钮本身已经在 UI 上挂了 ⌥⇧R 标签提示用法。
+//
+// 决策（v0.6.3 general-purpose 三审复盘）：不做 content-layer permission preflight 申请。
+// 理由：① user gesture 跨 content → SW message 边界已丢，preflight 也救不了
+// tabCapture.getMediaStreamId 必须 SW 直接拿 chrome.commands user activation；
+// ② 当前 toast 引导用快捷键的 UX 体验对开发者用户够用（不是终端用户级）；
+// ③ 改造跨 user gesture boundary 是 v0.7.x 的事，要走 chrome.action.openPopup +
+// popup 内同步 enable +「点击图标 → 录屏」整套（非本版范围）。
 function startRecord() {
   showToast('录屏需要键盘启动：按 ⌥⇧R（Mac）/ Alt+Shift+R（Win）。\nChrome 安全规则限制录屏必须由快捷键触发，悬浮球点击无法启动。\n如需改键：chrome://extensions/shortcuts', 'info')
 }
