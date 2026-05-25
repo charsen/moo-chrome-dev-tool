@@ -2,6 +2,26 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.6.2
+
+2026-05-25 发版。**🔴 dogfood hotfix** — 同事撞到真实的禅道 v1 endpoint 403 错，本版修。无 BREAKING，纯 patch。
+
+### 修了什么
+
+- **v1 endpoint 撞 403 自动 cookie cascade 兜底**（client.ts）。某些禅道实例的 v1 endpoint（products / projects / users / modules）对 `credentials:'omit'` + Token-only 请求返 403（可能 WAF 或自定义中间件要求 cookie 配合 token）。修法：撞 403 时自动二次尝试 `credentials:'include'` 把浏览器已登录禅道的 cookie 一起发，让禅道服务器自选。用户视角：升级后「拉模块列表」/「提交 bug」自动好；旧路径（Token-only）多月稳定行为不变，只有 403 才触发 cascade。
+- **403 错误文案友好化**。旧文案 `HTTP 403（v1 product fallback）` 同事看不懂。改成 `禅道服务器拒绝访问产品列表（HTTP 403）— 可能账号无权限或禅道 WAF 拦截` 让用户知道是禅道侧问题，自己去找禅道管理员而非以为 Moo 坏了。4 个 endpoint 文案一致。
+
+### 其它
+
+- IssueAdapter.ts 文件头注释精简（30 → 8 行，删过期 future plan）
+- CHANGELOG v0.1.7 → v0.3.1 归档到 `docs/changelog-archive/v0.1-v0.3.md`（主 CHANGELOG 1083 → 474 行 −56%）
+
+### 测试
+
+545 → 551 单测全过：+3 cascade（discoverProduct / listProjects / listUsers v1 403 cookie cascade）+ 1 listModules 友好文案 + 2 listModules cascade case。
+
+---
+
 ## v0.6.1
 
 2026-05-25 发版。无 BREAKING，纯 patch。v0.6.0 发版后 mv3-pro 二审 + code-simplifier review 抓出的 badge 升级提示链路 hotfix + 跨 popup 同步 + install 引导 + 4 项代码简化。
