@@ -152,9 +152,8 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
     const server = project.servers.find(s => s.id === req.serverId)
     if (!server?.endpoint) return null
 
-    // 拼一次 body 看是否可序列化为 string（multipart 直接 false）
-    const storageKeys = project.capture?.storageKeys ?? []
-    // serialize 阶段不读 page storage（page tab 可能已关）—— 视为空快照
+    // 拼一次 body 看是否可序列化为 string（multipart 直接 false）。
+    // serialize 阶段不读 page storage（page tab 可能已关）—— storage 字段视为空快照
     const renderCtx: Record<string, unknown> = {
       title: req.title, description: req.description, image: req.image,
       url: req.url, userAgent: req.userAgent, viewport: req.viewport,
@@ -163,7 +162,6 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
       videoBytes: req.video?.bytes ?? 0, videoDuration: req.video?.duration ?? 0,
       token: project.token ?? ''
     }
-    void storageKeys // 显式 ack — 不在 retry payload 里复用 page storage 快照
     const { body, headers } = buildRequestBody(server, renderCtx)
     if (typeof body !== 'string') return null   // multipart 不入队
     if (body.length > RETRY_MAX_BODY_BYTES) return null

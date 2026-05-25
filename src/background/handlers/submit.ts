@@ -62,20 +62,15 @@ export async function handleSubmitBug(req: SubmitBugReq, tabId?: number): Promis
     error: outcome.error
   }
 
-  // 失败时算 queued：adapter 给 retryable 信号优先；否则按 HTTP 状态自决
+  // 失败时算 queued：adapter 给 retryable 信号优先；否则按 HTTP 状态自决。
+  // 默认 false，仅 retryable !== false + payload 可序列化时调 pushQueueItem 覆盖
   if (!outcome.ok) {
-    const shouldTryQueue = outcome.retryable !== false
-    if (shouldTryQueue) {
+    result.queued = false
+    if (outcome.retryable !== false) {
       // 先 thumbnailize（zentao 路径 image 太大长期驻 storage）—— 跑 await 异步预处理
       const reqForRetry = project.kind === 'zentao' ? await preprocessZentaoForRetry(req) : req
       const payload = adapter.serializeForRetry(reqForRetry, project)
-      if (payload !== null) {
-        result.queued = await pushQueueItem(payload)
-      } else {
-        result.queued = false
-      }
-    } else {
-      result.queued = false
+      if (payload !== null) result.queued = await pushQueueItem(payload)
     }
   }
 

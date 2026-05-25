@@ -113,14 +113,6 @@ describe('header CRUD', () => {
     payloadTemplate: '', imageFormat: 'inline', imageField: 'image'
   })
 
-  it('headerEntries → 返 Object.entries 顺序', () => {
-    const { crud } = mount(makeProject())
-    expect(crud.headerEntries(s())).toEqual([
-      ['Authorization', 'Bearer foo'],
-      ['X-Trace', 'abc']
-    ])
-  })
-
   it('onHeaderKeyChange 改 key → 删旧 + 加新', () => {
     const { crud } = mount(makeProject())
     const srv = s()

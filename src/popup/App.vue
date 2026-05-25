@@ -175,7 +175,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import type { Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
 import { loadConfig, saveConfig, urlMatches } from '@/storage/config'
@@ -219,6 +219,11 @@ async function dismissUpgrade() {
     // 重算 — 优先级会从 '!' 自动回落到失败计数文本（mv3-pro review 报告 2）
   } catch {}
 }
+
+// v0.6.1：跨 popup 窗口同步 banner 状态（mv3-pro review 报告 4）。
+// popup A 在窗口 1 点「一键启用」清 flag → popup B 在窗口 2 仍显示 banner 直到关闭重开。
+// 监听 storage.onChanged，flag 被外部清除时同步 ref + permissions.contains 重查（用户可能也已授权）
+let storageWatcher: ((c: Record<string, chrome.storage.StorageChange>, a: chrome.storage.AreaName) => void) | null = null
 const recent = ref<BugHistoryEntry[]>([])
 // v0.4.7：未匹配态快捷启用 —— 一键把当前 host wildcard 加进首个 enabled 项目的 matchPatterns
 const quickEnableBusy = ref(false)
@@ -316,8 +321,13 @@ async function toggleHostPermission() {
     } else {
       const ok = await chrome.permissions.request({ origins: ['<all_urls>'] })
       hostEnabled.value = ok
-      if (!ok) hostError.value = t('popup.permission.cancelled')
-      else {
+      if (!ok) {
+        // v0.6.1 设计意图：用户取消授权时**故意保留** mooNeedsHostPermUpgrade flag —— banner
+        // 下次打开 popup 仍显示，继续提醒「上报功能没启用」。这不是 bug，是 push 模型：
+        // 用户没真授权就该继续看见提示，直到 (a) 真授权 → toggleHostPermission 走 else 清；
+        // (b) 主动「稍后再说」→ dismissUpgrade 清 flag 表达「我知道但暂不做」（mv3-pro review 报告 3）
+        hostError.value = t('popup.permission.cancelled')
+      } else {
         // 用户成功授权 → 清 upgrade flag + badge（dismissUpgrade 顺手清 storage）
         await dismissUpgrade()
       }
@@ -361,6 +371,23 @@ onMounted(async () => {
     }
   } finally {
     loading.value = false
+  }
+
+  // v0.6.1：跨 popup 窗口同步 — 监听 flag 变化 + 权限变化
+  storageWatcher = (changes, area) => {
+    if (area !== 'local') return
+    if (UPGRADE_FLAG_KEY in changes && changes[UPGRADE_FLAG_KEY]!.newValue === undefined) {
+      // flag 被外部清除（另一 popup / SW permissions.onAdded）→ 隐藏 banner
+      needsHostPermUpgrade.value = false
+    }
+  }
+  chrome.storage.onChanged.addListener(storageWatcher)
+})
+
+onBeforeUnmount(() => {
+  if (storageWatcher) {
+    chrome.storage.onChanged.removeListener(storageWatcher)
+    storageWatcher = null
   }
 })
 

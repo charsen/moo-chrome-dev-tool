@@ -7,7 +7,8 @@
  *
  * 调用方传入 activeProjectRef + confirmDialog。composable 提供：
  *   - server: addServer / removeServer
- *   - header: headerEntries / onHeaderKeyChange / onHeaderValChange / addHeader / removeHeader
+ *   - header: onHeaderKeyChange / onHeaderValChange / addHeader / removeHeader
+ *     （headerEntries 一行 wrap 已删 — 调用方直接 `Object.entries(s.headers)`，省一层 indirection）
  *   - 大模板 modal: editingTemplate / openTemplateEditor / onTemplateSave
  */
 
@@ -61,10 +62,6 @@ export function useServerCrud(params: UseServerCrudParams) {
 
   // ── headers map 编辑（v-for 渲染 entries）─────────────────────
 
-  function headerEntries(s: BugServer): [string, string][] {
-    return Object.entries(s.headers)
-  }
-
   function onHeaderKeyChange(s: BugServer, idx: number, newKey: string): void {
     const entry = Object.entries(s.headers)[idx]
     if (!entry) return
@@ -96,7 +93,6 @@ export function useServerCrud(params: UseServerCrudParams) {
     onTemplateSave,
     addServer,
     removeServer,
-    headerEntries,
     onHeaderKeyChange,
     onHeaderValChange,
     addHeader,

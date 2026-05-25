@@ -59,13 +59,15 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   void ensureRetryAlarm()
   // v0.6.0 BREAKING：host_permissions 从 mandatory <all_urls> 改 optional。老用户升级后
   // 没有自动授权 → 写一个 storage flag，popup 启动时显示 prominent 升级 banner 引导一键启用。
-  // v0.6.1：badge '!' 显示由 utils/badge.ts 内 check flag 决定（spin-up refreshBadge 会自动
+  // v0.6.1：fresh install 也写 flag（mv3-pro review 报告 6）—— 新用户首次开 popup 看到
+  // footer 开关 off 但不知道这个开关意义，banner 让 footer 开关 actionable。
+  // badge '!' 显示由 utils/badge.ts 内 check flag 决定（spin-up refreshBadge 会自动
   // 优先显示 '!'），不再在这里硬写 badge，否则 spin-up IIFE refreshBadge 立即覆盖回失败计数。
-  if (reason === 'update') {
+  if (reason === 'update' || reason === 'install') {
     try {
       const hasPerm = await chrome.permissions.contains({ origins: ['<all_urls>'] })
       if (!hasPerm) {
-        await chrome.storage.local.set({ mooNeedsHostPermUpgrade: true })
+        await chrome.storage.local.set({ [UPGRADE_FLAG_KEY]: true })
       }
     } catch (e) {
       console.warn('[Moo] onInstalled host-perm check failed:', (e as Error).message)
@@ -78,7 +80,7 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
 // v0.6.1：监听升级 flag 变化（popup dismissUpgrade / 用户启用权限）→ 重算 badge。
 // 避免 popup 直接 setBadgeText('') 误清失败计数 badge（mv3-pro review 报告 2）。
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && 'mooNeedsHostPermUpgrade' in changes) {
+  if (area === 'local' && UPGRADE_FLAG_KEY in changes) {
     void refreshBadge()
   }
 })
@@ -88,7 +90,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 chrome.permissions?.onAdded?.addListener?.(async (perm) => {
   if (perm.origins?.some(o => o === '<all_urls>' || o === '*://*/*')) {
     try {
-      await chrome.storage.local.remove('mooNeedsHostPermUpgrade')
+      await chrome.storage.local.remove(UPGRADE_FLAG_KEY)
     } catch { /* storage 读失败兜底 — flag 残留也不致命 */ }
   }
 })

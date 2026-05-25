@@ -66,7 +66,7 @@
         <label>请求头</label>
       </div>
       <div class="kv-list">
-        <div v-for="(entry, i) in headerEntries(s)" :key="i" class="kv-row">
+        <div v-for="(entry, i) in Object.entries(s.headers)" :key="i" class="kv-row">
           <input
             :value="entry[0]"
             @change="onHeaderKeyChange(s, i, ($event.target as HTMLInputElement).value)"
@@ -153,7 +153,6 @@ const {
   onTemplateSave,
   addServer,
   removeServer,
-  headerEntries,
   onHeaderKeyChange,
   onHeaderValChange,
   addHeader,
