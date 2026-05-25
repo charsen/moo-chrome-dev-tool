@@ -50,7 +50,7 @@ ls -lh release/moo-chrome-dev-tool-0.6.2.zip
 4. 截前清空真实信息（chrome://extensions reload Moo 让 history 空）
 
 **严禁**截图含：
-- 真实公司域名（huijiakeji / chandao 等）
+- 真实公司域名（无论是禅道实例还是业务系统的，按 CLAUDE.md PII hard rule）
 - 真名 / 真账号
 - 真实手机号 / 邮箱
 
