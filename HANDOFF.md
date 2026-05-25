@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.6.3 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.6.3/moo-chrome-dev-tool-0.6.3.zip)（sha256 待回填）。16 commit 累积 + 4 波 agent review 闭环。新功能：版本检查提示（SW 每天 fetch Gitee latest release，新版 popup 弹 banner — CWS 上架前替代自动更新）。修复：getBug 漏 cookie cascade / uploadEditorFile + ping 403 文案 / e2e fixture race（v0.6.1 silent 回归同款防护）/ popup 跨 SW 同步 VERSION_CHECK_FLAG / badge surface 冲突。+5 onInstalled-upgrade-chain e2e（A2 直挡 v0.6.1 类回归）+ 5 cascade 单测。CWS 物料就绪（docs/cws/）。`.release-pii-deny` 黑名单建立。568 单测 + 105 e2e 全绿。
+**v0.6.3 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.6.3/moo-chrome-dev-tool-0.6.3.zip)（sha256 `e0e0d463ee1c8c3017036f2dc5bea2d7e738da368221874b22be2de1f77f7194`）。16 commit 累积 + 4 波 agent review 闭环。新功能：版本检查提示（SW 每天 fetch Gitee latest release，新版 popup 弹 banner — CWS 上架前替代自动更新）。修复：getBug 漏 cookie cascade / uploadEditorFile + ping 403 文案 / e2e fixture race（v0.6.1 silent 回归同款防护）/ popup 跨 SW 同步 VERSION_CHECK_FLAG / badge surface 冲突。+5 onInstalled-upgrade-chain e2e（A2 直挡 v0.6.1 类回归）+ 5 cascade 单测。CWS 物料就绪（docs/cws/）。`.release-pii-deny` 黑名单建立。568 单测 + 105 e2e 全绿。
 
 **v0.6.2 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.6.2/moo-chrome-dev-tool-0.6.2.zip)（sha256 `046c9d0bc2392594b32c68691615e50ac59ba1bdc31416b0e5ed7fedfb3d10c4`）。**🔴 dogfood hotfix** —— 同事撞到禅道 v1 endpoint 403 错，本版修：v1 撞 403 自动 cookie cascade 兜底（带浏览器登录态 cookie + Token 共发，禅道服务器自选）+ 403 错误文案改友好让用户知道是禅道侧问题。无 BREAKING。551 单测 + 100 e2e 全绿。
 
