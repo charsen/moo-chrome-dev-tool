@@ -2,6 +2,49 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.6.3
+
+2026-05-25 发版。无 BREAKING，patch + 大量复盘修复。16 commit 累积，4 波 agent review 闭环。
+
+### 新功能
+
+- **版本检查提示**：SW 每天 fetch Gitee latest release 比对版本，新版时 popup 弹 update-banner 引导手动下载。CWS 上架前的「替代自动更新」机制（zip 自装的扩展不能自我升级，Chrome 117+ update_url 也只对企业/dev mode）。CWS 上架后此机制可移除。
+
+### 修复（dogfood + 4 波 review）
+
+- **getBug v1 fallback 漏 cookie cascade**（claude 同款扫描，v0.6.2 修了 4 处但漏 getBug）：补 fetchV1WithCookieFallback + zentaoV1ErrorMsg helper 统一收口
+- **uploadEditorFile / ping 403 文案技术化** → 友好「禅道服务器拒绝...」（同款 v0.6.2 修法 3 处补全）
+- **e2e fixture race**：v0.6.1 加 badge UPGRADE_FLAG 优先级后 11 个 badge spec 集体挂，v0.6.1 + v0.6.2 都没跑 e2e 没人发现。修 seedStorage 改轮询 + remove mooLatestVersionInfo 同款 flag
+- **popup 跨 SW 同步 VERSION_CHECK_FLAG_KEY**（mv3-pro 三审）：popup 开着时 SW 写 update flag 现在实时同步
+- **badge surface 冲突**（mv3-pro 二审 v0.6.1 残留）：badge.ts 优先 check UPGRADE_FLAG / SW storage.onChanged 监听 / popup dismissUpgrade 不直接清 badge
+- **manifest content_scripts vs CWS 物料叙述矛盾** → 物料文案修正（v0.7.0 真做动态注册）
+
+### 测试覆盖（v0.6.1 silent 回归核心防护）
+
+- **+5 个 onInstalled / upgrade / badge `!` 优先级 / dismiss / 跨 SW 同步 e2e**（lab-tester 二审）— A2 case 直挡 v0.6.1 类回归，任何 badge 显示策略破坏「flag 在显 `!`」立即 fail
+- **+3 个 v1 endpoint cookie cascade 单测**（discoverProduct / listProjects / listUsers）+ 2 getBug cascade case
+- 单测 553 → **568**，e2e 100 → **105**
+
+### CWS 上架物料就绪
+
+- `docs/cws/PRIVACY.md` 中英隐私政策
+- `docs/cws/store-listing.md` 短描述 + 详细说明 + 7 段 Permissions Justification
+- `docs/cws/SUBMIT_GUIDE.md` 提交步骤
+
+### 简化（code-simplifier 二审）
+
+- upgradeFlag.ts / hostPermission.ts 注释 → 代码比例收敛（−27 行）
+- zentaoV1ErrorMsg helper 收口 4 处 403 友好文案
+- IssueAdapter.ts 文件头注释精简（−19）
+
+### 工程
+
+- 建 `.release-pii-deny` 黑名单（gitignored），首次跑 dry-run 立刻拦住示例文案里的真公司域名 — 黑名单价值的活演示
+- CHANGELOG v0.1.7 → v0.3.1 归档到 docs/changelog-archive/（主 CHANGELOG 1083 → 474 行）
+- HANDOFF v0.4.4 → v0.4.9 归档到 docs/handoff-archive/
+
+---
+
 ## v0.6.2
 
 2026-05-25 发版。**🔴 dogfood hotfix** — 同事撞到真实的禅道 v1 endpoint 403 错，本版修。无 BREAKING，纯 patch。
