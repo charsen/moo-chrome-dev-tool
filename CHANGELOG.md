@@ -2,6 +2,33 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.7.2
+
+2026-05-25 发版。**🔴 dogfood hotfix** — v0.7.0 dynamic register 链路在实机 chrome 装上即炸（content script 注入但 lazy chunks 加载被 `web_accessible_resources` 拒，悬浮球出不来）。无新 BREAKING，patch + 顺手累一个新功能（录屏点击涟漪）。
+
+### 🔴 P0 修复
+
+- **删 `web_accessible_resources` 第 2 块的 `use_dynamic_url: true`**：v0.7.0 dynamic register 后，content script lazy import 的 chunks 走 dynamic rotating UUID URL，chrome WAR 校验 mismatch → 报 `Denying load of <URL>` × 8 + `chrome-extension://invalid/` + `Failed to fetch dynamically imported module`。
+  - 改 false 让 chunks 走固定扩展 ID URL，宿主页直接 fetch 通过
+  - cache busting 没牺牲：vite 给每个 chunk 文件名带 hash（如 `index.ts-DmEut5i6.js`），改版本天然破缓存，不依赖 dynamic URL token
+  - 历史出处：v0.1.x 误把 use_dynamic_url 当 cache busting，实际它是 fingerprint defense，v0.7.0 dynamic content_scripts 才暴露冲突
+- e2e 盲点暴露：v0.7.0 dynamic-register E1/E2/E3 只验 SW chrome.scripting 调用契约，没验「真 navigate 到命中页 → chunks 真 load 成功」。lab-tester 已确诊 fix，端到端 spec 待 v0.7.3 补
+
+### 新功能（顺手累）
+
+- **录屏鼠标点击涟漪**：state=recording 时 window pointerdown capture，每次主键点击在 (clientX, clientY) 渲一个 40px 红圈，800ms scale 0.4→2 + opacity 0→.95→0 涟漪。视频里同事能看清点了哪儿。
+  - 过滤 Moo 自己 UI 内的点（rec-bar / dialog / floating-ball）：composedPath().some(n => n.id === HOST_ID) 命中跳过
+  - 只左键（button === 0）；右键 / 中键不画
+  - z-index 2147483646，比 rec-bar 低 1 不挡 UI
+  - 状态切回 idle / unmount 清 listener + 所有 pending timer
+
+### 工程
+
+- 抽 `HOST_ID` 常量到 styles.ts export，原 4 处 hardcode 统一引用
+- 601 单测 / type-check / e2e dialog suite 20/20 全过
+
+---
+
 ## v0.7.1
 
 2026-05-25 发版。无 BREAKING，patch — v0.7.0 BREAKING 升级 UX 改进（小白用户友好化）+ 大量 e2e 锁住新功能防 silent 回归。

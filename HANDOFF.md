@@ -4,6 +4,8 @@
 
 ## 一句话现状
 
+**v0.7.2 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.2/moo-chrome-dev-tool-0.7.2.zip)（sha256 待填）。**🔴 dogfood hotfix** — v0.7.0 dynamic register 链路实机 chrome 装上即炸（content script lazy chunks 被 web_accessible_resources 拒，悬浮球出不来）。修：删 `use_dynamic_url: true`，chunks 走固定 ID URL。顺带新功能：录屏鼠标点击 800ms 红圈涟漪（视频里同事能看清点哪）。
+
 **v0.7.1 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.1/moo-chrome-dev-tool-0.7.1.zip)（sha256 `3bab09370f975a19a167b026a099a96edf9322869cd4007e18857c2b70d6c9bc`）。无 BREAKING — v0.7.0 BREAKING 升级 UX 改进。新功能：① addProject 自动填当前 inspected tab URL 进 matchPatterns[0]（小白友好）② suggestPattern banner — 当前 URL 不命中任何 enabled 项目时顶部弹引导追加 + session 级 dismiss。测试：+14 单测（urlToMatchPattern helper 边界）+ 3 e2e（C1b/C1c/C1d 锁新功能）+ 3 e2e（dynamic register E1/E2/E3 锁 SW 契约）。601 单测 + 112 e2e 全绿。
 
 **v0.7.0 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.0/moo-chrome-dev-tool-0.7.0.zip)（sha256 `7592872093d3e7dc58187fe56ef02078faf6dae7fa1c6e2d1a5ee28fac7395a9`）。**⚠️ BREAKING** —— content_scripts 改成动态注册（CWS 上架友好，manifest 不再 `<all_urls>` 全站注入）。matchPatterns 规则严格收敛（chrome MV3 要求 `https?://host/path`，单 `*` / 无 scheme / file/ftp 不再支持）+ minimum_chrome_version 109 → 111。translator drop 老 patterns 时 popup 弹 `.dropped-banner` 引导改。4 波 agent review + 主动复盘 3 遗漏全闭环。582 单测 + 106 e2e 全绿。
@@ -22,7 +24,7 @@
 
 **早期版本简介**：v0.1.x → v0.4.3 见 [docs/handoff-archive/v0.1.x.md](docs/handoff-archive/v0.1.x.md)；v0.4.4 → v0.4.9 见 [docs/handoff-archive/v0.4.4-v0.4.9.md](docs/handoff-archive/v0.4.4-v0.4.9.md)。
 
-**往前看**：v0.7.1 把 v0.7.0 BREAKING UX 小白化（自动填 URL + suggestPattern banner）+ 测试覆盖补齐（587 → 601 单测 + 109 → 112 e2e）。**剩 v0.7.2+ 工作**：① 自托管 telemetry collector（PLAN 决策 5） ② web_accessible_resources `<all_urls>` 收窄（CWS 评审风险） ③ i18n 全量迁移（v1.2+） ④ 同事 dogfood v0.7.x 反馈。**CWS 上架物料就绪**（docs/cws/）等用户截图 + 后台填表。
+**往前看**：v0.7.2 hotfix 把 v0.7.0 dynamic register 实机炸点修了 + 顺手累一个新功能（录屏点击涟漪）。**剩 v0.7.3+ 工作**：① 端到端 e2e 补「dynamic register navigate → chunks load → 悬浮球渲染」全链路（lab-tester 已诊断这个 e2e 盲点）② 自托管 telemetry collector（PLAN 决策 5） ③ web_accessible_resources `<all_urls>` 收窄（CWS 评审风险） ④ i18n 全量迁移（v1.2+）。**CWS 上架物料就绪**（docs/cws/）等用户截图 + 后台填表。
 
 ## 这两周做了什么
 

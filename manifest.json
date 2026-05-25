@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "minimum_chrome_version": "111",
   "name": "Moo Dev Tool",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "前后端业务调试工具",
   "action": {
     "default_popup": "src/popup/index.html",
@@ -64,8 +64,7 @@
     },
     {
       "resources": ["assets/*.js", "assets/*.css"],
-      "matches": ["<all_urls>"],
-      "use_dynamic_url": true
+      "matches": ["<all_urls>"]
     }
   ]
 }
