@@ -1,32 +1,13 @@
 /**
- * IssueAdapter interface 草案（PLAN_v1.0 决策 3 PoC）。
+ * IssueAdapter interface — v0.6.0 起 handler/retryQueue 走的 dispatch 契约。
  *
- * **状态：type-only，未在生产代码引用**。本文件目的是让用户审接口形状再决定是否实装。
- * v0.5.2 P0 router 化之后，handler 内 zentao / webhook 双轨已经在 handlers/submit.ts 内 if-else
- * 分支。三轨（GitHub Issues / Jira / Linear）就会复制粘贴爆炸 → 必须在加第 3 个 adapter 之前先抽接口。
+ * adapter 配置放 Project 字段（zentao 的 baseUrl/account/password / webhook 的 server/endpoint），
+ * adapter 通过 `Project & { kind: K }` 泛型 narrow 拿到。
  *
- * 实装路线（用户拍板后）：
- *   1. src/adapters/zentaoAdapter.ts  实装本 interface — 包 submitToZentao + getBug 已有逻辑
- *   2. src/adapters/webhookAdapter.ts 实装本 interface — 包 handleSubmitBug 现 webhook 分支
- *   3. handlers/submit.ts 改成 const adapter = registry[project.kind]; return adapter.submit(...)
- *   4. handlers/historyStatus.ts 改成 adapter.fetchStatus(project, remoteId)
- *   5. retryQueue.ts 改成 const adapter = registry[item.kind]; return adapter.retry(item.payload, project)
- *      → 配合 PLAN_v1.0 P3 retryQueue 多轨注册表（task #125）
- *   6. 实装第 3 个 adapter：GitHub Issues（CWS 评审正向 / 开发者友好）
+ * retryQueue 入队 payload 形态由 adapter 自决（webhook 存 bodyString，zentao 存完整 SubmitBugReq）。
+ * retryQueue 持 unknown，dispatch 时回 adapter — 见 `serializeForRetry` / `retryFromPayload`。
  *
- * 关键设计权衡：
- *   - 抽不抽 retryQueue 入队 payload 形态？webhook 现在存 bodyString，zentao 存完整 SubmitBugReq。
- *     方案：adapter 决定自己的 retry payload 类型，retryQueue 持 unknown，dispatch 时回 adapter。
- *     见 `serializeForRetry` / `retryFromPayload` 这对。
- *   - adapter 配置（zentao 的 baseUrl/account/password / webhook 的 server/endpoint）放哪？
- *     方案：仍放 Project 字段（v0.4.x 已立），adapter 接 Project<TKindConfig> 用泛型 narrow。
- *   - i18n key 命名空间？
- *     方案：adapter.kind 自带 i18n prefix `<kind>.<event>`（zentao.login.failed）。
- *
- * 不在本草案处理：
- *   - 多 adapter UI（Environment.vue 拆 EnvironmentZentao / EnvironmentWebhook / EnvironmentGitHub）
- *     —— 那是 PLAN P1 task #127 的事，依赖本接口落地
- *   - SubmitDialog.vue 的 kind 分支收敛 —— PLAN P2 task #127' 的事
+ * 注册 + dispatch：见 `src/adapters/index.ts` 的 `adapterRegistry` + `getAdapter(kind)`。
  */
 
 import type { Project } from '@/types/config'
