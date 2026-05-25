@@ -102,12 +102,13 @@ try {
 //
 // manifest.json#commands 是 ground truth。v0.3.1 复盘发现 5 处文档/注释还写 ⌘⇧B 没改。
 // v0.4.4 大复盘清干净 — 这里加规则挡住未来复发。
-// CHANGELOG / HANDOFF / handoff-archive 含 ⌘⇧B 是合法的（历史文档，记述当时表述）
+// CHANGELOG / HANDOFF / *-archive/ 含 ⌘⇧B 是合法的（历史文档，记述当时表述）
 // 只检查活文档 / 代码 / 注释里复发的过期快捷键描述
+// v0.6.1：加 docs/changelog-archive/ 排除（v0.1-v0.3 归档含历史描述）
 try {
   const out = execSync(
     `git grep -lE '⌘⇧B|⌘\\+⇧\\+B|Ctrl\\+Shift\\+B|Cmd\\+Shift\\+B' -- ` +
-    `':!CHANGELOG.md' ':!HANDOFF.md' ':!docs/handoff-archive/' ` +
+    `':!CHANGELOG.md' ':!HANDOFF.md' ':!docs/handoff-archive/' ':!docs/changelog-archive/' ` +
     `':!scripts/check-version-consistency.mjs' ':!CLAUDE.md' || true`,
     { cwd: root, encoding: 'utf8' }
   ).trim()
