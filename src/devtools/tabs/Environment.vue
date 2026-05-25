@@ -2,6 +2,15 @@
   <div v-if="!loaded" class="loading">加载配置中…</div>
   <div v-else class="env-wrap">
     <div v-if="toast" :class="['moo-toast', `moo-toast--${toastKind}`]" :role="toastKind === 'error' ? 'alert' : 'status'" aria-live="polite">{{ toast }}</div>
+    <!-- v0.7.1：已经有项目时进入环境，当前 inspected URL 不命中任何 enabled 项目 → 提示追加 -->
+    <div v-if="suggestPattern" class="suggest-pattern" role="status" aria-live="polite">
+      <span class="suggest-msg">
+        当前页 <code>{{ suggestPattern }}</code> 不在任何项目的 URL 匹配里，要不要追加进
+        <strong>「{{ activeProject?.name || '当前项目' }}」</strong>？
+      </span>
+      <button class="moo-btn moo-btn--sm" @click="acceptSuggestion" :disabled="!activeProject">追加</button>
+      <button class="moo-btn moo-btn--sm" @click="dismissSuggestion">不加</button>
+    </div>
     <div class="save-bar" :class="`is-${saveState}`">
       <span class="status-msg">
         <template v-if="saveState === 'saving'">保存中…</template>
@@ -133,8 +142,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useConfig } from '@/composables/useConfig'
+import { matchProjects } from '@/storage/config'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useToast } from '@/composables/useToast'
 import { useConfigImportExport } from '@/composables/useConfigImportExport'
@@ -272,6 +282,67 @@ async function addProject() {
   // 过滤态下新建项目，filteredProjects 不含新项目导致侧栏看不见 — 重置 filter 让用户看到
   projectFilter.value = ''
 }
+
+// v0.7.1：已经有项目时进入环境，当前页 URL 不命中任何 enabled 项目 → suggestPattern 弹追加引导。
+// 第 N 次进入有意义（projects 非空）；首次新建已被 addProject 自动填覆盖。
+// session 级 dismiss（关 DevTools 重置），切 inspected tab 也会重新评估。
+const suggestPattern = ref<string | null>(null)
+const suggestDismissed = ref(false)
+
+async function evaluateSuggestion() {
+  if (suggestDismissed.value) return
+  if (!initialized.value || draft.value.projects.length === 0) return
+  const pattern = await currentTabAsMatchPattern()
+  if (!pattern) return
+  const tabId = chrome.devtools?.inspectedWindow?.tabId
+  if (!tabId) return
+  let url: string | undefined
+  try { url = (await chrome.tabs.get(tabId))?.url } catch { return }
+  if (!url) return
+  // 当前 URL 命中任何 enabled 项目 → 不弹（globalEnabled=false 仍弹，因为用户在 Environment Tab 显式想配）
+  const matched = matchProjects({ ...draft.value, globalEnabled: true }, url)
+  if (matched.length > 0) {
+    suggestPattern.value = null
+    return
+  }
+  // 当前 pattern 已经在 activeProject.matchPatterns 里也不弹（用户改了项目但当前页不在该项目）
+  if (activeProject.value?.matchPatterns.includes(pattern)) {
+    suggestPattern.value = null
+    return
+  }
+  suggestPattern.value = pattern
+}
+
+function acceptSuggestion() {
+  if (!suggestPattern.value || !activeProject.value) return
+  activeProject.value.matchPatterns.push(suggestPattern.value)
+  suggestPattern.value = null
+}
+
+function dismissSuggestion() {
+  suggestPattern.value = null
+  suggestDismissed.value = true
+}
+
+let onNavListener: (() => void) | null = null
+
+onMounted(() => {
+  // DevTools panel 加载后立刻评估一次
+  void evaluateSuggestion()
+  // 切 inspected tab / 页面 navigate → 重新评估
+  onNavListener = () => void evaluateSuggestion()
+  chrome.devtools?.network?.onNavigated?.addListener?.(onNavListener)
+})
+
+onBeforeUnmount(() => {
+  if (onNavListener) {
+    chrome.devtools?.network?.onNavigated?.removeListener?.(onNavListener)
+    onNavListener = null
+  }
+})
+
+// 用户切换 active 项目 → 重新评估（不同项目 matchPatterns 不同）
+watch(() => activeProject.value?.id, () => { void evaluateSuggestion() })
 
 /**
  * 拿当前 DevTools inspected tab 的 URL，转成 chrome MV3 match pattern：
@@ -589,6 +660,27 @@ const { exportConfig, importConfig } = useConfigImportExport({
    不再 scoped 局部覆盖 */
 
 /* 模板提示 + inline code（URL 匹配示例段用） */
+/* v0.7.1：当前页不在项目匹配里时的追加引导 banner */
+.suggest-pattern {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--moo-c-bg-soft);
+  border-bottom: 1px solid var(--moo-c-border);
+  font-size: var(--moo-fs-xs);
+  color: var(--moo-c-text);
+}
+.suggest-msg { flex: 1; min-width: 200px; color: var(--moo-c-text-muted); }
+.suggest-msg code {
+  padding: 0 4px;
+  background: var(--moo-c-bg);
+  border-radius: 3px;
+  font-family: monospace;
+  color: var(--moo-c-text);
+}
+
 /* v0.7.0：实时校验提示（哪些 pattern 会被 chrome MV3 translator drop）*/
 .patterns-warn {
   margin-top: 6px;
