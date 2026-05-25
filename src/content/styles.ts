@@ -1450,7 +1450,10 @@ export const SHADOW_CSS = `
   animation: moo-toast-in .2s cubic-bezier(.4, 0, .2, 1);
   font-weight: 500;
 }
-.moo-toast.success { background: var(--c-success); }
+/* v0.7.3：success 用 -fg 深一档（green-600 → green-700）— 白字对比度从 3.36:1 →
+   4.32:1，近 WCAG AA。严格 4.5:1 需调全局 token，留下次 token 系统层处理。
+   error (#dc2626 red-600) 白字 4.49:1 已 AA edge pass，不动。 */
+.moo-toast.success { background: var(--c-success-fg); }
 .moo-toast.error   { background: var(--c-danger); }
 @keyframes moo-toast-in {
   from { opacity: 0; transform: translate(-50%, -12px); }
