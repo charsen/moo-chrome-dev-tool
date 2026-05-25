@@ -1,0 +1,132 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { isNewer, fetchLatestVersion, runVersionCheck, VERSION_CHECK_FLAG_KEY } from '@/utils/versionCheck'
+
+/**
+ * v0.6.2 后立的版本检查机制单测。
+ */
+
+describe('isNewer', () => {
+  it('0.6.3 > 0.6.2 → true', () => {
+    expect(isNewer('0.6.3', '0.6.2')).toBe(true)
+  })
+
+  it('0.6.2 > 0.6.2 → false', () => {
+    expect(isNewer('0.6.2', '0.6.2')).toBe(false)
+  })
+
+  it('0.6.1 < 0.6.2 → false', () => {
+    expect(isNewer('0.6.1', '0.6.2')).toBe(false)
+  })
+
+  it('v 前缀正确剥离', () => {
+    expect(isNewer('v1.0.0', '0.9.9')).toBe(true)
+    expect(isNewer('1.0.0', 'v0.9.9')).toBe(true)
+  })
+
+  it('major / minor / patch 三段都对比', () => {
+    expect(isNewer('1.0.0', '0.99.99')).toBe(true)
+    expect(isNewer('0.7.0', '0.6.99')).toBe(true)
+  })
+
+  it('非 SemVer 格式 → false（不弹 banner）', () => {
+    expect(isNewer('latest', '0.6.2')).toBe(false)
+    expect(isNewer('1.0', '0.9.0')).toBe(false)
+    expect(isNewer('0.6.2-beta', '0.6.1')).toBe(false)
+  })
+})
+
+describe('fetchLatestVersion', () => {
+  beforeEach(() => vi.unstubAllGlobals())
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('happy path：返 tag + url', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      tag_name: 'v0.7.0',
+      html_url: 'https://gitee.com/x/y/releases/v0.7.0'
+    }), { status: 200, headers: { 'content-type': 'application/json' } })))
+    const r = await fetchLatestVersion()
+    expect(r?.tag).toBe('v0.7.0')
+    expect(r?.url).toContain('v0.7.0')
+  })
+
+  it('html_url 缺 → fallback 通用 releases 页面', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ tag_name: 'v0.7.0' }), { status: 200 })))
+    const r = await fetchLatestVersion()
+    expect(r?.url).toContain('/releases')
+  })
+
+  it('fetch 失败 → null（不传播）', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('net') }))
+    expect(await fetchLatestVersion()).toBeNull()
+  })
+
+  it('HTTP 5xx → null', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('err', { status: 500 })))
+    expect(await fetchLatestVersion()).toBeNull()
+  })
+
+  it('tag_name 不是 string → null', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ tag_name: 123 }), { status: 200 })))
+    expect(await fetchLatestVersion()).toBeNull()
+  })
+})
+
+describe('runVersionCheck', () => {
+  let storage: Record<string, unknown>
+
+  beforeEach(() => {
+    storage = {}
+    vi.unstubAllGlobals()
+    ;(globalThis as { chrome?: unknown }).chrome = {
+      runtime: { getManifest: () => ({ version: '0.6.2' }) },
+      storage: {
+        local: {
+          async get(key: string) { return { [key]: storage[key] } },
+          async set(obj: Record<string, unknown>) { Object.assign(storage, obj) },
+          async remove(key: string) { delete storage[key] }
+        }
+      }
+    }
+  })
+
+  afterEach(() => {
+    delete (globalThis as { chrome?: unknown }).chrome
+    vi.unstubAllGlobals()
+  })
+
+  it('远端有新版 → storage 写入 LatestVersionInfo', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      tag_name: 'v0.7.0',
+      html_url: 'https://gitee.com/x/y/releases/v0.7.0'
+    }), { status: 200 })))
+    await runVersionCheck()
+    const info = storage[VERSION_CHECK_FLAG_KEY] as { latest: string; current: string }
+    expect(info?.latest).toBe('0.7.0')
+    expect(info?.current).toBe('0.6.2')
+  })
+
+  it('远端跟本地一致 → 清掉残留 flag', async () => {
+    storage[VERSION_CHECK_FLAG_KEY] = { latest: '0.7.0', current: '0.6.2', url: '', checkedAt: Date.now() }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      tag_name: 'v0.6.2'
+    }), { status: 200 })))
+    await runVersionCheck()
+    expect(storage[VERSION_CHECK_FLAG_KEY]).toBeUndefined()
+  })
+
+  it('远端 fetch 失败 → flag 不变（保留之前的）', async () => {
+    storage[VERSION_CHECK_FLAG_KEY] = { latest: '0.7.0', current: '0.6.2', url: '', checkedAt: Date.now() }
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('net') }))
+    await runVersionCheck()
+    expect(storage[VERSION_CHECK_FLAG_KEY]).toBeDefined()
+  })
+
+  it('远端版本更老 → 清 flag（防降级误弹）', async () => {
+    storage[VERSION_CHECK_FLAG_KEY] = { latest: '0.5.0', current: '0.6.2', url: '', checkedAt: Date.now() }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      tag_name: 'v0.5.0'
+    }), { status: 200 })))
+    await runVersionCheck()
+    expect(storage[VERSION_CHECK_FLAG_KEY]).toBeUndefined()
+  })
+})

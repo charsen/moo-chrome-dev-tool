@@ -22,6 +22,15 @@
       <button type="button" class="upgrade-dismiss" @click="dismissUpgrade">稍后再说</button>
     </div>
 
+    <!-- v0.6.2 后立：CWS 上架前的版本检查提示（zip 装的扩展不自动升级，SW 每天 fetch Gitee
+         latest release 比对，新版时弹 banner 引导手动下载）-->
+    <div v-if="updateInfo" class="update-banner" role="status">
+      <div class="update-title">有新版本 v{{ updateInfo.latest }}（当前 v{{ updateInfo.current }}）</div>
+      <div class="update-msg">点链接下载新版 zip 后去 <code>chrome://extensions</code> 重新加载。</div>
+      <a class="moo-btn moo-btn--sm" :href="updateInfo.url" target="_blank" rel="noopener">打开下载页</a>
+      <button type="button" class="upgrade-dismiss" @click="dismissUpdate">稍后再说</button>
+    </div>
+
     <main>
     <div v-if="loading" class="state state--loading">
       <div class="spinner" /> 检测中…
@@ -183,6 +192,7 @@ import { listHistory } from '@/storage/history'
 import { relativeTime } from '@/utils/relativeTime'
 import { t } from '@/i18n'
 import { UPGRADE_FLAG_KEY } from '@/utils/upgradeFlag'
+import { VERSION_CHECK_FLAG_KEY, type LatestVersionInfo } from '@/utils/versionCheck'
 
 const version = ref(chrome.runtime.getManifest().version)
 // 显示尺寸 28px，用 32 比 48 更省字节 + 缩放损失更小（lighthouse image-size-responsive）
@@ -209,6 +219,15 @@ const hostBusy = ref(false)
 const hostError = ref('')
 // v0.6.0 BREAKING：onInstalled 升级时写 flag，banner 展示直到开启或显式关闭
 const needsHostPermUpgrade = ref(false)
+// v0.6.2 后立：SW 每天检查到新版时写 flag，popup 弹 update-banner（CWS 上架前的替代方案）
+const updateInfo = ref<LatestVersionInfo | null>(null)
+
+async function dismissUpdate() {
+  updateInfo.value = null
+  try {
+    await chrome.storage.local.remove(VERSION_CHECK_FLAG_KEY)
+  } catch {}
+}
 
 async function dismissUpgrade() {
   needsHostPermUpgrade.value = false
@@ -343,12 +362,13 @@ onMounted(async () => {
   // v0.4.8：5 步串行 IO → 并行（之前 popup 打开 < 200ms 期望易破）
   // tabs.query / loadConfig / permissions.contains / listHistory 互不依赖，能并发
   try {
-    const [tabResult, cfg, hasRecPerm, hasHostPerm, upgradeFlagObj, historyList] = await Promise.all([
+    const [tabResult, cfg, hasRecPerm, hasHostPerm, upgradeFlagObj, updateFlagObj, historyList] = await Promise.all([
       chrome.tabs.query({ active: true, currentWindow: true }),
       loadConfig(),
       chrome.permissions.contains({ permissions: ['tabCapture'] }),
       chrome.permissions.contains({ origins: ['<all_urls>'] }),
       chrome.storage.local.get(UPGRADE_FLAG_KEY).catch(() => ({})),
+      chrome.storage.local.get(VERSION_CHECK_FLAG_KEY).catch(() => ({})),
       listHistory().catch(() => [])  // 历史读失败静默不挡核心
     ])
     const tab = tabResult[0]
@@ -363,6 +383,15 @@ onMounted(async () => {
     hostEnabled.value = hasHostPerm
     // v0.6.0：升级 flag 仅当还没授权时显示 banner（已开 host 即使 flag 在也不弹）
     needsHostPermUpgrade.value = !hasHostPerm && !!(upgradeFlagObj as Record<string, unknown>)[UPGRADE_FLAG_KEY]
+    // v0.6.2：版本检查 — 仅当 flag 是 LatestVersionInfo 形态 + checkedAt < 7 天
+    const rawInfo = (updateFlagObj as Record<string, unknown>)[VERSION_CHECK_FLAG_KEY]
+    if (rawInfo && typeof rawInfo === 'object') {
+      const info = rawInfo as LatestVersionInfo
+      const age = Date.now() - (info.checkedAt ?? 0)
+      if (info.latest && info.url && age < 7 * 24 * 60 * 60_000) {
+        updateInfo.value = info
+      }
+    }
     recent.value = historyList.slice(0, 3)
     // ONBOARD_KEY 读放最后（只在没项目时才查，多数用户 short-circuit）
     if (projects.value.length === 0) {
@@ -732,6 +761,20 @@ onBeforeUnmount(() => {
   text-decoration: underline;
 }
 .upgrade-dismiss:hover { color: var(--moo-c-text); }
+
+/* v0.6.2 版本检查 banner — 比 upgrade-banner 弱化（only info 不是 alert）*/
+.update-banner {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--moo-c-border);
+  background: var(--moo-c-bg-soft);
+  border-radius: 6px;
+  font-size: var(--moo-fs-xs);
+}
+.update-title { font-weight: 600; margin-bottom: 4px; color: var(--moo-c-text); }
+.update-msg { margin-bottom: 6px; color: var(--moo-c-text-muted); line-height: 1.5; }
+.update-msg code { padding: 0 4px; background: var(--moo-c-bg); border-radius: 3px; }
+.update-banner .moo-btn { margin-right: 8px; }
 
 .rec-toggle {
   display: flex;

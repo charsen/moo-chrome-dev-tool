@@ -18,6 +18,7 @@ import { onHistoryChanged } from '@/storage/history'
 import { flushRetryQueue, getQueueLength } from '@/background/retryQueue'
 import { refreshBadge } from '@/background/handlers/badge'
 import { UPGRADE_FLAG_KEY } from '@/utils/upgradeFlag'
+import { runVersionCheck, VERSION_CHECK_ALARM } from '@/utils/versionCheck'
 import {
   handleZentaoTestConnection,
   handleZentaoListProjects,
@@ -54,9 +55,20 @@ async function ensureRetryAlarm(): Promise<void> {
   }
 }
 
+// v0.6.2 后立：CWS 上架前的替代「自动更新」机制 — SW 每天 fetch Gitee latest release 比对
+async function ensureVersionCheckAlarm(): Promise<void> {
+  const existing = await chrome.alarms.get(VERSION_CHECK_ALARM)
+  if (!existing) {
+    // 每天 1 次（1440min）— 跟 chrome web store 5h 节奏粗对齐，对同事 dogfood 周期够
+    chrome.alarms.create(VERSION_CHECK_ALARM, { periodInMinutes: 1440 })
+  }
+}
+
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   console.log('[Moo] installed:', reason)
   void ensureRetryAlarm()
+  void ensureVersionCheckAlarm()
+  void runVersionCheck()  // 安装即跑一次（不等 24h）
   // v0.6.0 BREAKING：host_permissions 从 mandatory <all_urls> 改 optional。老用户升级后
   // 没有自动授权 → 写一个 storage flag，popup 启动时显示 prominent 升级 banner 引导一键启用。
   // v0.6.1：fresh install 也写 flag（mv3-pro review 报告 6）—— 新用户首次开 popup 看到
@@ -97,6 +109,7 @@ chrome.permissions?.onAdded?.addListener?.(async (perm) => {
 
 chrome.runtime.onStartup?.addListener(() => {
   void ensureRetryAlarm()
+  void ensureVersionCheckAlarm()
   void flushRetryQueue()
   void refreshBadge()
 })
@@ -107,6 +120,7 @@ onHistoryChanged(() => { void refreshBadge() })
 
 chrome.alarms?.onAlarm.addListener((alarm) => {
   if (alarm.name === RETRY_ALARM) void flushRetryQueue()
+  if (alarm.name === VERSION_CHECK_ALARM) void runVersionCheck()
 })
 
 // v0.5.2：tripwire alarm + windows.onRemoved 紧急停录 — 都已搬到 handlers/record.ts
