@@ -19,6 +19,7 @@ import { flushRetryQueue, getQueueLength } from '@/background/retryQueue'
 import { refreshBadge } from '@/background/handlers/badge'
 import { UPGRADE_FLAG_KEY } from '@/utils/upgradeFlag'
 import { runVersionCheck, VERSION_CHECK_ALARM } from '@/utils/versionCheck'
+import { syncContentScripts, installDynamicScriptsListeners } from '@/background/dynamicScripts'
 import {
   handleZentaoTestConnection,
   handleZentaoListProjects,
@@ -69,6 +70,7 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   void ensureRetryAlarm()
   void ensureVersionCheckAlarm()
   void runVersionCheck()  // 安装即跑一次（不等 24h）
+  void syncContentScripts()  // v0.7.0：dynamic register 按用户 config 匹配的 URL
   // v0.6.0 BREAKING：host_permissions 从 mandatory <all_urls> 改 optional。老用户升级后
   // 没有自动授权 → 写一个 storage flag，popup 启动时显示 prominent 升级 banner 引导一键启用。
   // v0.6.1：fresh install 也写 flag（mv3-pro review 报告 6）—— 新用户首次开 popup 看到
@@ -115,6 +117,7 @@ chrome.runtime.onStartup?.addListener(() => {
   void ensureVersionCheckAlarm()
   void flushRetryQueue()
   void refreshBadge()
+  void syncContentScripts()  // v0.7.0：浏览器重启 / SW 复活时兜底 reregister
 })
 
 // History tab 里的删除 / 清空也要让 badge 同步缩水。submit handler 自己已经显式调
@@ -128,6 +131,9 @@ chrome.alarms?.onAlarm.addListener((alarm) => {
 
 // v0.5.2：tripwire alarm + windows.onRemoved 紧急停录 — 都已搬到 handlers/record.ts
 installRecordingListeners()
+
+// v0.7.0：content scripts 动态注册 listener（config 变化 + 权限变化 → 重 sync）
+installDynamicScriptsListeners()
 
 // SW 每次 spin-up（不止 onStartup）都立刻 flush 一次：MV3 SW 空闲 ~30s 被回收，
 // 中途任何消息/alarm 唤醒都走这条路径。之前只 onStartup 主动 flush，意味着
@@ -149,6 +155,8 @@ installRecordingListeners()
   void rehydrateRecordingFromOffscreen()
   // v0.4.5：offscreen track-ended 时如果 SW 刚回收，sendMessage 会丢。spin-up 时读 storage flag 兜底
   void checkOffscreenAutoStoppedFlag()
+  // v0.7.0：SW spin-up 兜底 sync content scripts（onInstalled 不会再 fire 但 SW 30s 回收后唤醒需要确认）
+  void syncContentScripts()
 })()
 
 // 录屏入口必须由用户手势触发：chrome.commands 命中算手势，并直接把当前 tab 传进来。

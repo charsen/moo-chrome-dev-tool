@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "minimum_chrome_version": "109",
+  "minimum_chrome_version": "111",
   "name": "Moo Dev Tool",
   "version": "0.6.3",
   "description": "前后端业务调试工具",
@@ -27,13 +27,13 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["https://moo.placeholder.example/*"],
       "js": ["src/injected/main-world.ts"],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["<all_urls>"],
+      "matches": ["https://moo.placeholder.example/*"],
       "js": ["src/content/index.ts"],
       "run_at": "document_start"
     }

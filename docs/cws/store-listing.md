@@ -169,7 +169,7 @@ Used to capture the active tab's video for screen recording, so that the user ca
 ### `<all_urls>` host permission (optional)
 
 ```
-Required to (1) fetch the user-configured bug-submission server endpoint (which can be any URL the user enters — webhook, Zentao instance, etc.), and (2) inject a content script on pages matching user-configured URL patterns to capture network requests for the bug report. This permission is OPTIONAL_HOST_PERMISSIONS and granted only after the user explicitly enables "Allow requests to submission server" in the extension popup. The extension never sends any data to its own servers (it has none); all network activity targets user-configured destinations.
+Required for (1) fetching the user-configured bug-submission server endpoint (which can be any URL the user enters — webhook, Zentao instance, etc.), and (2) dynamically injecting a content script (via chrome.scripting.registerContentScripts) ONLY on pages matching user-configured URL patterns to capture network requests for the bug report. The manifest content_scripts declaration uses a placeholder URL (`https://moo.placeholder.example/*`, an IANA-reserved domain that never resolves) — content scripts are NOT injected anywhere by default; injection is entirely driven by the user's runtime configuration via the service worker. This permission is OPTIONAL_HOST_PERMISSIONS and granted only after the user explicitly enables "Allow requests to submission server" in the extension popup. The extension never sends any data to its own servers (it has none); all network activity targets user-configured destinations.
 ```
 
 ---
