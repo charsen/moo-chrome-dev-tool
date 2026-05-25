@@ -64,17 +64,29 @@ export const expect = test.expect
  * onHistoryChanged listener 在 background 里会捕到这个变更并刷 badge——
  * 测试中调一次再 sleep ~300ms 就能拿到稳定状态。
  *
- * v0.6.3：fresh install 时 onInstalled 会写 mooNeedsHostPermUpgrade=true 让 badge
- * 显 '!' 优先于失败计数。e2e 跑 fresh install 必撞这个 flag。先等 200ms 让 onInstalled
- * 写完，再 remove flag + set 测试数据 — 保证 badge 测试聚焦 failure count 行为。
+ * v0.6.3 e2e 盲点（claude 二轮同款扫描）：
+ * - fresh install onInstalled 会写 `mooNeedsHostPermUpgrade` flag → badge 显 '!' 覆盖失败计数
+ * - SW 内 `runVersionCheck` fire-and-forget fetch Gitee 写 `mooLatestVersionInfo` flag
+ *   → 随机时间污染 popup/badge 测试，跟 v0.6.1 silent 回归同款 race
+ *
+ * 修法：seedStorage 内主动 remove 两个 flag + 200ms 兜底（轮询 onInstalled 完成 sentinel）。
+ * Gitee fetch 在 fixture launchPersistentContext args 加 `--host-resolver-rules` block
+ * （留个备忘，未发现 popup-* 测试受 update-banner 干扰前先不动 launch args）。
  */
+const E2E_TRANSIENT_FLAGS = ['mooNeedsHostPermUpgrade', 'mooLatestVersionInfo'] as const
+
 export async function seedStorage(sw: Worker, data: Record<string, unknown>) {
-  await sw.evaluate(async (d) => {
-    // 等 onInstalled 把 upgrade flag 写完（race 防御 — fresh install + permission optional 必走这条路）
-    await new Promise<void>((r) => setTimeout(r, 200))
-    await chrome.storage.local.remove('mooNeedsHostPermUpgrade')
+  await sw.evaluate(async ({ d, flags }) => {
+    // 轮询直到 SW onInstalled 把 transient flag 写完，最多 1.5s（CI 慢机器兜底）
+    const deadline = Date.now() + 1500
+    while (Date.now() < deadline) {
+      const result = await chrome.storage.local.get(flags as unknown as string[])
+      if (flags.some((k) => (result as Record<string, unknown>)[k] !== undefined)) break
+      await new Promise<void>((r) => setTimeout(r, 50))
+    }
+    await chrome.storage.local.remove(flags as unknown as string[])
     await chrome.storage.local.set(d)
-  }, data)
+  }, { d: data, flags: E2E_TRANSIENT_FLAGS })
 }
 
 export async function readBadgeText(sw: Worker): Promise<string> {
