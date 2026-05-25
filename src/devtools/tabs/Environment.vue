@@ -261,12 +261,37 @@ function retrySave() {
   void flushSave()
 }
 
-function addProject() {
+async function addProject() {
   const p = createDefaultProject(`项目 ${draft.value.projects.length + 1}`)
+  // v0.7.1：matchPatterns 收紧后小白用户不知道写啥 — 默认填当前 inspected tab 转换成的
+  // chrome match pattern（同 host 任何路径），用户可以接着改窄。拿不到 URL 时静默不填。
+  const pattern = await currentTabAsMatchPattern()
+  if (pattern) p.matchPatterns = [pattern]
   draft.value.projects.push(p)
   activeId.value = p.id
   // 过滤态下新建项目，filteredProjects 不含新项目导致侧栏看不见 — 重置 filter 让用户看到
   projectFilter.value = ''
+}
+
+/**
+ * 拿当前 DevTools inspected tab 的 URL，转成 chrome MV3 match pattern：
+ *   https://example.com/foo/bar?q=1#x → https://example.com/*
+ * 失败时返 null（chrome:// / file:// / 拿不到 tab / 非 http(s) 都 fall-through 让用户自填）
+ */
+async function currentTabAsMatchPattern(): Promise<string | null> {
+  try {
+    const tabId = chrome.devtools?.inspectedWindow?.tabId
+    if (!tabId) return null
+    const tab = await chrome.tabs.get(tabId)
+    const rawUrl = tab.url
+    if (!rawUrl) return null
+    const u = new URL(rawUrl)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null  // chrome:// / file:// 不符 chrome MV3 match pattern
+    if (!u.host) return null
+    return `${u.protocol}//${u.host}/*`
+  } catch {
+    return null
+  }
 }
 
 async function removeProject(id: string) {
