@@ -71,7 +71,9 @@ test('A1 · fresh install：onInstalled 写 upgrade flag + badge "!" + popup ban
   await popup.goto(`chrome-extension://${extensionId}/src/popup/index.html`)
   await popup.waitForSelector('.upgrade-banner', { timeout: 5000 })
   await expect(popup.locator('.upgrade-banner')).toBeVisible()
-  await expect(popup.locator('.upgrade-banner .upgrade-title')).toContainText('v0.6.0')
+  // v0.7.0 banner title 通用化（删 v0.6.0 字样，复用于 v0.6.0 + v0.7.0 BREAKING 升级路径）
+  await expect(popup.locator('.upgrade-banner .upgrade-title')).toContainText('升级')
+  await expect(popup.locator('.upgrade-banner .upgrade-title')).toContainText('上报功能')
   // 文案命中关键短语（避免随版本调整全字匹配 brittle）
   await expect(popup.locator('.upgrade-banner button.moo-btn--danger')).toContainText('启用上报功能')
 

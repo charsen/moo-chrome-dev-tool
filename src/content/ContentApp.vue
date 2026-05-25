@@ -129,8 +129,11 @@ async function refreshProject() {
     // v0.4.8：consoleErrors 开关真生效（之前 Settings UI 显示但代码无读点）
     setErrorsEnabled(cfgSrc.capture.consoleErrors !== false)
   } else {
-    // v0.4.8：URL 没匹配任何项目 → 显式停掉 capture 防隐私洞（main-world 仍 all_urls
-    // 注入抓 body/headers/errors，但 content 这边不入 buffer + 已 buffer 清掉）
+    // v0.4.8：URL 没匹配任何项目 → 显式停掉 capture 防隐私洞。
+    // v0.7.0：main-world 也走 dynamic register 不再 all_urls 全站注入，理论上没匹配的 URL
+    // 不会跑到这分支；但保留这层防御兜底 race（用户改 pattern 后 SW reregister 跟 content
+    // 双向通信窗口期 + 用户在某 tab 取消选中已匹配 project）
+
     reqApi.setConfig({ capture: { requests: false, consoleErrors: false, storageKeys: [], requestBufferSize: 50 } })
     setErrorsEnabled(false)
   }

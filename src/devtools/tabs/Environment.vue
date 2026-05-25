@@ -78,12 +78,14 @@
           :value="activeProject.matchPatterns.join('\n')"
           @input="onPatternsChange($event)"
           @blur="onPatternsBlur"
-          placeholder="* （所有页面）&#10;https://*.example.com/*"
+          placeholder="https://*.example.com/*&#10;http://localhost:8080/*"
         />
         <div class="tpl-hint">
-          示例：<code>*</code> 匹配全部 ·
-          <code>https://*.example.com/*</code> 匹配子域名 ·
-          <code>http*://localhost:*/*</code> 匹配本地任意端口
+          <!-- v0.7.0 BREAKING：matchPatterns 必须严格 https?://host/path 形态（chrome MV3 动态注册要求） -->
+          示例：<code>https://*.example.com/*</code> 匹配子域名 ·
+          <code>http://localhost:8080/*</code> 匹配本地端口 ·
+          <code>https://example.com/api/*</code> 匹配指定路径。
+          <strong>v0.7.0 起</strong>：单个 <code>*</code> / 无 scheme / file:// / chrome-extension:// 不再支持（chrome MV3 严格要求）
         </div>
 
         <div class="section-head">

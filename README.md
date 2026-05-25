@@ -88,7 +88,7 @@ pnpm dev      # 启动 Vite，产物输出到 dist/
 pnpm mock     # 起一个假后端在 http://localhost:8787/bugs
 ```
 
-在「环境」Tab 新建项目，URL 填 `https://*/*`，服务器地址填 `http://localhost:8787/bugs`（跟上面 mock 起的 endpoint 一致），提交一条试试。mock 控制台会打印收到的内容，附件落在 `mock-uploads/`。
+在「环境」Tab 新建项目，URL 填 `http://localhost:*/*`（v0.7.0 起 chrome MV3 严格要求 `https?://host/path` 形态，单个 `*` / 无 scheme 不再支持），服务器地址填 `http://localhost:8787/bugs`（跟上面 mock 起的 endpoint 一致），提交一条试试。mock 控制台会打印收到的内容，附件落在 `mock-uploads/`。
 
 **接禅道？** 在「环境」Tab 把「上报方式」切到「禅道」，填 baseUrl / 账号 / 项目 ID 即可。详细见 [docs/ZENTAO_SETUP.md](docs/ZENTAO_SETUP.md)。
 

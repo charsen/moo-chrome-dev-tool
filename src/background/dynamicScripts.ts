@@ -94,19 +94,29 @@ export async function syncContentScripts(): Promise<void> {
     }
 
     const config = await loadConfig()
-    const rawPatterns = config.projects
-      .filter(p => p.enabled)
-      .flatMap(p => p.matchPatterns ?? [])
+    // P0-1 mv3-pro 四审：尊重 globalEnabled — popup footer 全局开关关闭后悬浮球应消失
+    // matchProjects() 内已有同款判断，dynamic register 也得跟（之前 v0.6.x 静态 <all_urls>
+    // 下 content script 仍注入但 ContentApp 内部读 globalEnabled 决定是否挂悬浮球，dynamic
+    // 化后必须在 register 阶段提前拦）
+    const rawPatterns = config.globalEnabled
+      ? config.projects.filter(p => p.enabled).flatMap(p => p.matchPatterns ?? [])
+      : []
     const { valid: matches, dropped } = toChromeMatchPatterns(rawPatterns)
     if (dropped.length > 0) {
       console.warn(`[Moo] syncContentScripts: ${dropped.length} 个 matchPattern 被 translator 拒（必须 scheme://host/path 形态）:`, dropped)
+      // P0-3：写 storage flag 让 popup banner 引导用户去 Environment 修
+      // （v0.6.x → v0.7.0 升级时老 patterns 如 '*' / 'example.com/*' 会全部 drop）
+      void chrome.storage.local.set({ mooDroppedMatchPatterns: { count: dropped.length, samples: dropped.slice(0, 3), at: Date.now() } }).catch(() => {})
+    } else {
+      // 没 drop → 清 flag（用户改完 pattern 后 banner 该自动消失）
+      void chrome.storage.local.remove('mooDroppedMatchPatterns').catch(() => {})
     }
 
     const existing = await chrome.scripting.getRegisteredContentScripts({
       ids: [SCRIPT_ID_MAIN, SCRIPT_ID_ISO]
     }).catch(() => [])
 
-    // 无合法 pattern → 卸下现有（manifest placeholder 在用户 0 项目时也不会注入）
+    // 无合法 pattern → 卸下现有
     if (matches.length === 0) {
       if (existing.length > 0) {
         await chrome.scripting.unregisterContentScripts({
@@ -133,12 +143,14 @@ export async function syncContentScripts(): Promise<void> {
       }
     ]
 
-    if (existing.length === 0) {
-      await chrome.scripting.registerContentScripts(newScripts)
-    } else {
-      // 已存在 → update（chrome.scripting.update 接受同样 shape）
-      await chrome.scripting.updateContentScripts(newScripts)
+    // P0-2 mv3-pro 四审：existing 可能只含 2 id 中的 1 个（onRemoved 撤掉一半 race），
+    // 走 update 整批会撞「id 不存在」chrome 拒。改幂等：先 unregister 现有 + register 新的。
+    if (existing.length > 0) {
+      await chrome.scripting.unregisterContentScripts({
+        ids: existing.map(s => s.id)
+      }).catch(() => { /* race 时已不存在也 OK */ })
     }
+    await chrome.scripting.registerContentScripts(newScripts)
   } catch (e) {
     // chrome.scripting API 在 SW 早期 spin-up 阶段可能抛 / 权限边界 / 用户改 manifest race
     console.warn('[Moo] syncContentScripts 失败:', (e as Error).message)

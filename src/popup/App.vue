@@ -8,12 +8,10 @@
       <span class="moo-chip">v{{ version }}</span>
     </header>
 
-    <!-- v0.6.0 BREAKING：升级到 v0.6.0 后 <all_urls> 改 optional，老用户首次打开需要主动启用。
-         banner 醒目展示直到用户开启或显式关闭。
-         v0.6.3 vue-craft 三审：加 aria-live polite（banner 在 popup mount 时已渲染，
-         role=alert 静态内容不触发播报，aria-live 才让 screen reader 知会） -->
+    <!-- v0.6.0 / v0.7.0 BREAKING：host_permissions optional + content_scripts 动态注册升级时
+         老用户首次打开需要主动启用。banner 醒目展示直到用户开启或显式关闭。 -->
     <div v-if="needsHostPermUpgrade" class="upgrade-banner" role="alert" aria-live="polite">
-      <div class="upgrade-title">升级到 v0.6.0 — 上报功能需要重新启用</div>
+      <div class="upgrade-title">升级 — 上报功能需要重新启用</div>
       <div class="upgrade-msg">为符合 Chrome Web Store 评审要求，「向上报服务器发送请求」改为可选权限。点下方按钮一次性启用，之后所有提交照旧工作。</div>
       <button
         type="button"
@@ -24,10 +22,19 @@
       <button type="button" class="upgrade-dismiss" @click="dismissUpgrade">稍后再说</button>
     </div>
 
-    <!-- v0.6.2 后立：CWS 上架前的版本检查提示（zip 装的扩展不自动升级，SW 每天 fetch Gitee
-         latest release 比对，新版时弹 banner 引导手动下载）
-         v0.6.3 vue-craft 三审：v-else-if 排他于 upgrade-banner（用户连上报都没启用，给「下新版」按钮
-         语义错位 — 下了也用不了。也避免 320px popup 双 banner 视觉过载）+ aria-live polite -->
+    <!-- v0.7.0：matchPatterns 被 translator drop 的 banner（同事老 patterns 升级后失效引导）
+         v-else-if 排他于 upgrade-banner（host permission 没开就别堆 pattern 问题更紧急） -->
+    <div v-else-if="droppedPatternsInfo" class="dropped-banner" role="alert" aria-live="polite">
+      <div class="dropped-title">⚠ {{ droppedPatternsInfo.count }} 个 URL 匹配规则与 v0.7.0 不兼容</div>
+      <div class="dropped-msg">
+        chrome MV3 严格要求 <code>https?://host/path</code> 形态。被 drop 的示例：
+        <span class="dropped-samples">{{ droppedPatternsInfo.samples.join(' / ') }}</span>。
+        请打开 DevTools → Moo → 环境 修改这些 pattern。
+      </div>
+      <button type="button" class="upgrade-dismiss" @click="dismissDropped">稍后再说</button>
+    </div>
+
+    <!-- v0.6.2：CWS 上架前的版本检查提示。v-else-if 排他于上面两个 banner -->
     <div v-else-if="updateInfo" class="update-banner" role="status" aria-live="polite">
       <div class="update-title">有新版本 v{{ updateInfo.latest }}（当前 v{{ updateInfo.current }}）</div>
       <div class="update-msg">点链接下载新版 zip 后去 <code>chrome://extensions</code> 重新加载。</div>
@@ -231,6 +238,17 @@ const hostError = ref('')
 const needsHostPermUpgrade = ref(false)
 // v0.6.2 后立：SW 每天检查到新版时写 flag，popup 弹 update-banner（CWS 上架前的替代方案）
 const updateInfo = ref<LatestVersionInfo | null>(null)
+// v0.7.0：dynamicScripts syncContentScripts 内 translator drop 的 patterns 写 flag → popup 弹引导
+interface DroppedPatternsInfo { count: number; samples: string[]; at: number }
+const DROPPED_FLAG_KEY = 'mooDroppedMatchPatterns'
+const droppedPatternsInfo = ref<DroppedPatternsInfo | null>(null)
+
+async function dismissDropped() {
+  droppedPatternsInfo.value = null
+  try {
+    await chrome.storage.local.remove(DROPPED_FLAG_KEY)
+  } catch {}
+}
 
 async function dismissUpdate() {
   updateInfo.value = null
@@ -372,13 +390,14 @@ onMounted(async () => {
   // v0.4.8：5 步串行 IO → 并行（之前 popup 打开 < 200ms 期望易破）
   // tabs.query / loadConfig / permissions.contains / listHistory 互不依赖，能并发
   try {
-    const [tabResult, cfg, hasRecPerm, hasHostPerm, upgradeFlagObj, updateFlagObj, historyList] = await Promise.all([
+    const [tabResult, cfg, hasRecPerm, hasHostPerm, upgradeFlagObj, updateFlagObj, droppedFlagObj, historyList] = await Promise.all([
       chrome.tabs.query({ active: true, currentWindow: true }),
       loadConfig(),
       chrome.permissions.contains({ permissions: ['tabCapture'] }),
       chrome.permissions.contains({ origins: ['<all_urls>'] }),
       chrome.storage.local.get(UPGRADE_FLAG_KEY).catch(() => ({})),
       chrome.storage.local.get(VERSION_CHECK_FLAG_KEY).catch(() => ({})),
+      chrome.storage.local.get(DROPPED_FLAG_KEY).catch(() => ({})),
       listHistory().catch(() => [])  // 历史读失败静默不挡核心
     ])
     const tab = tabResult[0]
@@ -400,6 +419,15 @@ onMounted(async () => {
       const age = Date.now() - (info.checkedAt ?? 0)
       if (info.latest && info.url && age < 7 * 24 * 60 * 60_000) {
         updateInfo.value = info
+      }
+    }
+    // v0.7.0：dropped match patterns flag — 7 天内的提示
+    const rawDropped = (droppedFlagObj as Record<string, unknown>)[DROPPED_FLAG_KEY]
+    if (rawDropped && typeof rawDropped === 'object') {
+      const d = rawDropped as DroppedPatternsInfo
+      const age = Date.now() - (d.at ?? 0)
+      if (typeof d.count === 'number' && d.count > 0 && Array.isArray(d.samples) && age < 7 * 24 * 60 * 60_000) {
+        droppedPatternsInfo.value = d
       }
     }
     recent.value = historyList.slice(0, 3)
@@ -430,6 +458,18 @@ onMounted(async () => {
         const info = newVal as LatestVersionInfo
         if (info.latest && info.url) {
           updateInfo.value = info
+        }
+      }
+    }
+    // v0.7.0：SW syncContentScripts 后写 / 清 DROPPED flag → popup 实时显示
+    if (DROPPED_FLAG_KEY in changes) {
+      const newVal = changes[DROPPED_FLAG_KEY]!.newValue
+      if (newVal === undefined) {
+        droppedPatternsInfo.value = null
+      } else if (newVal && typeof newVal === 'object') {
+        const d = newVal as DroppedPatternsInfo
+        if (d.count > 0 && Array.isArray(d.samples)) {
+          droppedPatternsInfo.value = d
         }
       }
     }
@@ -799,6 +839,21 @@ onBeforeUnmount(() => {
 .update-msg { margin-bottom: 6px; color: var(--moo-c-text-muted); line-height: 1.5; }
 .update-msg code { padding: 0 4px; background: var(--moo-c-bg); border-radius: 3px; }
 .update-banner .moo-btn { margin-right: 8px; }
+
+/* v0.7.0 dropped-banner — matchPatterns 不兼容引导，复用 upgrade-banner warn 配色但稍弱 */
+.dropped-banner {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--moo-c-warn-soft);
+  background: var(--moo-c-warn-soft);
+  border-radius: var(--moo-r-md);
+  color: var(--moo-c-warn-fg);
+  font-size: var(--moo-fs-xs);
+}
+.dropped-title { font-weight: 600; margin-bottom: 4px; color: var(--moo-c-text); }
+.dropped-msg { color: var(--moo-c-text-muted); line-height: 1.6; margin-bottom: 6px; }
+.dropped-msg code { padding: 0 4px; background: var(--moo-c-bg); border-radius: 3px; }
+.dropped-samples { color: var(--moo-c-text); font-family: monospace; }
 
 .rec-toggle {
   display: flex;
