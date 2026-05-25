@@ -240,6 +240,9 @@ chromeAny.devtools = {
 // 直接覆盖一个 mock 版让 Overview 拉数据走 seed。
 chromeAny.tabs = chromeAny.tabs ?? {}
 const tabsAny = chromeAny.tabs as Record<string, unknown>
+// v0.7.1：Environment.vue addProject 自动填 URL + suggestPattern banner 需要 chrome.tabs.get(tabId)
+// harness 真 chrome-extension:// 上下文 chrome.tabs.get(1) 不存在会 throw → mock 返合理 tab.url
+tabsAny.get = async (_tabId: number) => ({ id: 1, url: 'https://harness.local/test' })
 tabsAny.sendMessage = (
   _tabId: number,
   msg: { type: string },
