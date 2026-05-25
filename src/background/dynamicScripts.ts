@@ -150,7 +150,19 @@ export async function syncContentScripts(): Promise<void> {
         ids: existing.map(s => s.id)
       }).catch(() => { /* race 时已不存在也 OK */ })
     }
-    await chrome.scripting.registerContentScripts(newScripts)
+    // v0.7.3 mv3-pro 7 审 P1：register 抛错时用户会落到「俩都没注册」裸奔态（pattern
+    // 边界 / quota / API 内部 race 都可能）。下次 SW spin-up 自愈（index.ts:158 兜底），
+    // 但缩短裸奔窗口仍值得 —— retry 一次。两次都失败再 log + 等 spin-up 兜底。
+    try {
+      await chrome.scripting.registerContentScripts(newScripts)
+    } catch (firstErr) {
+      console.warn('[Moo] syncContentScripts register first attempt failed:', (firstErr as Error).message, '— retry once')
+      try {
+        await chrome.scripting.registerContentScripts(newScripts)
+      } catch (retryErr) {
+        console.warn('[Moo] syncContentScripts register retry failed:', (retryErr as Error).message, '— 等 SW spin-up 兜底')
+      }
+    }
   } catch (e) {
     // chrome.scripting API 在 SW 早期 spin-up 阶段可能抛 / 权限边界 / 用户改 manifest race
     console.warn('[Moo] syncContentScripts 失败:', (e as Error).message)
