@@ -221,19 +221,22 @@
       </div>
       <div v-if="hostError" class="rec-err" role="alert" aria-live="assertive">{{ hostError }}</div>
 
-      <!-- v0.7.4：同事需求「不用进 F12 那么深」配置入口。chrome.windows.create
-           弹独立浮窗 760×720（type:'popup' = 小窗口可拖位置，独立于 popup 关闭）。
-           复用 DevTools 的 Environment / Settings / History 三 Tab 代码。 -->
+      <!-- v0.7.4 → v0.7.5：同事需求升级「工作区」。chrome.windows.create 弹
+           独立浮窗 760×720 type:'popup'，包含 4 Tab（概览/环境/历史/设置）。
+           Overview 通过 main.ts pre-mount shim 拿主 chrome 窗口的 active tab id
+           让 chrome.devtools.inspectedWindow.tabId 无感 work。 -->
       <button type="button" class="opt-cta" @click="openOptionsWindow">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>
+          <rect x="3" y="3"  width="7" height="7" rx="1.5"/>
+          <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+          <rect x="14" y="14" width="7" height="7" rx="1.5"/>
         </svg>
-        完整配置（独立浮窗）
+        打开工作区（独立浮窗）
       </button>
 
       <div class="help-pop">
-        或按 <span class="kbd">F12</span> 打开 DevTools 切到 <b>Moo</b> 面板（含「概览」实时请求/错误）。
+        或按 <span class="kbd">F12</span> 进 DevTools 切到 <b>Moo</b> 面板（同款 4 Tab）。
       </div>
     </footer>
   </div>

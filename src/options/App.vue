@@ -5,10 +5,13 @@
         <img class="logo" :src="logoUrl" alt="Moo" />
         <div class="brand-text">
           <div class="brand-name">Moo Dev Tool</div>
-          <div class="brand-meta">完整配置（独立浮窗）</div>
+          <div class="brand-meta">
+            <template v-if="inspectedHost">📍 {{ inspectedHost }}</template>
+            <template v-else>工作区（独立浮窗）</template>
+          </div>
         </div>
       </div>
-      <nav class="tabs" role="tablist" aria-label="Moo 配置" @keydown="onTabKeydown">
+      <nav class="tabs" role="tablist" aria-label="Moo 工作区" @keydown="onTabKeydown">
         <button
           v-for="(t, i) in tabs"
           :key="t.key"
@@ -27,7 +30,8 @@
     </header>
     <main class="content" role="tabpanel" :id="`opt-tabpanel-${active}`" :aria-labelledby="`opt-tab-${active}`">
       <KeepAlive>
-        <Environment v-if="active === 'env'" />
+        <Overview v-if="active === 'overview'" />
+        <Environment v-else-if="active === 'env'" />
         <History v-else-if="active === 'history'" />
         <Settings v-else-if="active === 'settings'" />
       </KeepAlive>
@@ -37,20 +41,25 @@
 
 <script setup lang="ts">
 import { nextTick, onBeforeUpdate, ref } from 'vue'
+import Overview from '@/devtools/tabs/Overview.vue'
 import Environment from '@/devtools/tabs/Environment.vue'
 import History from '@/devtools/tabs/History.vue'
 import Settings from '@/devtools/tabs/Settings.vue'
 
 const logoUrl = chrome.runtime.getURL('icons/icon-48.png')
+// v0.7.5：浮窗工作区显示「📍 <inspected host>」让用户知道在看哪个 tab 的数据。
+// host 由 options/main.ts pre-mount shim 通过 chrome.windows.getLastFocused 拿好。
+const inspectedHost = (window as { __mooInspectedHost?: string }).__mooInspectedHost ?? ''
 
 const tabs = [
+  { key: 'overview', label: '概览' },
   { key: 'env',      label: '环境' },
   { key: 'history',  label: '历史' },
   { key: 'settings', label: '设置' }
 ] as const
 
 type TabKey = typeof tabs[number]['key']
-const active = ref<TabKey>('env')  // 浮窗默认进环境（最常用）
+const active = ref<TabKey>('overview')  // v0.7.5：默认进概览（跟 DevTools panel 一致，工作区第一眼看实时请求/错误）
 
 // ARIA tabs 键盘导航 —— 跟 Panel.vue 同款 v0.4.9 implementation
 // v0.7.4 vue-craft 审：Vue 3 函数 ref 没在 update 前清空数组 → hot reload / active
