@@ -2,6 +2,55 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.7.4
+
+2026-05-26 发版。无 BREAKING — 同事需求驱动「工作区」新形态 + e2e 真注入防回归基础设施 + 4 agent 8 审 P0/P1 修。
+
+### 新功能（同事需求）
+
+- **悬浮球当前页临时隐藏开关**：popup 顶部 toggle，chrome.storage.session 级（chrome 重启自动恢复，符合「临时藏」语义）。跨 popup ↔ content world 即时同步（< 50ms）。chrome:// / file:// 等无 host 场景 disabled 占位「(当前页面不支持)」保视觉锚一致
+- **完整配置浮窗 → 工作区**：popup「⚙ 打开工作区（独立浮窗）」按钮 → chrome.windows.create 独立 760×720 chrome window，4 Tab（概览 / 历史 / 环境 / 设置）跟 DevTools panel 1:1。options/main.ts pre-mount shim：chrome.windows.getLastFocused({windowTypes:['normal']}) 拿主 chrome 窗口的 active tab 让 Overview.vue 0 改动复用。「打开瞬间锁定 tab」语义。同步 manifest options_ui open_in_tab: true 让 chrome://extensions/「扩展选项」也走新 tab
+
+### 测试基础设施 — v0.7.1 类 silent 回归防御
+
+- **真注入端到端 e2e (R1/R2) + self-test hatch**：lab-tester 8 审 5 路径调研找唯一可行 — spec 跑前 cpSync dist→dist-e2e 改 manifest optional_host_permissions → mandatory，chrome 自动 grant 绕 user gesture。新 spec dynamic-register-real-inject.spec.ts 验「register → navigate → DOM 有 `#__moo_dev_tool_host__` + chunks load + console 无 Denying load / Failed to fetch / net::ERR」全链路。`MOO_E2E_INJECT_V071_BUG=1` 注入 use_dynamic_url:true 模拟 v0.7.1 bug，R1 必红（实测验过）— 未来 silent 回归立刻被抓
+- **popup ↔ content storage.session 同步 spec (S1/S2/S3)**：验跨 trust boundary 链路 setAccessLevel 真生效
+- **options 浮窗加载 + 4 tab 切换 spec (OPT1/OPT2)**
+- **release.mjs dev-artifact 全 dist 递归扫**：之前只查 service-worker-loader.js；现在递归扫所有 .js / .html 命中 localhost:5273 / @vite/env / @crx/client-worker 即 abort
+- **RELEASE_TEST_CHECKLIST v0.7.x fresh install 10 步手测**：playwright 物理给不出 user gesture 的盲点手测兜底
+- **docs/MCP_TESTING.md sync** v0.7.4 mandatory-manifest 机制 + self-test hatch 复用模式
+
+### 4 agent 8 审 P0/P1 修
+
+- **🔴 mv3-pro 致命 P1**：`chrome.storage.session` 默认 access level = TRUSTED_CONTEXTS only (chrome 112+)，content world 直接读会抛。SW 启动调 `setAccessLevel({accessLevel:'TRUSTED_AND_UNTRUSTED_CONTEXTS'})` — **不调 = 整个悬浮球 toggle 链路完全断**
+- **mv3-pro register 非原子 retry**：unregister 后 register 抛错落到「俩 content script 都没注册」裸奔态，retry 一次缩短窗口
+- **vue-craft popup toggle UX**：chrome:// 等场景 disabled 占位（不 v-if 整行隐藏）+ host 长截断（> 24 + ellipsis）防撑爆 + aria-label
+- **vue-craft Environment fallback**：currentTabAsMatchPattern 加 chrome.tabs.query lastFocusedWindow 兜底（排除 chrome-extension:// 自身），让工作区浮窗里新建项目能自动填当前页 URL
+- **vue-craft options tabRefs onBeforeUpdate 清空**：Vue 3 函数 ref 防 hot reload / active 切换 stale 元素 ref
+- **mv3-pro window.close await chrome.windows.create**：防 popup 销毁瞬间 create 请求在 message port 上丢
+- **mv3-pro manifest options_ui open_in_tab false → true**：跟 popup 弹浮窗都是「全屏体验」一致，不走 700×600 内嵌 modal
+- **general-purpose P0 Environment 数据丢**（v0.7.3 漏掉前置项）：onBeforeUnmount 加 flushSave，防 800ms debounce 窗口内关 DevTools / 切 inspected tab 改动永久丢失 silent
+
+### UX 改进
+
+- popup empty 状态简化：删 4 步 onboarding 列表 + 「我看完了」按钮，改 1 行 hint
+- popup 4 角 `border-radius: 10px` + `overflow: hidden`（chrome 113+ macOS 系统级圆角时完美对齐）
+- 工作区浮窗 brand-meta 显示「📍 <主 chrome 窗口 host>」让用户知道在看哪个 tab
+- 4 tab 加 SVG icon + 按使用频率重排：概览 / 历史 / 环境 / 设置（Panel.vue 同步）
+
+### 工程
+
+- 抽 HIDDEN_HOSTS_KEY 常量
+- options page 复用 DevTools Environment / History / Settings 三 Tab 代码 0 改动
+- Overview.vue 通过 pre-mount shim 实现 0 改动复用
+- **601 单测 / type-check / 119 e2e**（v0.7.3 末 114 + popup-toggle-floating-ball-sync 3 + options-page-load 2）全过
+
+### 留 v0.7.5+
+
+- 多上下文（popup + DevTools panel + 工作区浮窗）同改 mooConfig 的 lost update（Settings.vue:242 早有同款，非 v0.7.4 新引入，日常多窗口编辑 < 5% 场景，搁置文档化）
+
+---
+
 ## v0.7.3
 
 2026-05-25 发版。无 BREAKING — 跨样式系统对齐 + 严格 a11y + 3 个新视角 agent 7 审找到的 1 P0 + 4 P1 全修。

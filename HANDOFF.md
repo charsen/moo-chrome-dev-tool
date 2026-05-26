@@ -4,6 +4,8 @@
 
 ## 一句话现状
 
+**v0.7.4 已发**（2026-05-26）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.4/moo-chrome-dev-tool-0.7.4.zip)（sha256 待填）。无 BREAKING — 同事需求驱动「工作区」新形态：popup 加悬浮球当前页隐藏 toggle + 完整配置浮窗（chrome.windows.create 独立 760×720 chrome window，4 Tab 概览/历史/环境/设置跟 DevTools panel 1:1）+ 4 agent 8 审 P0/P1 修（含 storage.session setAccessLevel 致命漏 / register retry / popup UX / Environment fallback）+ e2e 真注入 spec（v0.7.1 类 silent 回归 self-test hatch 锁死）。601 单测 + 119 e2e 全过。
+
 **v0.7.3 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.3/moo-chrome-dev-tool-0.7.3.zip)（sha256 `ced27a1f7da6f7f48791a209e56afa930440fc77e0560868f0f18cae27def163`）。无 BREAKING — 3 个新视角 agent 7 审找 **1 P0 + 4 P1** 全修（Environment 800ms 内关 DevTools 改动永久丢失 / popup「已启用」错觉 / dynamicScripts 没查 host_permission / release.mjs 缺 dev-artifact 检测 / register 非原子）+ vue-craft 14 条样式 a11y 漂移全清 + 严格 WCAG AA 4.5:1 系统升级。
 
 **v0.7.2 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.2/moo-chrome-dev-tool-0.7.2.zip)（sha256 `1512f83b39f94e1a8b8518cdd0074e930a12768adb8a6e3a8718f6b9dd476366`）。**🔴 dogfood hotfix** — v0.7.0 dynamic register 链路实机 chrome 装上即炸（content script lazy chunks 被 web_accessible_resources 拒，悬浮球出不来）。修：删 `use_dynamic_url: true`，chunks 走固定 ID URL。顺带新功能：录屏鼠标点击 800ms 红圈涟漪（视频里同事能看清点哪）。
@@ -26,7 +28,7 @@
 
 **早期版本简介**：v0.1.x → v0.4.3 见 [docs/handoff-archive/v0.1.x.md](docs/handoff-archive/v0.1.x.md)；v0.4.4 → v0.4.9 见 [docs/handoff-archive/v0.4.4-v0.4.9.md](docs/handoff-archive/v0.4.4-v0.4.9.md)。
 
-**往前看**：v0.7.3 把 3 个新视角 agent 7 审找到的 1 P0 + 4 P1 + vue-craft 14 条样式 a11y + 严格 AA 系统升级一起累发。**剩 v0.7.4+ 工作**：① 端到端 e2e 补「dynamic register navigate → chunks load → 悬浮球渲染」全链路（lab-tester 诊断的 e2e 盲点） ② 自托管 telemetry collector（PLAN 决策 5） ③ web_accessible_resources `<all_urls>` 收窄（CWS 评审风险） ④ i18n 全量迁移（v1.2+） ⑤ 同事 dogfood v0.7.x 反馈。**CWS 上架物料就绪**（docs/cws/）等用户截图 + 后台填表。
+**往前看**：v0.7.4 把同事需求「悬浮球 toggle」+「完整配置浮窗 → 工作区」+ 4 agent 8 审 P0/P1（含致命 storage.session setAccessLevel 漏）+ 真注入 e2e self-test hatch 一起累发。**剩 v0.7.5+ 工作**：① 多上下文 mooConfig lost update（Settings 早有同款，文档化）② 自托管 telemetry collector（PLAN 决策 5）③ web_accessible_resources `<all_urls>` 收窄（CWS 评审风险，评估后价值不高搁置）④ i18n 全量迁移（v1.2+）⑤ 同事 dogfood v0.7.4 反馈。**CWS 上架物料就绪**（docs/cws/）等用户截图 + 后台填表。
 
 ## 这两周做了什么
 
