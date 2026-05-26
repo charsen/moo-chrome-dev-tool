@@ -156,6 +156,76 @@ describe('webhookAdapter.fetchStatus', () => {
     const s = await webhookAdapter.fetchStatus?.(baseProject(), '100')
     expect(s).toBeUndefined()
   })
+
+  // v0.7.6 P1-4 regression guard：多 server 项目下，entry.serverId 应优先匹配
+  // 对应 server.endpoint 算 remoteBase。之前 fallback 只取 first endpoint —
+  // 多 server 时永远走 first server 的 status-public，错指 base url。
+  it('多 server fallback：ctx.serverId 命中第二个 server → remoteBase 用第二个 endpoint', async () => {
+    const project = baseProject()
+    project.servers = [
+      { ...project.servers[0]!, id: 's1', endpoint: 'http://api1.example.com/intake' },
+      { ...project.servers[0]!, id: 's2', endpoint: 'http://api2.example.com/intake' }
+    ]
+    const fetchMock = vi.fn(async () => jsonRes({ ok: true, status: 'resolved' }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { webhookAdapter } = await importAdapter()
+    const s = await webhookAdapter.fetchStatus?.(project, '100', { serverId: 's2' })
+    expect(s).toBe('resolved')
+    // 关键：fetch URL 必须基于 s2 的 endpoint (api2.example.com)，不是 first server
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://api2.example.com/100/status-public',
+      expect.anything()
+    )
+  })
+
+  it('多 server fallback：ctx.serverId 不命中 → fallback first endpoint（v0.5.x 老 entry 容忍）', async () => {
+    const project = baseProject()
+    project.servers = [
+      { ...project.servers[0]!, id: 's1', endpoint: 'http://api1.example.com/intake' },
+      { ...project.servers[0]!, id: 's2', endpoint: 'http://api2.example.com/intake' }
+    ]
+    const fetchMock = vi.fn(async () => jsonRes({ ok: true, status: 'resolved' }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { webhookAdapter } = await importAdapter()
+    const s = await webhookAdapter.fetchStatus?.(project, '100', { serverId: 'unknown-server' })
+    expect(s).toBe('resolved')
+    // ctx.serverId 不命中 → 退回 first endpoint（api1）
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://api1.example.com/100/status-public',
+      expect.anything()
+    )
+  })
+
+  it('多 server fallback：完全不传 ctx → fallback first endpoint（v0.5.x 老 entry 无 serverId）', async () => {
+    const project = baseProject()
+    project.servers = [
+      { ...project.servers[0]!, id: 's1', endpoint: 'http://api1.example.com/intake' },
+      { ...project.servers[0]!, id: 's2', endpoint: 'http://api2.example.com/intake' }
+    ]
+    const fetchMock = vi.fn(async () => jsonRes({ ok: true, status: 'resolved' }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { webhookAdapter } = await importAdapter()
+    const s = await webhookAdapter.fetchStatus?.(project, '100')
+    expect(s).toBe('resolved')
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://api1.example.com/100/status-public',
+      expect.anything()
+    )
+  })
+
+  it('ctx.remoteBase 优先级最高（用户改 server.endpoint 后仍指向原 base）', async () => {
+    const project = baseProject()
+    project.servers[0]!.endpoint = 'http://new-endpoint.example.com/intake'
+    const fetchMock = vi.fn(async () => jsonRes({ ok: true, status: 'resolved' }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { webhookAdapter } = await importAdapter()
+    const s = await webhookAdapter.fetchStatus?.(project, '100', { remoteBase: 'http://original.example.com/path' })
+    expect(s).toBe('resolved')
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://original.example.com/path/100/status-public',
+      expect.anything()
+    )
+  })
 })
 
 describe('webhookAdapter.serializeForRetry', () => {

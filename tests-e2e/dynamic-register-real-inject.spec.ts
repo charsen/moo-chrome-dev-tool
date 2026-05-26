@@ -159,6 +159,45 @@ test('R1 · 真注入：register + navigate → #__moo_dev_tool_host__ in DOM + 
 })
 
 // ---------------------------------------------------------------------------
+// R3. backfill 真注入（v0.7.6 P0，feb4526 commit）：
+//     先 navigate 命中 URL（此时 SW 还没 register content_scripts）→ 再调
+//     syncContentScripts → 不刷新 tab → DOM 上应该出现 #__moo_dev_tool_host__
+//
+//     v0.7.6 之前：register 只对未来 navigation 生效，已开 tab 必须手动刷新
+//     才出悬浮球，dogfood 真痛点。修法是 register 后 chrome.tabs.query({url:matches})
+//     + executeScript 回填注入。
+// ---------------------------------------------------------------------------
+test('R3 · backfill：先开 tab 后 register → 不刷新就出悬浮球（v0.7.6 P0 regression guard）', async ({ context, sw }) => {
+  // 1. 清掉 mooConfig，确认起始无 registered scripts
+  await seedStorage(sw, { mooConfig: makeConfig([]) })
+  await sw.evaluate(() => new Promise<void>((r) => setTimeout(r, 500)))
+  const before = await sw.evaluate(async () =>
+    await chrome.scripting.getRegisteredContentScripts().catch(() => [])
+  )
+  expect(before).toHaveLength(0)
+
+  // 2. 先开 tab navigate（此时 content script 不该注入 — pattern 不匹配）
+  const page = await context.newPage()
+  await page.goto(`http://127.0.0.1:${PORT}/test`)
+  await page.waitForTimeout(300)
+  const hostBefore = await page.evaluate(() => !!document.querySelector('#__moo_dev_tool_host__'))
+  expect(hostBefore, 'register 前不该有 host element').toBe(false)
+
+  // 3. SW 端写 mooConfig 触发 syncContentScripts → register + backfill
+  //    pattern 命中已打开的 page → backfillExistingTabs executeScript 回填
+  const pattern = `http://127.0.0.1:${PORT}/*`
+  await seedStorage(sw, { mooConfig: makeConfig([pattern]) })
+  // 200ms config debounce + register + executeScript 注入 + Vue mount —— 1.2s 兜底
+  await sw.evaluate(() => new Promise<void>((r) => setTimeout(r, 1200)))
+
+  // 4. 关键断言：不刷新 page，DOM 上 host element 应已出现
+  const hostAfter = await page.evaluate(() => !!document.querySelector('#__moo_dev_tool_host__'))
+  expect(hostAfter, 'backfill 应主动 executeScript 让悬浮球真出现，不需用户刷新').toBe(true)
+
+  await page.close()
+})
+
+// ---------------------------------------------------------------------------
 // R2. 反向：globalEnabled=false → 即使 pattern 命中也不该注入
 //     （E3 验了 unregister API，这里验真 navigate 后 DOM 真没 host element）
 // ---------------------------------------------------------------------------

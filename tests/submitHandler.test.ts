@@ -196,6 +196,45 @@ describe('handleSubmitBug — webhook 路径', () => {
     expect(r.ok).toBe(true)
     if (r.ok) expect(r.remoteId).toBe('9999')
   })
+
+  // v0.7.6 P1-1 regression guard：BugHistoryEntry 扩了 5 个禅道字段
+  // （zentaoType/zentaoSeverity/zentaoPri/zentaoAssignedTo/zentaoModuleId），
+  // submit.ts buildHistoryEntry 必须把 req 上这 5 字段透传到 history entry。
+  // 老 schema 不存这 5 字段 → History 重提时 SubmitBugReq 拼不出 → 禅道侧落 project 默认值。
+  it('buildHistoryEntry 透传禅道 5 字段到 history entry', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes({ id: '1' })))
+    const { handleSubmitBug } = await importHandler()
+    const r = await handleSubmitBug(baseReq({
+      zentaoType: 'codeerror',
+      zentaoSeverity: 2,
+      zentaoPri: 1,
+      zentaoAssignedTo: 'colleague-id',
+      zentaoModuleId: 42
+    }))
+    expect(r.ok).toBe(true)
+    const list = state.storageData.mooHistory as Array<Record<string, unknown>>
+    expect(list).toHaveLength(1)
+    const entry = list[0]!
+    expect(entry.zentaoType).toBe('codeerror')
+    expect(entry.zentaoSeverity).toBe(2)
+    expect(entry.zentaoPri).toBe(1)
+    expect(entry.zentaoAssignedTo).toBe('colleague-id')
+    expect(entry.zentaoModuleId).toBe(42)
+  })
+
+  it('buildHistoryEntry 不传 zentao 字段 → entry 上 undefined（不污染 webhook 项目）', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes({ id: '1' })))
+    const { handleSubmitBug } = await importHandler()
+    const r = await handleSubmitBug(baseReq())
+    expect(r.ok).toBe(true)
+    const list = state.storageData.mooHistory as Array<Record<string, unknown>>
+    const entry = list[0]!
+    expect(entry.zentaoType).toBeUndefined()
+    expect(entry.zentaoSeverity).toBeUndefined()
+    expect(entry.zentaoPri).toBeUndefined()
+    expect(entry.zentaoAssignedTo).toBeUndefined()
+    expect(entry.zentaoModuleId).toBeUndefined()
+  })
 })
 
 describe('handleSubmitBug — zentao 委托', () => {

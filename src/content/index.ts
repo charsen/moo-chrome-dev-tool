@@ -32,8 +32,19 @@ chrome.runtime.onMessage.addListener((msg: MooMessage, sender, sendResponse) => 
   return false
 })
 
-// 避免重复注入（HMR / SPA 重复执行）
-if (!document.getElementById(HOST_ID)) {
+// v0.7.6 backfill P0：reload extension 时 chrome 销毁所有 content script 实例 +
+// Vue app，但 page DOM 里的 host div 留着（host 是 page DOM 不是 chrome 内部）。
+// backfill executeScript 再次注入本文件时 getElementById(HOST_ID) 命中 → if 跳过
+// → Vue 永远不 mount → host 是空壳用户看不到悬浮球。
+// 修：检测到孤儿 host（shadow root 空 / 不存在）就清掉重建，让 Vue 重新 mount。
+const existing = document.getElementById(HOST_ID)
+if (existing) {
+  // closed shadow root 外部读不到 host.shadowRoot（永远 null）— 但 `attachShadow` 已
+  // attached 的 host 二次调用会 throw 'Shadow root cannot be created on a host which
+  // already hosts a shadow tree'。所以最稳：reload 时直接 remove 旧 host 重建。
+  existing.remove()
+}
+{
   const host = document.createElement('div')
   host.id = HOST_ID
   host.style.cssText = 'all: initial; position: fixed; inset: 0; pointer-events: none; z-index: 2147483600;'
