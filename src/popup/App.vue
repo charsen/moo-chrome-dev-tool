@@ -6,15 +6,18 @@
         <h1>Moo Dev Tool</h1>
       </div>
       <!-- v0.7.5：版本号 chip 改成可点击按钮 — 同事反馈「想主动检查更新但没入口」。
-           点击调 runVersionCheck（不等 24h alarm）；有新版 onChanged 自动让 banner 弹起来。 -->
+           点击调 runVersionCheck（不等 24h alarm）；有新版 onChanged 自动让 banner 弹起来；
+           没新版「✓ 已是最新」高亮 2.5s 再回。runVersionCheck < 500ms 太快用户看不见 spinner，
+           最小 600ms 显示让用户感知到「真查过了」。 -->
       <button
         type="button"
-        class="moo-chip moo-chip--btn"
+        :class="['moo-chip', 'moo-chip--btn', { 'moo-chip--success': versionCheckJustDone }]"
         :disabled="versionChecking"
         :title="versionCheckedAt ? `点击检查更新（上次 ${versionCheckedAt} 查）` : '点击检查更新'"
         @click="manualVersionCheck"
       >
         <template v-if="versionChecking">⟳ 检查中…</template>
+        <template v-else-if="versionCheckJustDone">✓ 已是最新</template>
         <template v-else>v{{ version }}</template>
       </button>
     </header>
@@ -329,17 +332,32 @@ function reloadExtension() {
   // popup 不需要 window.close —— reload 会重启整个扩展运行时，popup 自然销毁
 }
 
-// v0.7.5：版本号 chip 点击触发手动检查更新（不等 24h alarm）。有新版 onChanged 会
-// 让 updateInfo 自动更新 + banner 自动弹；没新版 chip 短暂显示「已最新」反馈
+// v0.7.5：版本号 chip 点击触发手动检查更新（不等 24h alarm）。
 const versionChecking = ref(false)
 const versionCheckedAt = ref('')
+const versionCheckJustDone = ref(false)  // 「✓ 已是最新」临时高亮（仅当真没新版时）
+let versionCheckDoneTimer: number | undefined
 async function manualVersionCheck() {
   if (versionChecking.value) return
   versionChecking.value = true
+  versionCheckJustDone.value = false
+  if (versionCheckDoneTimer) clearTimeout(versionCheckDoneTimer)
+  const start = Date.now()
   try {
     await runVersionCheck()
+    // 最小 600ms spinner 显示防一闪而过（fetch Gitee API 通常 < 500ms）
+    const elapsed = Date.now() - start
+    if (elapsed < 600) await new Promise(r => setTimeout(r, 600 - elapsed))
     const now = new Date()
     versionCheckedAt.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    // 仅当真没新版才高亮「已是最新」 —— 有新版会触发 onChanged → banner 弹起来抢戏
+    if (!updateInfo.value) {
+      versionCheckJustDone.value = true
+      versionCheckDoneTimer = window.setTimeout(() => {
+        versionCheckJustDone.value = false
+        versionCheckDoneTimer = undefined
+      }, 2500)
+    }
   } finally {
     versionChecking.value = false
   }
@@ -615,6 +633,10 @@ onBeforeUnmount(() => {
   if (storageWatcher) {
     chrome.storage.onChanged.removeListener(storageWatcher)
     storageWatcher = null
+  }
+  if (versionCheckDoneTimer) {
+    clearTimeout(versionCheckDoneTimer)
+    versionCheckDoneTimer = undefined
   }
 })
 
@@ -1068,6 +1090,11 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
 }
 .moo-chip--btn:disabled { opacity: .7; cursor: progress; }
+.moo-chip--btn.moo-chip--success {
+  background: var(--moo-c-success-soft);
+  color: var(--moo-c-success-fg);
+  transition: background-color var(--moo-motion-fast), color var(--moo-motion-fast);
+}
 
 .foot { margin-top: 12px; text-align: center; }
 

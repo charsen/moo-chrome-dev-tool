@@ -24,9 +24,10 @@
                 ③ 重新加载
               </button>
             </template>
-            <button v-else type="button" class="update-check" :disabled="checking" @click="checkNow">
-              <template v-if="checking">检查中…</template>
-              <template v-else-if="lastChecked">已是最新（{{ lastChecked }} 查）⟳</template>
+            <button v-else type="button" :class="['update-check', { 'is-done': checkJustDone }]" :disabled="checking" @click="checkNow">
+              <template v-if="checking">⟳ 检查中…</template>
+              <template v-else-if="checkJustDone">✓ 已是最新（{{ lastChecked }}）</template>
+              <template v-else-if="lastChecked">⟳ 检查更新（上次 {{ lastChecked }}）</template>
               <template v-else>⟳ 检查更新</template>
             </button>
           </div>
@@ -125,16 +126,30 @@ function reloadExtension() {
   chrome.runtime.reload()
 }
 
+const checkJustDone = ref(false)  // v0.7.5：「✓ 已是最新」临时高亮防一闪而过
+let checkDoneTimer: number | undefined
 async function checkNow() {
   if (checking.value) return
   checking.value = true
+  checkJustDone.value = false
+  if (checkDoneTimer) clearTimeout(checkDoneTimer)
+  const start = Date.now()
   try {
-    await runVersionCheck()  // SW context 同款 helper；options 上下文 chrome.* API 都能跑
-    // runVersionCheck 内部已经 set/remove flag；storage.onChanged 会触发 loadUpdateFlag
-    // 但 onChanged 不保证 fire（chrome 同上下文写自己的可能 sync 不发） — 直接重读兜底
+    await runVersionCheck()
     loadUpdateFlag()
+    // 最小 600ms spinner 显示（runVersionCheck 通常 < 500ms 一闪而过用户看不见）
+    const elapsed = Date.now() - start
+    if (elapsed < 600) await new Promise(r => setTimeout(r, 600 - elapsed))
     const now = new Date()
     lastChecked.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    // 仅当没新版才高亮反馈 —— 有新版 update-link 会取代 check 按钮显示
+    if (!updateInfo.value) {
+      checkJustDone.value = true
+      checkDoneTimer = window.setTimeout(() => {
+        checkJustDone.value = false
+        checkDoneTimer = undefined
+      }, 2500)
+    }
   } finally {
     checking.value = false
   }
@@ -152,6 +167,10 @@ onBeforeUnmount(() => {
   if (storageWatcher) {
     chrome.storage.onChanged.removeListener(storageWatcher)
     storageWatcher = null
+  }
+  if (checkDoneTimer) {
+    clearTimeout(checkDoneTimer)
+    checkDoneTimer = undefined
   }
 })
 
@@ -250,6 +269,11 @@ function onTabKeydown(e: KeyboardEvent) {
 }
 .update-check:hover:not(:disabled) { color: var(--moo-c-text); }
 .update-check:disabled { opacity: .6; cursor: not-allowed; }
+.update-check.is-done {
+  color: var(--moo-c-success-fg);
+  text-decoration: none;
+  font-weight: 500;
+}
 .tabs { display: flex; gap: 4px; margin-left: auto; }
 .tab {
   display: inline-flex;
