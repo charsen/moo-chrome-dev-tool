@@ -313,7 +313,14 @@ async function resubmit(e: BugHistoryEntry) {
       viewport: e.viewport,
       timestamp: new Date().toISOString(),
       requests: e.requests,
-      errors: e.errors
+      errors: e.errors,
+      // v0.7.6 P1-1：重提保持当时禅道字段选择（dogfood「我选了严重 2 重提变默认」修）
+      // 老 v0.7.5- entry 这 5 字段 undefined，重提走禅道默认值（兼容旧 entry）
+      zentaoType: e.zentaoType,
+      zentaoSeverity: e.zentaoSeverity,
+      zentaoPri: e.zentaoPri,
+      zentaoAssignedTo: e.zentaoAssignedTo,
+      zentaoModuleId: e.zentaoModuleId
     }
     try {
       const res = (await safeSendMessage({

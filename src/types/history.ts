@@ -34,4 +34,13 @@ export interface BugHistoryEntry {
   remoteStatusUpdatedAt?: string
   /** 服务端基地址，用于状态回查（取 server.endpoint 去掉 /intake 后缀） */
   remoteBase?: string
+  /** v0.7.6 P1-1：禅道项目专属 — 提交时用户选的 type/severity/pri/assignedTo/moduleId 快照。
+   *  原 schema 没存这 5 字段，导致 History 重提时 SubmitBugReq 拼不出来 → 禅道侧落 project
+   *  默认值（dogfood 撞「我选了严重 2 + 指派同事 X，重提后变回默认」）。entry 自包含这些
+   *  字段，重提走同款 submit-bug 链路保持一致。webhook 项目 entry 这些字段 undefined OK。 */
+  zentaoType?: string
+  zentaoSeverity?: 1 | 2 | 3 | 4
+  zentaoPri?: 1 | 2 | 3 | 4
+  zentaoAssignedTo?: string
+  zentaoModuleId?: number
 }

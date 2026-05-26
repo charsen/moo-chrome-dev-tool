@@ -127,7 +127,13 @@ function buildHistoryEntry(req: SubmitBugReq, project: Project, outcome: { ok: b
     remoteId: outcome.remoteId,
     remoteBase: isZentao
       ? project.zentao?.baseUrl
-      : (server?.endpoint ? deriveRemoteBase(server.endpoint) : undefined)
+      : (server?.endpoint ? deriveRemoteBase(server.endpoint) : undefined),
+    // v0.7.6 P1-1：禅道 5 字段快照让 History 重提保持一致（dogfood「重提变回默认」修）
+    zentaoType: req.zentaoType,
+    zentaoSeverity: req.zentaoSeverity,
+    zentaoPri: req.zentaoPri,
+    zentaoAssignedTo: req.zentaoAssignedTo,
+    zentaoModuleId: req.zentaoModuleId
   }
 }
 

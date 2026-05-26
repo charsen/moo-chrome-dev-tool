@@ -104,7 +104,8 @@ import MooAlert from './components/MooAlert.vue'
 const props = defineProps<{ image: string }>()
 const emit = defineEmits<{
   (e: 'finish', dataUrl: string): void
-  (e: 'cancel'): void
+  // v0.7.6 mv3-pro P2：cancel reason — 'error' = dataUrl 加载失败（不是用户主动取消）
+  (e: 'cancel', reason?: 'error'): void
 }>()
 
 const bgEl = ref<HTMLCanvasElement>()
@@ -238,7 +239,7 @@ onMounted(async () => {
   // → emit cancel 让外层退出，避免无限等待
   img.onerror = () => {
     console.error('[Moo:annotator] 截图加载失败（dataUrl 可能损坏或被宿主页 CSP 阻塞）')
-    emit('cancel')
+    emit('cancel', 'error')  // v0.7.6：明示是 error 不是用户主动 cancel，ContentApp 显示 toast 告知
   }
   img.src = props.image
   window.addEventListener('keydown', onKey)

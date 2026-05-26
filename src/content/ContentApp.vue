@@ -21,7 +21,7 @@
       v-if="state === 'annotating' && rawImage"
       :image="rawImage"
       @finish="onAnnotated"
-      @cancel="reset"
+      @cancel="onAnnotatorCancel"
     />
     <SubmitDialog
       v-if="state === 'submitting' && project"
@@ -380,12 +380,27 @@ async function startCapture() {
   }
 
   if (!res.ok || !res.dataUrl) {
-    showToast(`没截到图：${res.error ?? '未知原因'}。可能 chrome.tabs 权限没开，或当前是 chrome:// / 应用商店等保护页`, 'error')
+    // v0.7.6 mv3-pro 业务深扫 P2：区分 quota error（重新截图连点 / 录屏太频繁）vs 权限 / 保护页
+    const errMsg = res.error ?? '未知原因'
+    const isQuota = /MAX_CAPTURE|quota|exceed/i.test(errMsg)
+    const hint = isQuota
+      ? '截图太频繁了（chrome 限 ≤ 2 次/秒），等 1 秒再试'
+      : '可能 chrome.tabs 权限没开，或当前是 chrome:// / 应用商店 / 跨域 iframe 等保护页'
+    showToast(`没截到图：${errMsg}。${hint}`, 'error')
     state.value = 'idle'
     return
   }
   rawImage.value = res.dataUrl
   state.value = 'annotating'
+}
+
+// v0.7.6 mv3-pro 业务深扫 P2：Annotator emit cancel(reason?) — 'error' 是截图 dataUrl
+// 加载失败（不是用户主动取消），告知用户重试不要静默退到 idle 让用户摸不着头脑
+function onAnnotatorCancel(reason?: 'error') {
+  reset()
+  if (reason === 'error') {
+    showToast('截图加载失败，请重试。可能是 dataUrl 损坏 / 跨域 / 宿主页 CSP 阻塞', 'error')
+  }
 }
 
 function onAnnotated(dataUrl: string) {

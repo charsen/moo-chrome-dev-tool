@@ -43,6 +43,9 @@ export interface AdapterSubmitCtx {
 export interface AdapterFetchStatusCtx {
   /** BugHistoryEntry.remoteBase —— 提交那一刻服务端地址的快照 */
   remoteBase?: string
+  /** v0.7.6 P1-4：BugHistoryEntry.serverId —— 多 server 项目下 fallback 推 base 时
+   *  按 entry 当时用的 server 反查（而非 first endpoint，避免错查到其它 server） */
+  serverId?: string
 }
 
 /**

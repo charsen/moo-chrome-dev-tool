@@ -25,10 +25,16 @@ export async function handleRefreshHistoryStatus(): Promise<{ ok: true; updated:
     if (!entry.remoteId) continue
     const project = config.projects.find((p) => p.id === entry.projectId)
     if (!project) continue
+    // v0.7.6 P1-2：entry.serverId 跟 project.kind 不一致时跳过 — 用户 kind 切换后
+    // 老 webhook entry 在 zentao 项目下 fetchStatus 会拿 NaN bugId silent fail 404
+    if (entry.serverId === 'zentao' ? project.kind !== 'zentao' : project.kind === 'zentao') continue
     const adapter = getAdapter(project.kind)
     if (!adapter?.fetchStatus) continue
     try {
-      const newStatus = await adapter.fetchStatus(project, entry.remoteId, { remoteBase: entry.remoteBase })
+      const newStatus = await adapter.fetchStatus(project, entry.remoteId, {
+        remoteBase: entry.remoteBase,
+        serverId: entry.serverId  // v0.7.6 P1-4：让 webhookAdapter 反查正确 server
+      })
       if (newStatus && newStatus !== entry.remoteStatus) {
         entry.remoteStatus = newStatus
         entry.remoteStatusUpdatedAt = new Date().toISOString()

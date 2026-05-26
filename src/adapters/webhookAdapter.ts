@@ -126,10 +126,12 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
     // 老 webhook 路径：POST {remoteBase}/{id}/status-public 走 body.token 鉴权
     const token = project.token?.trim() ?? ''
     // 优先用 entry 当时记录的 remoteBase（用户改 server.endpoint 后状态查仍指向原 base）；
-    // 缺省 fallback 项目当前 server.endpoint
+    // 缺省 fallback：v0.7.6 P1-4 按 entry.serverId 反查（多 server 项目下 first endpoint 可能错），
+    // 再 fallback first endpoint（v0.5.x 老 entry 没存 serverId）
     let remoteBase = ctx?.remoteBase
     if (!remoteBase) {
-      const server = project.servers.find(s => s.endpoint)
+      const server = (ctx?.serverId && project.servers.find(s => s.id === ctx.serverId))
+        || project.servers.find(s => s.endpoint)
       if (!server?.endpoint) return undefined
       remoteBase = deriveRemoteBase(server.endpoint)
     }
