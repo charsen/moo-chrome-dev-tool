@@ -34,18 +34,24 @@
       <button type="button" class="upgrade-dismiss" @click="dismissDropped">稍后再说</button>
     </div>
 
-    <!-- v0.6.2：CWS 上架前的版本检查提示。v-else-if 排他于上面两个 banner -->
+    <!-- v0.6.2：CWS 上架前的版本检查提示。v-else-if 排他于上面两个 banner
+         v0.7.5：UX 飞跃（同事反馈「chrome://extensions 体验差」）— 改成 ① 下载 zip
+         ② 解压覆盖原目录 ③ 点「立即重新加载」chrome.runtime.reload()。
+         **完全免去 chrome://extensions 操作** — chrome.runtime.reload() 等价于
+         chrome://extensions 点 ↻，重读 manifest + 所有 dist 文件。 -->
     <div v-else-if="updateInfo" class="update-banner" role="status" aria-live="polite">
-      <div class="update-title">有新版本 v{{ updateInfo.latest }}（当前 v{{ updateInfo.current }}）</div>
-      <div class="update-msg">点链接下载新版 zip 后去 <code>chrome://extensions</code> 重新加载。</div>
-      <a
-        class="moo-btn moo-btn--sm"
-        :href="updateInfo.url"
-        target="_blank"
-        rel="noopener noreferrer"
-        :aria-label="`打开下载页 v${updateInfo.latest}（新窗口）`"
-      >打开下载页</a>
-      <button type="button" class="upgrade-dismiss" @click="dismissUpdate">稍后再说</button>
+      <div class="update-title">⬆ 有新版 v{{ updateInfo.latest }}（当前 v{{ updateInfo.current }}）</div>
+      <div class="update-msg">3 步：① 下载 zip → ② 解压覆盖原扩展目录 → ③ 点「重新加载」</div>
+      <div class="update-actions">
+        <a
+          class="moo-btn moo-btn--sm moo-btn--primary"
+          :href="updateInfo.url"
+          target="_blank"
+          rel="noopener noreferrer"
+        >① 下载 zip</a>
+        <button type="button" class="moo-btn moo-btn--sm" @click="reloadExtension">③ 重新加载</button>
+        <button type="button" class="upgrade-dismiss" @click="dismissUpdate">稍后</button>
+      </div>
     </div>
 
     <main>
@@ -301,6 +307,15 @@ async function dismissUpdate() {
   try {
     await chrome.storage.local.remove(VERSION_CHECK_FLAG_KEY)
   } catch {}
+}
+
+// v0.7.5：chrome.runtime.reload() 等价 chrome://extensions 点 ↻ — 重读 manifest +
+// 所有 dist 文件。同事反馈「chrome://extensions 操作不方便」 — 这一步完全省掉。
+// 前提：用户已解压新版 zip 覆盖原扩展目录（dist 文件已是新版）。如果没覆盖
+// reload 后还是旧版本（chrome 不知道有新文件，用户责任）。
+function reloadExtension() {
+  chrome.runtime.reload()
+  // popup 不需要 window.close —— reload 会重启整个扩展运行时，popup 自然销毁
 }
 
 async function dismissUpgrade() {
@@ -937,6 +952,17 @@ onBeforeUnmount(() => {
 .update-msg { margin-bottom: 6px; color: var(--moo-c-text-muted); line-height: 1.5; }
 .update-msg code { padding: 0 4px; background: var(--moo-c-bg); border-radius: 3px; }
 .update-banner .moo-btn { margin-right: 8px; }
+.update-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.update-actions .moo-btn { margin: 0; }
+.update-msg .kbd {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--moo-c-border);
+  border-radius: var(--moo-r-sm);
+  font-family: var(--moo-ff-mono);
+  font-size: 10px;
+  background: var(--moo-c-bg);
+}
 
 /* v0.7.0 dropped-banner — matchPatterns 不兼容引导，复用 upgrade-banner warn 配色但稍弱 */
 .dropped-banner {
