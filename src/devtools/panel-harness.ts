@@ -293,14 +293,13 @@ async function bootstrap() {
 
   // mount 完用 click 切到目标 tab —— 比改 Panel.vue 接受 prop 风险小，
   // 而且测试也是模拟用户点击的姿势
+  // v0.7.5：tab 顺序改成「概览/历史/环境/设置」（按使用频率，同事反馈），idx 不再
+  // hardcode，改用 button id 查找。`id="moo-tab-${key}"` 是 Panel.vue 模板写死的稳定锚。
   const want = initTabKey()
   if (want !== 'overview') {
-    // 等下一帧让 nav 渲染完
     requestAnimationFrame(() => {
-      const btns = document.querySelectorAll<HTMLButtonElement>('.panel .tabs .tab')
-      // tab 顺序：overview / env / history / settings（见 Panel.vue tabs 数组）
-      const idx = { overview: 0, env: 1, history: 2, settings: 3 }[want] ?? 0
-      btns[idx]?.click()
+      const btn = document.getElementById(`moo-tab-${want}`) as HTMLButtonElement | null
+      btn?.click()
     })
   }
 }
