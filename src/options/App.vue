@@ -9,9 +9,9 @@
             <template v-if="inspectedHost">📍 {{ inspectedHost }}</template>
             <template v-else>工作区（独立浮窗）</template>
           </div>
-          <!-- v0.7.5：工作区显示更新提示 + 手动检查 + 一键重新加载（同事需求）。
+          <!-- v0.7.5：工作区更新提示 + 手动检查 + 一键 reload。
                有新版：① 下载 link + ③ reload 按钮（chrome.runtime.reload() 等价
-               chrome://extensions 点 ↻，完全免去手动跳扩展页一步）
+               chrome://extensions ↻，免去手动跳扩展页）
                无新版：「⟳ 检查更新」立即触发不等 24h -->
           <div class="update-line">
             <template v-if="updateInfo">
@@ -46,7 +46,7 @@
           :ref="el => { if (el) tabRefs[i] = el as HTMLElement }"
           @click="active = t.key"
         >
-          <!-- v0.7.5 同事反馈：4 个 tab 图标要保留才显得精致。从 Panel.vue v0.4.9 同款抄来。 -->
+          <!-- v0.7.5：4 tab SVG 图标 — 跟 Panel.vue v0.4.9 同款视觉一致 -->
           <span class="tab-icon" aria-hidden="true">
             <svg v-if="t.key === 'overview'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="3"  width="7" height="7" rx="1.5"/>
@@ -91,6 +91,7 @@ import Environment from '@/devtools/tabs/Environment.vue'
 import History from '@/devtools/tabs/History.vue'
 import Settings from '@/devtools/tabs/Settings.vue'
 import { VERSION_CHECK_FLAG_KEY, type LatestVersionInfo, runVersionCheck } from '@/utils/versionCheck'
+import { MSG } from '@/types/messages'
 
 const logoUrl = chrome.runtime.getURL('icons/icon-48.png')
 const version = chrome.runtime.getManifest().version
@@ -98,9 +99,9 @@ const version = chrome.runtime.getManifest().version
 // host 由 options/main.ts pre-mount shim 通过 chrome.windows.getLastFocused 拿好。
 const inspectedHost = (window as { __mooInspectedHost?: string }).__mooInspectedHost ?? ''
 
-// v0.7.5：版本检查 — 同事需求「工作台也能看更新提示」。SW alarm 每 24h 跑一次写
-// chrome.storage.local VERSION_CHECK_FLAG_KEY。这里读 flag + 监听 onChanged + 手动
-// 触发不等 24h。
+// v0.7.5：工作台版本检查 — SW alarm 每 24h 跑 runVersionCheck 写
+// chrome.storage.local VERSION_CHECK_FLAG_KEY。这里读 flag + 监听 onChanged +
+// 手动触发不等 24h。跟 popup 同款行为。
 const updateInfo = ref<LatestVersionInfo | null>(null)
 const checking = ref(false)
 const lastChecked = ref('')  // 「已是最新（HH:mm 查）」显示
@@ -122,7 +123,15 @@ function loadUpdateFlag() {
 
 // v0.7.5：chrome.runtime.reload() 等价 chrome://extensions ↻ — 重读 manifest +
 // 所有 dist 文件。前提：用户已解压新版 zip 覆盖原扩展目录。
-function reloadExtension() {
+// P0 防丢：录屏中 reload 会让 offscreen MediaRecorder 销毁 + chunks 全丢。
+async function reloadExtension() {
+  try {
+    const res = await chrome.runtime.sendMessage({ type: MSG.QUERY_RECORDING_STATE }) as
+      | { recording?: boolean } | undefined
+    if (res?.recording) {
+      if (!confirm('Moo 正在录屏 — 重新加载会让已录内容丢失。继续吗？')) return
+    }
+  } catch { /* SW 不可达，直接 reload */ }
   chrome.runtime.reload()
 }
 
@@ -174,7 +183,7 @@ onBeforeUnmount(() => {
   }
 })
 
-// v0.7.5 同事反馈：tab 顺序按使用频率排 — 概览（每次看）/ 历史（次频）/ 环境（一次配）/ 设置（极少改）
+// v0.7.5：tab 顺序按使用频率 — 概览（每次看）/ 历史（次频）/ 环境（一次配）/ 设置（极少改）
 const tabs = [
   { key: 'overview', label: '概览' },
   { key: 'history',  label: '历史' },
@@ -232,7 +241,15 @@ function onTabKeydown(e: KeyboardEvent) {
 .brand-meta { font-size: 11px; color: var(--moo-c-text-muted); }
 
 /* v0.7.5：工作台更新提示 + 手动检查 */
-.update-line { margin-top: 2px; font-size: 11px; line-height: 1.2; }
+.update-line {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.2;
+  min-height: 22px;   /* 锁高度防「检查更新 single button」↔「下载 + reload 双按钮」切换抖动 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .update-link {
   color: var(--moo-c-warn-fg);
   font-weight: 500;
@@ -242,7 +259,7 @@ function onTabKeydown(e: KeyboardEvent) {
   border-radius: var(--moo-r-sm);
   border: 1px solid var(--moo-c-warn-soft);
 }
-.update-link:hover { background: var(--moo-c-warn); color: #fff; }
+.update-link:hover { background: var(--moo-c-warn-fg); color: #fff; }
 .update-reload {
   margin-left: 6px;
   background: var(--moo-c-brand);

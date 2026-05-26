@@ -293,8 +293,8 @@ async function bootstrap() {
 
   // mount 完用 click 切到目标 tab —— 比改 Panel.vue 接受 prop 风险小，
   // 而且测试也是模拟用户点击的姿势
-  // v0.7.5：tab 顺序改成「概览/历史/环境/设置」（按使用频率，同事反馈），idx 不再
-  // hardcode，改用 button id 查找。`id="moo-tab-${key}"` 是 Panel.vue 模板写死的稳定锚。
+  // v0.7.5：tab 顺序改「概览/历史/环境/设置」按使用频率排，idx 不再 hardcode 改用
+  // button id 查找。`id="moo-tab-${key}"` 是 Panel.vue 模板写死的稳定锚。
   const want = initTabKey()
   if (want !== 'overview') {
     requestAnimationFrame(() => {

@@ -78,7 +78,7 @@ const hostname = ref('')
 const logoUrl = chrome.runtime.getURL('icons/icon-48.png')
 
 // 图标按 key 在 template 里 v-if 选 SVG（统一线条粗细/圆角，比之前 ◰⚙⌛☰ 杂烩 Unicode 视觉一致得多）
-// v0.7.5 同事反馈：tab 顺序按使用频率排 — 概览（每次看）/ 历史（次频）/ 环境（一次配）/ 设置（极少改）
+// v0.7.5：tab 顺序按使用频率 — 概览（每次看）/ 历史（次频）/ 环境（一次配）/ 设置（极少改）
 const tabs = [
   { key: 'overview', label: '概览' },
   { key: 'history',  label: '历史' },

@@ -66,26 +66,37 @@ export async function fetchLatestVersion(): Promise<{ tag: string; url: string }
 
 /**
  * SW 周期性调（由 alarms 触发）：拉 latest → 比对 → 写 / 清 flag。
- * popup 启动时读 flag 决定显示 update-banner。
+ * popup / 工作台启动时读 flag 决定显示 update-banner。
+ *
+ * v0.7.5：inflight guard — 防 popup + 工作台 + SW alarm 三方同时跑造成
+ * fetch 与 storage.set/remove 交叉 race（A 写 set，B 后回来 isNewer=false
+ * 把 set 抹掉 → banner 闪一下消失）。重入合并到同一 promise。
  */
-export async function runVersionCheck(): Promise<void> {
-  try {
-    const current = chrome.runtime?.getManifest?.()?.version ?? '0.0.0'
-    const latest = await fetchLatestVersion()
-    if (!latest) return
-    if (isNewer(latest.tag, current)) {
-      const info: LatestVersionInfo = {
-        latest: latest.tag.replace(/^v/, ''),
-        current,
-        url: latest.url,
-        checkedAt: Date.now()
+let inflightCheck: Promise<void> | null = null
+export function runVersionCheck(): Promise<void> {
+  if (inflightCheck) return inflightCheck
+  inflightCheck = (async () => {
+    try {
+      const current = chrome.runtime?.getManifest?.()?.version ?? '0.0.0'
+      const latest = await fetchLatestVersion()
+      if (!latest) return
+      if (isNewer(latest.tag, current)) {
+        const info: LatestVersionInfo = {
+          latest: latest.tag.replace(/^v/, ''),
+          current,
+          url: latest.url,
+          checkedAt: Date.now()
+        }
+        await chrome.storage.local.set({ [VERSION_CHECK_FLAG_KEY]: info })
+      } else {
+        // 当前已是最新 → 清 flag（防老版本升上来 flag 残留）
+        await chrome.storage.local.remove(VERSION_CHECK_FLAG_KEY)
       }
-      await chrome.storage.local.set({ [VERSION_CHECK_FLAG_KEY]: info })
-    } else {
-      // 当前已是最新 → 清 flag（防用户从老版本升上来 flag 残留）
-      await chrome.storage.local.remove(VERSION_CHECK_FLAG_KEY)
+    } catch (e) {
+      console.warn('[Moo] versionCheck failed:', (e as Error).message)
+    } finally {
+      inflightCheck = null
     }
-  } catch (e) {
-    console.warn('[Moo] versionCheck failed:', (e as Error).message)
-  }
+  })()
+  return inflightCheck
 }

@@ -5,10 +5,9 @@
         <img class="logo" :src="logoUrl" alt="Moo" />
         <h1>Moo Dev Tool</h1>
       </div>
-      <!-- v0.7.5：版本号 chip 改成可点击按钮 — 同事反馈「想主动检查更新但没入口」。
-           点击调 runVersionCheck（不等 24h alarm）；有新版 onChanged 自动让 banner 弹起来；
+      <!-- v0.7.5：版本号 chip → 手动检查更新（不等 24h alarm）；有新版 onChanged 自动让 banner 弹起来；
            没新版「✓ 已是最新」高亮 2.5s 再回。runVersionCheck < 500ms 太快用户看不见 spinner，
-           最小 600ms 显示让用户感知到「真查过了」。 -->
+           最小 600ms 显示让用户感知「真查过了」。 -->
       <button
         type="button"
         :class="['moo-chip', 'moo-chip--btn', { 'moo-chip--success': versionCheckJustDone }]"
@@ -36,8 +35,8 @@
       <button type="button" class="upgrade-dismiss" @click="dismissUpgrade">稍后再说</button>
     </div>
 
-    <!-- v0.7.0：matchPatterns 被 translator drop 的 banner（同事老 patterns 升级后失效引导）
-         v-else-if 排他于 upgrade-banner（host permission 没开就别堆 pattern 问题更紧急） -->
+    <!-- v0.7.0：matchPatterns 被 translator drop 的 banner（v0.6→v0.7 老 patterns 升级失效引导）
+         v-else-if 排他于 upgrade-banner（host permission 没开优先 pattern 问题不抢戏） -->
     <div v-else-if="droppedPatternsInfo" class="dropped-banner" role="alert" aria-live="polite">
       <div class="dropped-title">⚠ {{ droppedPatternsInfo.count }} 个 URL 匹配规则与 v0.7.0 不兼容</div>
       <div class="dropped-msg">
@@ -48,11 +47,10 @@
       <button type="button" class="upgrade-dismiss" @click="dismissDropped">稍后再说</button>
     </div>
 
-    <!-- v0.6.2：CWS 上架前的版本检查提示。v-else-if 排他于上面两个 banner
-         v0.7.5：UX 飞跃（同事反馈「chrome://extensions 体验差」）— 改成 ① 下载 zip
-         ② 解压覆盖原目录 ③ 点「立即重新加载」chrome.runtime.reload()。
-         **完全免去 chrome://extensions 操作** — chrome.runtime.reload() 等价于
-         chrome://extensions 点 ↻，重读 manifest + 所有 dist 文件。 -->
+    <!-- v0.6.2：CWS 上架前替代「自动更新」机制。v-else-if 排他于上面两个 banner
+         v0.7.5：3 步升级 UX — ① 下载 zip ② 解压覆盖原目录 ③ chrome.runtime.reload()。
+         reload() 等价 chrome://extensions 点 ↻（重读 manifest + 所有 dist 文件），
+         免去用户手动跳扩展页一步。 -->
     <div v-else-if="updateInfo" class="update-banner" role="status" aria-live="polite">
       <div class="update-title">⬆ 有新版 v{{ updateInfo.latest }}（当前 v{{ updateInfo.current }}）</div>
       <div class="update-msg">3 步：① 下载 zip → ② 解压覆盖原扩展目录 → ③ 点「重新加载」</div>
@@ -186,10 +184,9 @@
     </main>
 
     <footer class="foot">
-      <!-- v0.7.4：悬浮球当前页显示/隐藏（session 级，chrome 重启自动恢复）。
-           同事反馈「不用进 F12 那么深就能藏悬浮球」需求。
-           v0.7.4 vue-craft 审：chrome:// / file:// 无 host 时改 disabled 占位（保
-           视觉锚一致），不要整行隐藏让用户怀疑「功能丢了」。host 长截断防撑爆 320px。 -->
+      <!-- v0.7.4：悬浮球当前页 toggle（session 级，chrome 重启自动恢复）。
+           chrome:// / file:// 无 host 时 disabled 占位（不 v-if 整行隐藏防用户错觉「功能丢了」）。
+           host 长截断防撑爆 320px。 -->
       <div class="rec-toggle" :title="currentHost ? `在 ${currentHost} 临时隐藏（chrome 重启自动恢复）` : '当前页面不支持（chrome:// / 新标签页等）'">
         <span class="rec-label">悬浮球{{ currentHost ? `（${displayHost}）` : '（当前页面不支持）' }}</span>
         <button
@@ -237,10 +234,10 @@
       </div>
       <div v-if="hostError" class="rec-err" role="alert" aria-live="assertive">{{ hostError }}</div>
 
-      <!-- v0.7.4 → v0.7.5：同事需求升级「工作区」。chrome.windows.create 弹
-           独立浮窗 760×720 type:'popup'，包含 4 Tab（概览/环境/历史/设置）。
-           Overview 通过 main.ts pre-mount shim 拿主 chrome 窗口的 active tab id
-           让 chrome.devtools.inspectedWindow.tabId 无感 work。 -->
+      <!-- v0.7.4 → v0.7.5：「工作区」入口。chrome.windows.create 弹独立浮窗 760×720
+           type:'popup'，4 Tab（概览/历史/环境/设置）。Overview 通过 main.ts pre-mount
+           shim 拿主 chrome 窗口 active tab id 让 chrome.devtools.inspectedWindow.tabId
+           无感 work。 -->
       <button type="button" class="opt-cta" @click="openOptionsWindow">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect x="3" y="3"  width="7" height="7" rx="1.5"/>
@@ -268,6 +265,7 @@ import { relativeTime } from '@/utils/relativeTime'
 import { t } from '@/i18n'
 import { UPGRADE_FLAG_KEY } from '@/utils/upgradeFlag'
 import { VERSION_CHECK_FLAG_KEY, type LatestVersionInfo, runVersionCheck } from '@/utils/versionCheck'
+import { MSG } from '@/types/messages'
 
 const version = ref(chrome.runtime.getManifest().version)
 // 显示尺寸 28px，用 32 比 48 更省字节 + 缩放损失更小（lighthouse image-size-responsive）
@@ -288,8 +286,7 @@ const loading = ref(true)
 const recEnabled = ref(false)
 const recBusy = ref(false)
 const recError = ref('')
-// v0.7.4：悬浮球当前 host 临时隐藏 — session 级，chrome 重启自动清。
-// 同事反馈「不用进 F12 那么深操作」需求。
+// v0.7.4：悬浮球当前 host 临时隐藏 — session 级 storage，chrome 重启自动清
 const HIDDEN_HOSTS_KEY = 'mooHiddenFloatingBallHosts'
 const currentHost = ref('')
 const ballHiddenOnHost = ref(false)
@@ -323,13 +320,21 @@ async function dismissUpdate() {
   } catch {}
 }
 
-// v0.7.5：chrome.runtime.reload() 等价 chrome://extensions 点 ↻ — 重读 manifest +
-// 所有 dist 文件。同事反馈「chrome://extensions 操作不方便」 — 这一步完全省掉。
-// 前提：用户已解压新版 zip 覆盖原扩展目录（dist 文件已是新版）。如果没覆盖
-// reload 后还是旧版本（chrome 不知道有新文件，用户责任）。
-function reloadExtension() {
+// v0.7.5：chrome.runtime.reload() 等价 chrome://extensions 点 ↻（重读 manifest +
+// 所有 dist 文件），免去用户手动跳扩展页。
+// 前提：用户已解压新版 zip 覆盖原扩展目录。没覆盖 reload 后还是旧版（chrome 不知
+// 道有新文件，用户责任）。
+// P0 防丢：录屏中 reload 会让 offscreen MediaRecorder 销毁 + chunks 全丢。先查
+// SW 录屏状态，正在录就 confirm 让用户决定。SW 不可达时 fallback 直接 reload。
+async function reloadExtension() {
+  try {
+    const res = await chrome.runtime.sendMessage({ type: MSG.QUERY_RECORDING_STATE }) as
+      | { recording?: boolean } | undefined
+    if (res?.recording) {
+      if (!confirm('Moo 正在录屏 — 重新加载会让已录内容丢失。继续吗？')) return
+    }
+  } catch { /* SW 不可达，直接 reload 让用户能恢复 */ }
   chrome.runtime.reload()
-  // popup 不需要 window.close —— reload 会重启整个扩展运行时，popup 自然销毁
 }
 
 // v0.7.5：版本号 chip 点击触发手动检查更新（不等 24h alarm）。
@@ -492,11 +497,11 @@ async function toggleHostPermission() {
   }
 }
 
-// v0.7.4：打开「完整配置」浮窗 — chrome.windows.create type:'popup' 独立小窗，
-// popup 关闭后浮窗仍在，用户可拖位置 / 调大小。复用 DevTools Environment /
-// Settings / History 三 Tab。同事反馈「不用进 F12」需求。
-// v0.7.4 mv3-pro 审：必须 await create 完成再 window.close，防 popup 销毁瞬间
-// create 请求在 message port 上被丢（chrome 130+ 偶发观察）。
+// v0.7.4：「工作区」入口 — chrome.windows.create type:'popup' 独立小窗，popup
+// 关闭后浮窗仍在（用户可拖位置 / 调大小）。复用 DevTools Environment / Settings /
+// History 三 Tab。
+// mv3-pro 审：必须 await create 完再 window.close — 防 popup 销毁瞬间 create 请求
+// 在 message port 上被丢（chrome 130+ 偶发观察）。
 async function openOptionsWindow() {
   try {
     await chrome.windows.create({
@@ -649,9 +654,9 @@ onBeforeUnmount(() => {
   background: var(--moo-c-bg);
   font-family: var(--moo-ff-sans);
   color: var(--moo-c-text);
-  /* v0.7.5：popup 4 角圆化让视觉精致（同事反馈）。chrome 113+ macOS popup
-     window 自带系统级圆角，跟这里 10px 对齐完美；Windows/Linux chrome popup
-     仍方角，内部 dark 块圆角也比纯方更精致一档。 */
+  /* v0.7.5：popup 4 角圆化。chrome 113+ macOS popup window 自带系统级圆角，跟
+     10px 对齐完美；Windows/Linux chrome popup 方角时内部 dark 块圆角也比纯方精
+     致一档（chrome shell 边框扩展 HTML 改不了）。 */
   border-radius: 10px;
   overflow: hidden;
 }
@@ -1086,8 +1091,11 @@ onBeforeUnmount(() => {
   color: var(--moo-c-brand);
 }
 .moo-chip--btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
+  /* chip 高 18px + head margin-bottom:12px 上方紧贴，3px box-shadow halo 会被裁切。
+     改紧贴边缘 outline 2px solid 跟 chip 形状契合 */
+  outline: 2px solid var(--moo-c-brand);
+  outline-offset: 1px;
+  box-shadow: none;
 }
 .moo-chip--btn:disabled { opacity: .7; cursor: progress; }
 .moo-chip--btn.moo-chip--success {
@@ -1098,7 +1106,7 @@ onBeforeUnmount(() => {
 
 .foot { margin-top: 12px; text-align: center; }
 
-/* v0.7.4：「完整配置」按钮 — 同事需求「不用 F12 那么深」配置入口 */
+/* v0.7.4：「工作区」按钮 — 不用进 F12 即可访问 4 Tab 配置入口 */
 .opt-cta {
   display: inline-flex;
   align-items: center;
