@@ -4,6 +4,8 @@
 
 ## 一句话现状
 
+**v0.7.5 已发**（2026-05-26）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.5/moo-chrome-dev-tool-0.7.5.zip)（sha256 待填）。无 BREAKING — **升级 UX 大改**：popup 版本号 chip 可点击手动检查更新 + 工作台同款 + 「3 步升级」UX 加 `chrome.runtime.reload()` 一键重载（**免去用户手动跳 chrome://extensions ↻ 一步**）+ P0 录屏中 reload 防丢（QUERY_RECORDING_STATE confirm）+ 抽 useVersionCheck composable（省 80 行）+ 8 类 agent / 9 审 P0/P1 全修。601 单测 + 123 e2e 全过。
+
 **v0.7.4 已发**（2026-05-26）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.4/moo-chrome-dev-tool-0.7.4.zip)（sha256 `31fbd71ca42d5cf648c1fea04adf07e6285de890cd05989eadd457c133b7de22`）。无 BREAKING — 同事需求驱动「工作区」新形态：popup 加悬浮球当前页隐藏 toggle + 完整配置浮窗（chrome.windows.create 独立 760×720 chrome window，4 Tab 概览/历史/环境/设置跟 DevTools panel 1:1）+ 4 agent 8 审 P0/P1 修（含 storage.session setAccessLevel 致命漏 / register retry / popup UX / Environment fallback）+ e2e 真注入 spec（v0.7.1 类 silent 回归 self-test hatch 锁死）。601 单测 + 119 e2e 全过。
 
 **v0.7.3 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.3/moo-chrome-dev-tool-0.7.3.zip)（sha256 `ced27a1f7da6f7f48791a209e56afa930440fc77e0560868f0f18cae27def163`）。无 BREAKING — 3 个新视角 agent 7 审找 **1 P0 + 4 P1** 全修（Environment 800ms 内关 DevTools 改动永久丢失 / popup「已启用」错觉 / dynamicScripts 没查 host_permission / release.mjs 缺 dev-artifact 检测 / register 非原子）+ vue-craft 14 条样式 a11y 漂移全清 + 严格 WCAG AA 4.5:1 系统升级。
@@ -28,7 +30,7 @@
 
 **早期版本简介**：v0.1.x → v0.4.3 见 [docs/handoff-archive/v0.1.x.md](docs/handoff-archive/v0.1.x.md)；v0.4.4 → v0.4.9 见 [docs/handoff-archive/v0.4.4-v0.4.9.md](docs/handoff-archive/v0.4.4-v0.4.9.md)。
 
-**往前看**：v0.7.4 把同事需求「悬浮球 toggle」+「完整配置浮窗 → 工作区」+ 4 agent 8 审 P0/P1（含致命 storage.session setAccessLevel 漏）+ 真注入 e2e self-test hatch 一起累发。**剩 v0.7.5+ 工作**：① 多上下文 mooConfig lost update（Settings 早有同款，文档化）② 自托管 telemetry collector（PLAN 决策 5）③ web_accessible_resources `<all_urls>` 收窄（CWS 评审风险，评估后价值不高搁置）④ i18n 全量迁移（v1.2+）⑤ 同事 dogfood v0.7.4 反馈。**CWS 上架物料就绪**（docs/cws/）等用户截图 + 后台填表。
+**往前看**：v0.7.5 把升级 UX 大改 + 9 审 P0/P1 全修一起累发。**剩 v0.7.6+ / v0.8.x 工作**：① mv3-pro P2 reload 后「已升级」反馈 toast（storage 写 expectedVersion + onInstalled 对比）② Plan 3 个 v0.8 路线 P1（抽 useInspectedTab / CWS build flag 砍升级 UX / 4 Tab 公共层）③ 多上下文 mooConfig lost update（Settings 早有同款，文档化）④ telemetry collector（PLAN 决策 5）⑤ i18n 全量迁移（v1.2+）⑥ 同事 dogfood v0.7.5 反馈。**CWS 上架物料就绪**等用户截图 + 后台填表。
 
 ## 这两周做了什么
 

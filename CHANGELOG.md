@@ -2,6 +2,55 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.7.5
+
+2026-05-26 发版。无 BREAKING — 升级 UX 大改 + 5 agent + 9 审 P0/P1 修。
+
+### 新功能 — 升级 UX（同事痛点）
+
+- **chrome.runtime.reload() 一键重载升级**：等价 chrome://extensions 点 ↻（重读 manifest + 所有 dist 文件），**免去用户手动跳 chrome://extensions 找 Moo 卡片 ↻ 一步**。popup banner + 工作台 update-line 都加「③ 重新加载」按钮。3 步升级 UX：① 下载 zip → ② 解压覆盖原扩展目录 → ③ 点重新加载。**🔴 P0 防丢**：录屏中点 reload 会让 offscreen MediaRecorder 销毁 + chunks 全丢，reload 前发 MSG.QUERY_RECORDING_STATE 查 SW 录屏状态，正在录就 confirm 让用户决定（mv3-pro 9 审抓的）
+- **popup 版本号 chip 改可点击 → 手动检查更新**：不等 24h alarm。点击后最小 600ms spinner（防 fetch < 500ms 一闪而过用户没感知），完成后没新版「✓ 已是最新」高亮 2.5s 反馈，有新版 onChanged 自动让 banner 弹起来。同事痛点「想主动检查但没入口」修
+- **工作台显示更新检查**：popup 之外工作台 brand 区也显「⬆ 新版」link / 「⟳ 检查更新」按钮 + 「✓ 已是最新（HH:mm）」反馈（同事痛点「工作台日常入口，看不到更新提示」修）
+
+### 9 审 P0/P1/P2 修
+
+mv3-pro / vue-craft / general-purpose / code-simplifier / lab-tester / Plan / Explore / release-captain 8 类 agent 9 审找到：
+
+- **🔴 P0 (mv3-pro)**：录屏中 reload 丢 offscreen chunks → reload 前 QUERY_RECORDING_STATE confirm
+- **P1 (vue-craft + mv3-pro)**：runVersionCheck 并发 race（popup + 工作台 + SW alarm 三方同时 fire 让 storage.set/remove 交叉 → banner 闪一下消失）→ 模块级 inflightCheck Promise guard 重入合并
+- **P1 (vue-craft)**：popup chip focus-visible 3px box-shadow halo 被 head margin 裁切 → 改 outline 2px solid 紧贴 chip 边缘
+- **P2 (vue-craft)**：options `.update-link:hover` 用了未定义 `var(--moo-c-warn)`（tokens.css 只有 -fg/-soft/-halo）→ 改 var(--moo-c-warn-fg)
+- **P2 (vue-craft)**：options update-line 状态切换 ~4px 抖动（单/双按钮高度差）→ 加 min-height: 22px
+
+### 重构 — code-simplifier 9 审
+
+- **抽 `useVersionCheck` composable**：popup `manualVersionCheck` 与 options `checkNow` 95% 同构（min-600ms / 2.5s timer / reload P0 录屏防丢 / cleanup），抽 ~40 行 composable 消除 ~80 行重复 + 未来加「检查失败错误显示」只改一处
+- 注释清理：v0.7.4/v0.7.5 期间累的「同事反馈」/「同事需求」叙事注释（19 处）清成纯技术描述，保留 essence（why）
+- popup chip 改 button + brand-name 加 `.ver` 版本号小字
+
+### UX 改进
+
+- popup empty 状态简化：删 onboarding 步骤列表 + 「我看完了」按钮，改 1 行 hint（v0.7.4 候选）
+- workspace 浮窗 brand-meta「📍 host」让用户知道在看哪个 tab
+- tab 顺序按使用频率：概览 / 历史 / 环境 / 设置（DevTools panel + 工作区同步）
+
+### Plan / Explore / release-captain 5 审
+
+- **架构层 0 P0**（Plan）：useVersionCheck composable 风格跟 useToast / useAutoSave 一致。3 个 v0.8 路线 P1：① options chrome.devtools shim 是技术债，v0.8 抽 useInspectedTab ② CWS 上架前需 build flag 砍 reload UX / update-banner / version-check fetch（chrome 自动接管后冗余）③ 工作区 + DevTools panel 4 Tab 1:1 共享，分歧时抽公共 tab 层
+- **全代码扫无副作用**（Explore）：8/8 项过 — storage key 一致 / inflight 防护 / setAccessLevel / QUERY_RECORDING_STATE sender / brand-name 选择器 / tab 顺序同步
+- **发版准备**（release-captain）：RELEASE_TEST_CHECKLIST 补 5 条 v0.7.4/v0.7.5 手测（11-15）+ docs/cws/ 旧版本号 v0.6.x / 0.7.0 → X.Y.Z 占位 + 0 阻塞
+
+### 工程
+
+- **601 单测 / type-check / 123 e2e** 全过（v0.7.4 末 119 + popup-version-chip-check 2 + options-update-check 2 = 123）
+
+### 留 v0.7.6+ / v0.8.x
+
+- mv3-pro P2: reload 后用户看「还是旧版本」无反馈 → storage 写 expectedVersion + onInstalled 对比清 banner 弹「已升级到 vX.Y.Z」
+- Plan 3 个路线 P1 留 v0.8.x
+
+---
+
 ## v0.7.4
 
 2026-05-26 发版。无 BREAKING — 同事需求驱动「工作区」新形态 + e2e 真注入防回归基础设施 + 4 agent 8 审 P0/P1 修。
