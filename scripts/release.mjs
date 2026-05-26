@@ -23,7 +23,7 @@
 //   建议：remote 用 SSH（`git remote set-url origin git@gitee.com:OWNER/REPO.git`）+ token 仅作 API 用。
 
 import { execSync } from 'node:child_process'
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, rmSync, openAsBlob } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, rmSync, openAsBlob, readdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
@@ -424,13 +424,29 @@ if (missing.length > 0) {
 //   import 'http://localhost:5273/src/background/index.ts'
 // 装上后 SW registration 立刻炸（v0.7.1 用户撞过）。--skip-build 或者 pnpm dev
 // 后没 pnpm build 都可能进 release zip。
-const swLoaderPath = resolve(distDir, 'service-worker-loader.js')
-const swLoaderContent = readFileSync(swLoaderPath, 'utf-8')
-if (swLoaderContent.includes('localhost:5273') ||
-    swLoaderContent.includes('@vite/env') ||
-    swLoaderContent.includes('@crx/client-worker')) {
-  console.error('🔴 dist/service-worker-loader.js 是 dev 产物（含 localhost:5273 / @vite / @crx HMR import），')
-  console.error('   装上后 chrome 立刻报 Service worker registration failed Status: 3。中止发版。')
+// v0.7.4：扫范围从 SW loader 一个文件扩到全 dist（content loader / popup html /
+//        devtools html / chunks 也可能在 dev 模式下含 localhost 引用 — 同款扫）
+const DEV_MARKERS = ['localhost:5273', '@vite/env', '@crx/client-worker', '@vite/client']
+function* walkFiles(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = resolve(dir, entry.name)
+    if (entry.isDirectory()) yield* walkFiles(path)
+    else if (entry.isFile() && /\.(js|html)$/.test(entry.name)) yield path
+  }
+}
+const devArtifactHits = []
+for (const filePath of walkFiles(distDir)) {
+  const content = readFileSync(filePath, 'utf-8')
+  for (const marker of DEV_MARKERS) {
+    if (content.includes(marker)) {
+      devArtifactHits.push({ file: filePath.replace(distDir, 'dist'), marker })
+      break  // 一个文件命中一个 marker 就够，不重复列
+    }
+  }
+}
+if (devArtifactHits.length > 0) {
+  console.error('🔴 dist/ 含 dev 产物特征（pnpm dev 留下的 HMR import），装上后 chrome 立刻炸：')
+  for (const hit of devArtifactHits) console.error(`   - ${hit.file}（命中 "${hit.marker}"）`)
   console.error('   修法：跑 `pnpm build` 重新出 prod dist/ 再 release。')
   process.exit(1)
 }
