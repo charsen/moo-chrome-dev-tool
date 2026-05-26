@@ -170,6 +170,23 @@
     </main>
 
     <footer class="foot">
+      <!-- v0.7.4：悬浮球当前页显示/隐藏（session 级，chrome 重启自动恢复）。
+           同事反馈「不用进 F12 那么深就能藏悬浮球」需求。currentHost 不能拿就
+           整个 toggle 禁掉（chrome:// 等场景）。 -->
+      <div v-if="currentHost" class="rec-toggle" :title="`在 ${currentHost} 临时隐藏（chrome 重启自动恢复）`">
+        <span class="rec-label">悬浮球（{{ currentHost }}）</span>
+        <button
+          type="button"
+          role="switch"
+          :class="['popup-switch', { 'is-on': !ballHiddenOnHost }]"
+          :aria-checked="!ballHiddenOnHost ? 'true' : 'false'"
+          :disabled="ballBusy"
+          @click="toggleBallOnHost"
+        >
+          <span class="popup-switch-thumb" />
+        </button>
+      </div>
+
       <!-- 录屏开关：tabCapture 是 optional_permission，用户主动启用一次即可 -->
       <div class="rec-toggle">
         <span class="rec-label">录屏功能（⌥⇧R）</span>
@@ -239,6 +256,12 @@ const loading = ref(true)
 const recEnabled = ref(false)
 const recBusy = ref(false)
 const recError = ref('')
+// v0.7.4：悬浮球当前 host 临时隐藏 — session 级，chrome 重启自动清。
+// 同事反馈「不用进 F12 那么深操作」需求。
+const HIDDEN_HOSTS_KEY = 'mooHiddenFloatingBallHosts'
+const currentHost = ref('')
+const ballHiddenOnHost = ref(false)
+const ballBusy = ref(false)
 // v0.5.3 #128：host_permission 改 optional 后的开关状态
 const hostEnabled = ref(false)
 const hostBusy = ref(false)
@@ -395,6 +418,22 @@ async function toggleHostPermission() {
   }
 }
 
+// v0.7.4：toggle 当前 host 的悬浮球显示状态（session 级写 chrome.storage.session）
+async function toggleBallOnHost() {
+  if (!currentHost.value || ballBusy.value) return
+  ballBusy.value = true
+  try {
+    const r = await chrome.storage.session.get(HIDDEN_HOSTS_KEY)
+    const list = ((r[HIDDEN_HOSTS_KEY] as string[] | undefined) ?? []).filter(h => h !== currentHost.value)
+    if (!ballHiddenOnHost.value) list.push(currentHost.value)  // 当前显示 → 改隐藏
+    await chrome.storage.session.set({ [HIDDEN_HOSTS_KEY]: list })
+    ballHiddenOnHost.value = !ballHiddenOnHost.value
+    // content world 通过 storage.onChanged 同步生效，无需主动 sendMessage
+  } finally {
+    ballBusy.value = false
+  }
+}
+
 onMounted(async () => {
   // v0.4.8：5 步串行 IO → 并行（之前 popup 打开 < 200ms 期望易破）
   // tabs.query / loadConfig / permissions.contains / listHistory 互不依赖，能并发
@@ -419,6 +458,18 @@ onMounted(async () => {
     }
     recEnabled.value = hasRecPerm
     hostEnabled.value = hasHostPerm
+    // v0.7.4：拿 current host + 查 session 隐藏列表
+    try {
+      if (tab?.url) {
+        const u = new URL(tab.url)
+        if (u.protocol === 'http:' || u.protocol === 'https:') {
+          currentHost.value = u.hostname
+          const r = await chrome.storage.session.get(HIDDEN_HOSTS_KEY)
+          const list = (r[HIDDEN_HOSTS_KEY] as string[] | undefined) ?? []
+          ballHiddenOnHost.value = list.includes(u.hostname)
+        }
+      }
+    } catch { /* chrome:// / file:// 等无 host，currentHost 留空 → toggle 不显示 */ }
     // v0.6.0：升级 flag 仅当还没授权时显示 banner（已开 host 即使 flag 在也不弹）
     needsHostPermUpgrade.value = !hasHostPerm && !!(upgradeFlagObj as Record<string, unknown>)[UPGRADE_FLAG_KEY]
     // v0.6.2：版本检查 — 仅当 flag 是 LatestVersionInfo 形态 + checkedAt < 7 天

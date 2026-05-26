@@ -1,7 +1,7 @@
 <template>
   <div class="moo-root">
     <FloatingBall
-      v-if="matches.length"
+      v-if="matches.length && !hostHidden"
       :hidden="state !== 'idle'"
       :matches="matches"
       @select-project="onSelectProject"
@@ -64,6 +64,19 @@ type State = 'idle' | 'capturing' | 'annotating' | 'recording' | 'submitting'
 const state = ref<State>('idle')
 /** 当前页面匹配到的所有项目（>=0 个；空数组时悬浮球不显示） */
 const matches = ref<Project[]>([])
+/** v0.7.4：popup 点「悬浮球当前页隐藏」开关后，本 host 加入 chrome.storage.session
+ *  里的隐藏列表。chrome 重启自动恢复（临时藏语义）。listener 跨 popup ↔ content
+ *  同步。 */
+const HIDDEN_HOSTS_KEY = 'mooHiddenFloatingBallHosts'
+const hostHidden = ref(false)
+let hiddenHostsWatcher: ((changes: Record<string, chrome.storage.StorageChange>, area: string) => void) | null = null
+async function refreshHostHidden(): Promise<void> {
+  try {
+    const r = await chrome.storage.session.get(HIDDEN_HOSTS_KEY)
+    const list = (r[HIDDEN_HOSTS_KEY] as string[] | undefined) ?? []
+    hostHidden.value = list.includes(location.hostname)
+  } catch { hostHidden.value = false }
+}
 /** 当前 active 项目：唯一匹配时即 matches[0]；多匹配时由用户在悬浮球里点选确认 */
 const project = ref<Project | null>(null)
 const rawImage = ref('')
@@ -229,6 +242,12 @@ onMounted(async () => {
   reqApi.start()
   errApi.start()
   await refreshProject()
+  // v0.7.4：读 session 隐藏 host 列表 + 监听跨 popup 同步
+  await refreshHostHidden()
+  hiddenHostsWatcher = (changes, area) => {
+    if (area === 'session' && HIDDEN_HOSTS_KEY in changes) void refreshHostHidden()
+  }
+  chrome.storage.onChanged.addListener(hiddenHostsWatcher)
   // 配置变化时实时更新匹配（保存 dispose 用于 unmount 拆除）
   disposeConfigWatcher = onConfigChanged(() => refreshProject())
   // SPA 路由变化也重匹配 —— 主路径走 main-world hook 推过来的 message，
@@ -281,6 +300,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', onDocPointerDown, { capture: true })
   clearAllRipples()
   chrome.runtime.onMessage.removeListener(onRuntimeMessage)
+  if (hiddenHostsWatcher) {
+    chrome.storage.onChanged.removeListener(hiddenHostsWatcher)
+    hiddenHostsWatcher = null
+  }
   disposeConfigWatcher?.()
   disposeConfigWatcher = null
 })
