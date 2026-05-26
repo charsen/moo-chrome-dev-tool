@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.7.4 已发**（2026-05-26）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.4/moo-chrome-dev-tool-0.7.4.zip)（sha256 待填）。无 BREAKING — 同事需求驱动「工作区」新形态：popup 加悬浮球当前页隐藏 toggle + 完整配置浮窗（chrome.windows.create 独立 760×720 chrome window，4 Tab 概览/历史/环境/设置跟 DevTools panel 1:1）+ 4 agent 8 审 P0/P1 修（含 storage.session setAccessLevel 致命漏 / register retry / popup UX / Environment fallback）+ e2e 真注入 spec（v0.7.1 类 silent 回归 self-test hatch 锁死）。601 单测 + 119 e2e 全过。
+**v0.7.4 已发**（2026-05-26）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.4/moo-chrome-dev-tool-0.7.4.zip)（sha256 `31fbd71ca42d5cf648c1fea04adf07e6285de890cd05989eadd457c133b7de22`）。无 BREAKING — 同事需求驱动「工作区」新形态：popup 加悬浮球当前页隐藏 toggle + 完整配置浮窗（chrome.windows.create 独立 760×720 chrome window，4 Tab 概览/历史/环境/设置跟 DevTools panel 1:1）+ 4 agent 8 审 P0/P1 修（含 storage.session setAccessLevel 致命漏 / register retry / popup UX / Environment fallback）+ e2e 真注入 spec（v0.7.1 类 silent 回归 self-test hatch 锁死）。601 单测 + 119 e2e 全过。
 
 **v0.7.3 已发**（2026-05-25）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.3/moo-chrome-dev-tool-0.7.3.zip)（sha256 `ced27a1f7da6f7f48791a209e56afa930440fc77e0560868f0f18cae27def163`）。无 BREAKING — 3 个新视角 agent 7 审找 **1 P0 + 4 P1** 全修（Environment 800ms 内关 DevTools 改动永久丢失 / popup「已启用」错觉 / dynamicScripts 没查 host_permission / release.mjs 缺 dev-artifact 检测 / register 非原子）+ vue-craft 14 条样式 a11y 漂移全清 + 严格 WCAG AA 4.5:1 系统升级。
 
