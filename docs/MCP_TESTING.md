@@ -107,15 +107,45 @@ DOM 状态 + textContent 断言 + 剪贴板内容验证。
 
 | 能力 | chrome-devtools | playwright |
 |---|---|---|
-| 加载真扩展（manifest.json）| ✅ | ❌（playwright 只跑独立 Chromium，不加载 unpacked extension） |
-| service worker inspect | ✅ | ❌ |
+| 加载真扩展（manifest.json）| ✅ | ✅（launchPersistentContext + `--load-extension` flag，fixtures.ts 已落，原文「不能装」过时） |
+| service worker inspect | ✅ | △（fixtures.ts 抓 sw worker context 能跑 evaluate，但不能可视化 inspect） |
 | 跨 chrome:// 边界 | ✅ | ❌ |
 | 程序化 DOM 断言 | △（locator API 弱） | ✅ |
 | 剪贴板 / 文件上传 | △ | ✅ |
 | 跑得快 / CI 友好 | ❌ | ✅ |
 | 真 chrome.commands 全局快捷键 | ✅ | ❌ |
+| **user gesture 触发的 API**（permissions.request / tabCapture）| ✅ | ❌（lab-tester v0.7.4 8 审 5 路径调研确认绕不过，必须 RELEASE_TEST_CHECKLIST 手测兜底）|
 
 两个都要。
+
+---
+
+## v0.7.4 新机制：mandatory-manifest 跑「真注入」spec
+
+lab-tester 调研发现 playwright 给扩展 grant `<all_urls>` host_permission 唯一可行路径：
+
+**spec 跑前 `cpSync dist/ → dist-e2e/`，临时改 manifest 把 `optional_host_permissions` 提升为 mandatory `host_permissions`**。Chrome 装载 mandatory permission 自动 grant 不需 user gesture。
+
+适用范围（只对 `tests-e2e/dynamic-register-real-inject.spec.ts` 这种**需要真 grant 状态**的 spec）：
+- R1：register → navigate → `#__moo_dev_tool_host__` in DOM + console 干净
+- R2：globalEnabled=false → DOM 无 host
+
+**关键约束**：
+- src/ 0 改动（dev 行为不能为 e2e 特化）
+- prod manifest 0 改动
+- dist/ 0 影响
+- `dist-e2e/` 加 .gitignore
+
+**self-test hatch 复用模式**（v0.7.4 立项）：
+
+每个 spec 加一个环境变量旁路注入对应 bug，让 spec 自我验证「断言能真抓到回归」：
+
+```bash
+# 模拟 v0.7.1 use_dynamic_url:true bug，R1 必红
+MOO_E2E_INJECT_V071_BUG=1 pnpm test:e2e -- dynamic-register-real-inject
+```
+
+未来加新 spec：每条 silent 回归类 bug 都该有一个 hatch 旁路 + 一个验证 hatch 真触发断言失败的 prove 跑（一次就够，证明 spec 不是「永远绿的空跑」）。
 
 ---
 
