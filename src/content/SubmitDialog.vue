@@ -299,6 +299,7 @@ const ZENTAO_MAX_ATTACHMENT_MB = 49
 import { formatSubmitResult } from '@/utils/submitMessage'
 import { safeSendMessage } from '@/utils/messaging'
 import { redactUrl } from '@/utils/redact'
+import { stealPageFocusRepeatedly } from '@/utils/stealPageFocus'
 import SubmitFormZentao from './components/SubmitFormZentao.vue'
 import SubmitFormWebhook from './components/SubmitFormWebhook.vue'
 import type { ZentaoFormFields } from './components/SubmitFormZentao.types'
@@ -824,16 +825,26 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
+// v0.7.7 P0 (dogfood 真撞)：用户在 page modal（element-ui dialog 等带 focus trap 的
+// 组件）focus 状态触发截图 → SubmitDialog 弹出 → page modal trap 抢回焦点 →
+// 用户点 SubmitDialog 标题 / 描述 input 但**输入不了字**（每次 focus 立刻被 trap 抢走）。
+// 修：stealPageFocusRepeatedly 50/100/200/400ms 反复 blur page activeElement 跟
+// page modal trap 拼速度，最后一次 focus 我们自己的 titleInput。
+// 详见 utils/stealPageFocus 注释。
+let stealFocusCleanup: (() => void) | null = null
 onMounted(() => {
   window.addEventListener('keydown', onKeydown, true)
-  // 自动聚焦标题输入，省一次点击
-  nextTick(() => titleInput.value?.focus())
+  stealFocusCleanup = stealPageFocusRepeatedly(() => {
+    titleInput.value?.focus()
+  })
 })
 
 // cookie 预检 + 每 2 分钟复查在 SubmitFormZentao 子组件内自管 onMounted/onBeforeUnmount
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown, true)
+  // v0.7.7 P0：清 stealPageFocusRepeatedly 的 timer 防泄漏
+  if (stealFocusCleanup) { stealFocusCleanup(); stealFocusCleanup = null }
   if (successTimer) clearTimeout(successTimer)
   if (clearElementsConfirmTimer) clearTimeout(clearElementsConfirmTimer)
   if (copyHintTimer) clearTimeout(copyHintTimer)
