@@ -219,8 +219,19 @@
       </div>
       <div v-if="hostError" class="rec-err" role="alert" aria-live="assertive">{{ hostError }}</div>
 
+      <!-- v0.7.4：同事需求「不用进 F12 那么深」配置入口。chrome.windows.create
+           弹独立浮窗 760×720（type:'popup' = 小窗口可拖位置，独立于 popup 关闭）。
+           复用 DevTools 的 Environment / Settings / History 三 Tab 代码。 -->
+      <button type="button" class="opt-cta" @click="openOptionsWindow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>
+        </svg>
+        完整配置（独立浮窗）
+      </button>
+
       <div class="help-pop">
-        打开 DevTools 控制面板：在网页上按 <span class="kbd">F12</span>（或右键 → <b>检查</b>），切到 <b>Moo</b> 面板。
+        或按 <span class="kbd">F12</span> 打开 DevTools 切到 <b>Moo</b> 面板（含「概览」实时请求/错误）。
       </div>
     </footer>
   </div>
@@ -416,6 +427,19 @@ async function toggleHostPermission() {
   } finally {
     hostBusy.value = false
   }
+}
+
+// v0.7.4：打开「完整配置」浮窗 — chrome.windows.create type:'popup' 独立小窗，
+// popup 关闭后浮窗仍在，用户可拖位置 / 调大小。复用 DevTools Environment /
+// Settings / History 三 Tab。同事反馈「不用进 F12」需求。
+function openOptionsWindow() {
+  chrome.windows.create({
+    url: chrome.runtime.getURL('src/options/index.html'),
+    type: 'popup',
+    width: 760,
+    height: 720
+  })
+  window.close()  // popup 自动关，让用户视觉聚焦到新弹的配置窗
 }
 
 // v0.7.4：toggle 当前 host 的悬浮球显示状态（session 级写 chrome.storage.session）
@@ -963,6 +987,38 @@ onBeforeUnmount(() => {
 .popup-switch.is-on .popup-switch-thumb { transform: translateX(14px); }
 
 .foot { margin-top: 12px; text-align: center; }
+
+/* v0.7.4：「完整配置」按钮 — 同事需求「不用 F12 那么深」配置入口 */
+.opt-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--moo-c-brand);
+  background: var(--moo-c-bg);
+  color: var(--moo-c-brand);
+  border-radius: var(--moo-r-md);
+  font-family: inherit;
+  font-size: var(--moo-fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: background-color var(--moo-motion-fast), color var(--moo-motion-fast);
+}
+.opt-cta svg { width: 14px; height: 14px; flex-shrink: 0; }
+.opt-cta:hover {
+  background: var(--moo-c-brand);
+  color: var(--moo-c-brand-fg);
+}
+.opt-cta:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
+}
+
 .help-pop {
   margin-top: 8px;
   padding: 8px 10px;

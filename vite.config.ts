@@ -51,7 +51,10 @@ export default defineConfig({
         // 复现同款 shadow root 外壳
         // + mock chrome.runtime.sendMessage，让 ESC / mask click / Tab 焦点循环 / 1.5s
         // 成功保护期都能被自动化锁住。
-        dialogHarness: resolve(__dirname, 'src/content/dialog-harness.html')
+        dialogHarness: resolve(__dirname, 'src/content/dialog-harness.html'),
+        // v0.7.4：options page —— popup 「⚙ 完整配置」按钮弹 chrome.windows.create
+        // 浮窗显示，复用 Environment / Settings / History 三个 Tab 组件。
+        options: resolve(__dirname, 'src/options/index.html')
       }
     }
   }
