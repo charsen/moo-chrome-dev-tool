@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.7.6 已发**（2026-05-26）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.6/moo-chrome-dev-tool-0.7.6.zip)（sha256 待填）。无 BREAKING — **2 P0 + 6 P1 + 9 P2**（chrome-devtools MCP 实地真机抓 + 8 agent 17 审）。**🔴 旗舰 P0 修**：配项目后已开 tab 立即出悬浮球（v0.7.x dynamic register 漏 chrome 不向已 navigated tab 回填注入，2 步闭环修 = SW 端 backfill executeScript + content 端孤儿 host 清理）。+ 升级闭合「✓ 已升级到 vX.Y.Z」toast 反馈 + 业务深扫 4 P1（历史重提丢禅道字段 / kind 切换 fetchStatus 404 / 多 server 错查 / 附件孤儿文案）+ 11 审 storage.session/race/quota 等。613 单测 / 132 e2e × 6 跑 = 792 case 0 fail 0 flake。
+**v0.7.6 已发**（2026-05-26）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.6/moo-chrome-dev-tool-0.7.6.zip)（sha256 `8fc004235fb07d3f575c7d29e3a1e93eaeda112ddc38cb479c6cc81e7ca9118f`）。无 BREAKING — **2 P0 + 6 P1 + 9 P2**（chrome-devtools MCP 实地真机抓 + 8 agent 17 审）。**🔴 旗舰 P0 修**：配项目后已开 tab 立即出悬浮球（v0.7.x dynamic register 漏 chrome 不向已 navigated tab 回填注入，2 步闭环修 = SW 端 backfill executeScript + content 端孤儿 host 清理）。+ 升级闭合「✓ 已升级到 vX.Y.Z」toast 反馈 + 业务深扫 4 P1（历史重提丢禅道字段 / kind 切换 fetchStatus 404 / 多 server 错查 / 附件孤儿文案）+ 11 审 storage.session/race/quota 等。613 单测 / 132 e2e × 6 跑 = 792 case 0 fail 0 flake。
 
 **v0.7.5 已发**（2026-05-26）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.5/moo-chrome-dev-tool-0.7.5.zip)（sha256 `2a02f993d0b42fca684e41b7b644ccfe6b69b266ca051ee612490694be513682`）。无 BREAKING — **升级 UX 大改**：popup 版本号 chip 可点击手动检查更新 + 工作台同款 + 「3 步升级」UX 加 `chrome.runtime.reload()` 一键重载（**免去用户手动跳 chrome://extensions ↻ 一步**）+ P0 录屏中 reload 防丢（QUERY_RECORDING_STATE confirm）+ 抽 useVersionCheck composable（省 80 行）+ 8 类 agent / 9 审 P0/P1 全修。601 单测 + 123 e2e 全过。
 
