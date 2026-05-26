@@ -225,7 +225,7 @@ Capture and submit bug reports (screenshot + network requests + console errors +
 | 5 | 录屏 UI（timer + 停止按钮）| 按 ⌥⇧R 启动录屏后，页面顶部显示的录屏指示条（展示 optional tabCapture 启用前 vs 启用后的 UX 差异 — 评审员关注的点） |
 | 6 | History tab 提交历史 | DevTools → Moo → History tab，展示提交记录列表（用 demo 数据）|
 
-每张右下角可加水印 `v0.6.x` 表明版本。
+每张右下角可加水印 `vX.Y.Z` 表明版本（CWS 上架时改成实际版本号，如 v0.7.5 / v0.8.0）。
 
 ---
 

@@ -24,7 +24,7 @@ Gitee 上 markdown 自动渲染，CWS 评审员能打开看。
 ### 2. 准备 zip 包（已有）
 
 ```bash
-ls -lh release/moo-chrome-dev-tool-0.7.0.zip
+ls -lh release/moo-chrome-dev-tool-X.Y.Z.zip   # 替换 X.Y.Z 为当前版本
 ```
 
 文件已经在 release/ 里，196 KB。直接上传这个。
@@ -58,7 +58,7 @@ ls -lh release/moo-chrome-dev-tool-0.7.0.zip
 
 #### Step A: 创建 item
 1. https://chrome.google.com/webstore/devconsole/
-2. 左上角 **New item** → 上传 `moo-chrome-dev-tool-0.7.0.zip`
+2. 左上角 **New item** → 上传 `moo-chrome-dev-tool-X.Y.Z.zip`（当前版本，如 v0.7.5）
 3. 等 Chrome 解析 manifest（几秒钟）
 
 #### Step B: Store listing
