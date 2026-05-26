@@ -119,7 +119,10 @@
       <div class="empty-illust">👋</div>
       <div class="state-title">{{ firstRun ? '欢迎使用 Moo Dev Tool' : '还没有项目' }}</div>
       <p class="hint">
-        <template v-if="firstRun">截图 / 录屏 + 自动抓请求 / 错误，一键提交 bug。点底部 <b>⚙ 打开工作区</b> 配第一个项目。</template>
+        <template v-if="firstRun">
+          截图 / 录屏 + 自动抓请求 / 错误，一键提交 bug。<br>
+          点底部 <b>⚙ 打开工作区</b> 配第一个项目。
+        </template>
         <template v-else>点底部 <b>⚙ 打开工作区</b> 新建项目。</template>
       </p>
     </section>
