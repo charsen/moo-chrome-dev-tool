@@ -1,5 +1,5 @@
 import { onBeforeUnmount, ref } from 'vue'
-import { runVersionCheck } from '@/utils/versionCheck'
+import { runVersionCheck, writeUpgradeIntent } from '@/utils/versionCheck'
 import { MSG } from '@/types/messages'
 
 /**
@@ -16,6 +16,9 @@ export interface UseVersionCheckOptions {
   /** 当前是否有可见更新 — 决定是否在没新版时高亮「✓ 已是最新」反馈（有新版时
    *  让 banner 主导，chip / button 不抢戏） */
   hasUpdate: () => boolean
+  /** v0.7.6：调用方提供「期望升到的版本号」让 SW onInstalled 能对比验证升级真完
+   *  成（用户没真解压 zip 时不会弹「已升级」toast）。一般 = updateInfo.latest。 */
+  expectedVersion?: () => string | null
 }
 
 export function useVersionCheck(opts: UseVersionCheckOptions) {
@@ -61,6 +64,9 @@ export function useVersionCheck(opts: UseVersionCheckOptions) {
         if (!confirm('Moo 正在录屏 — 重新加载会让已录内容丢失。继续吗？')) return
       }
     } catch { /* SW 不可达，直接 reload */ }
+    // v0.7.6：reload 前写 UPGRADE_INTENT，让 SW onInstalled 对比验证升级真完成
+    const expected = opts.expectedVersion?.()
+    if (expected) await writeUpgradeIntent(expected)
     chrome.runtime.reload()
   }
 

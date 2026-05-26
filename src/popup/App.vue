@@ -35,6 +35,13 @@
       <button type="button" class="upgrade-dismiss" @click="dismissUpgrade">稍后再说</button>
     </div>
 
+    <!-- v0.7.6：升级成功 toast — 用户点 reload + SW onInstalled 验证升级真完成后弹，
+         3 秒自动消 + 可点 dismiss。排在最前防被 upgrade / dropped / update banner 挤掉 -->
+    <div v-else-if="upgradedToast" class="upgraded-toast" role="status" aria-live="polite">
+      <div class="upgraded-title">✓ 已升级到 v{{ upgradedToast.version }}</div>
+      <button type="button" class="upgrade-dismiss" @click="dismissUpgradedToast">知道了</button>
+    </div>
+
     <!-- v0.7.0：matchPatterns 被 translator drop 的 banner（v0.6→v0.7 老 patterns 升级失效引导）
          v-else-if 排他于 upgrade-banner（host permission 没开优先 pattern 问题不抢戏） -->
     <div v-else-if="droppedPatternsInfo" class="dropped-banner" role="alert" aria-live="polite">
@@ -264,7 +271,7 @@ import { listHistory } from '@/storage/history'
 import { relativeTime } from '@/utils/relativeTime'
 import { t } from '@/i18n'
 import { UPGRADE_FLAG_KEY } from '@/utils/upgradeFlag'
-import { VERSION_CHECK_FLAG_KEY, type LatestVersionInfo } from '@/utils/versionCheck'
+import { VERSION_CHECK_FLAG_KEY, UPGRADED_TOAST_KEY, type LatestVersionInfo, type UpgradedToastInfo } from '@/utils/versionCheck'
 import { useVersionCheck } from '@/composables/useVersionCheck'
 
 const version = ref(chrome.runtime.getManifest().version)
@@ -305,12 +312,29 @@ const updateInfo = ref<LatestVersionInfo | null>(null)
 interface DroppedPatternsInfo { count: number; samples: string[]; at: number }
 const DROPPED_FLAG_KEY = 'mooDroppedMatchPatterns'
 const droppedPatternsInfo = ref<DroppedPatternsInfo | null>(null)
+// v0.7.6：升级成功 toast — SW onInstalled('update') 对比 manifest.version 跟 reload 前
+// 写的 expectedVersion 匹配后写 UPGRADED_TOAST_KEY。3 秒自动消 + 可手动 dismiss
+const upgradedToast = ref<UpgradedToastInfo | null>(null)
+let upgradedToastTimer: number | undefined
 
 async function dismissDropped() {
   droppedPatternsInfo.value = null
   try {
     await chrome.storage.local.remove(DROPPED_FLAG_KEY)
   } catch {}
+}
+
+async function dismissUpgradedToast() {
+  upgradedToast.value = null
+  if (upgradedToastTimer) { clearTimeout(upgradedToastTimer); upgradedToastTimer = undefined }
+  try {
+    await chrome.storage.local.remove(UPGRADED_TOAST_KEY)
+  } catch {}
+}
+
+function scheduleUpgradedToastAutoDismiss() {
+  if (upgradedToastTimer) clearTimeout(upgradedToastTimer)
+  upgradedToastTimer = window.setTimeout(() => { void dismissUpgradedToast() }, 3000)
 }
 
 async function dismissUpdate() {
@@ -321,13 +345,17 @@ async function dismissUpdate() {
 }
 
 // v0.7.5：版本检查 UX 抽到 useVersionCheck composable（popup + 工作台同款行为）
+// v0.7.6：补 expectedVersion 让 reload 前写 UPGRADE_INTENT，SW onInstalled 验证后弹「✓ 已升级」
 const {
   checking: versionChecking,
   lastChecked: versionCheckedAt,
   checkJustDone: versionCheckJustDone,
   runCheck: manualVersionCheck,
   reloadExtension
-} = useVersionCheck({ hasUpdate: () => !!updateInfo.value })
+} = useVersionCheck({
+  hasUpdate: () => !!updateInfo.value,
+  expectedVersion: () => updateInfo.value?.latest ?? null
+})
 
 async function dismissUpgrade() {
   needsHostPermUpgrade.value = false
@@ -496,7 +524,7 @@ onMounted(async () => {
   // v0.4.8：5 步串行 IO → 并行（之前 popup 打开 < 200ms 期望易破）
   // tabs.query / loadConfig / permissions.contains / listHistory 互不依赖，能并发
   try {
-    const [tabResult, cfg, hasRecPerm, hasHostPerm, upgradeFlagObj, updateFlagObj, droppedFlagObj, historyList] = await Promise.all([
+    const [tabResult, cfg, hasRecPerm, hasHostPerm, upgradeFlagObj, updateFlagObj, droppedFlagObj, upgradedToastObj, historyList] = await Promise.all([
       chrome.tabs.query({ active: true, currentWindow: true }),
       loadConfig(),
       chrome.permissions.contains({ permissions: ['tabCapture'] }),
@@ -504,6 +532,7 @@ onMounted(async () => {
       chrome.storage.local.get(UPGRADE_FLAG_KEY).catch(() => ({})),
       chrome.storage.local.get(VERSION_CHECK_FLAG_KEY).catch(() => ({})),
       chrome.storage.local.get(DROPPED_FLAG_KEY).catch(() => ({})),
+      chrome.storage.local.get(UPGRADED_TOAST_KEY).catch(() => ({})),
       listHistory().catch(() => [])  // 历史读失败静默不挡核心
     ])
     const tab = tabResult[0]
@@ -546,6 +575,19 @@ onMounted(async () => {
       const age = Date.now() - (d.at ?? 0)
       if (typeof d.count === 'number' && d.count > 0 && Array.isArray(d.samples) && age < 7 * 24 * 60 * 60_000) {
         droppedPatternsInfo.value = d
+      }
+    }
+    // v0.7.6：升级成功 toast — 5min 内 fresh 的才显示（超过当过期，防 chrome 关再开还弹）
+    const rawUpgraded = (upgradedToastObj as Record<string, unknown>)[UPGRADED_TOAST_KEY]
+    if (rawUpgraded && typeof rawUpgraded === 'object') {
+      const t = rawUpgraded as UpgradedToastInfo
+      const age = Date.now() - (t.at ?? 0)
+      if (t.version && age < 5 * 60_000) {
+        upgradedToast.value = t
+        scheduleUpgradedToastAutoDismiss()
+      } else {
+        // 过期清掉
+        void chrome.storage.local.remove(UPGRADED_TOAST_KEY).catch(() => {})
       }
     }
     recent.value = historyList.slice(0, 3)
@@ -591,6 +633,20 @@ onMounted(async () => {
         }
       }
     }
+    // v0.7.6：SW onInstalled checkUpgradeFinished 写 toast flag → popup 弹「已升级」
+    if (UPGRADED_TOAST_KEY in changes) {
+      const newVal = changes[UPGRADED_TOAST_KEY]!.newValue
+      if (newVal === undefined) {
+        upgradedToast.value = null
+        if (upgradedToastTimer) { clearTimeout(upgradedToastTimer); upgradedToastTimer = undefined }
+      } else if (newVal && typeof newVal === 'object') {
+        const t = newVal as UpgradedToastInfo
+        if (t.version) {
+          upgradedToast.value = t
+          scheduleUpgradedToastAutoDismiss()
+        }
+      }
+    }
   }
   chrome.storage.onChanged.addListener(storageWatcher)
 })
@@ -599,6 +655,10 @@ onBeforeUnmount(() => {
   if (storageWatcher) {
     chrome.storage.onChanged.removeListener(storageWatcher)
     storageWatcher = null
+  }
+  if (upgradedToastTimer) {
+    clearTimeout(upgradedToastTimer)
+    upgradedToastTimer = undefined
   }
   // versionCheck timer cleanup 已由 useVersionCheck composable 自管
 })
@@ -966,6 +1026,21 @@ onBeforeUnmount(() => {
 .update-banner .moo-btn { margin-right: 8px; }
 .update-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .update-actions .moo-btn { margin: 0; }
+
+/* v0.7.6：升级成功 toast — 跟 update-banner 排他但视觉用 success 绿（已完成 vs 待操作） */
+.upgraded-toast {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--moo-c-success-fg);
+  background: var(--moo-c-success-soft);
+  border-radius: var(--moo-r-md);
+  color: var(--moo-c-success-fg);
+  font-size: var(--moo-fs-xs);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.upgraded-toast .upgraded-title { font-weight: 600; flex: 1; color: var(--moo-c-text); }
 .update-msg .kbd {
   display: inline-block;
   padding: 0 5px;

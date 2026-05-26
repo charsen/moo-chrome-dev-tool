@@ -104,13 +104,17 @@ const inspectedHost = (window as { __mooInspectedHost?: string }).__mooInspected
 // 手动触发不等 24h。跟 popup 同款行为。
 const updateInfo = ref<LatestVersionInfo | null>(null)
 // v0.7.5：版本检查 UX 抽到 useVersionCheck composable（popup + 工作台同款行为）
+// v0.7.6：补 expectedVersion 让 reload 前写 UPGRADE_INTENT，SW onInstalled 验证后弹「✓ 已升级」
 const {
   checking,
   lastChecked,
   checkJustDone,
   runCheck: checkNow,
   reloadExtension
-} = useVersionCheck({ hasUpdate: () => !!updateInfo.value })
+} = useVersionCheck({
+  hasUpdate: () => !!updateInfo.value,
+  expectedVersion: () => updateInfo.value?.latest ?? null
+})
 
 function loadUpdateFlag() {
   void chrome.storage.local.get(VERSION_CHECK_FLAG_KEY).then(r => {

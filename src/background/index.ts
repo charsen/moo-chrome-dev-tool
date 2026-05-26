@@ -18,7 +18,7 @@ import { onHistoryChanged } from '@/storage/history'
 import { flushRetryQueue, getQueueLength } from '@/background/retryQueue'
 import { refreshBadge } from '@/background/handlers/badge'
 import { UPGRADE_FLAG_KEY } from '@/utils/upgradeFlag'
-import { runVersionCheck, VERSION_CHECK_ALARM } from '@/utils/versionCheck'
+import { runVersionCheck, VERSION_CHECK_ALARM, checkUpgradeFinished } from '@/utils/versionCheck'
 import { syncContentScripts, installDynamicScriptsListeners } from '@/background/dynamicScripts'
 import {
   handleZentaoTestConnection,
@@ -71,6 +71,9 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   void ensureVersionCheckAlarm()
   void runVersionCheck()  // 安装即跑一次（不等 24h）
   void syncContentScripts()  // v0.7.0：dynamic register 按用户 config 匹配的 URL
+  // v0.7.6：升级链路闭合 — reload 前写 UPGRADE_INTENT，这里对比 manifest.version
+  // 验证升级真完成（用户没真解压 zip 仅 reload 旧版仍跑，对比就不匹配 toast 不出）
+  if (reason === 'update' || reason === 'install') void checkUpgradeFinished()
   // v0.6.0 BREAKING：host_permissions 从 mandatory <all_urls> 改 optional。老用户升级后
   // 没有自动授权 → 写一个 storage flag，popup 启动时显示 prominent 升级 banner 引导一键启用。
   // v0.6.1：fresh install 也写 flag（mv3-pro review 报告 6）—— 新用户首次开 popup 看到

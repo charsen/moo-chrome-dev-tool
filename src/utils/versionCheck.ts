@@ -12,6 +12,32 @@
 export const VERSION_CHECK_FLAG_KEY = 'mooLatestVersionInfo'
 export const VERSION_CHECK_ALARM = 'mooVersionCheck'
 
+/**
+ * v0.7.6：reload 前写「期望升到的版本」。SW onInstalled('update') 时对比当前
+ * manifest.version → 匹配则证明升级真完成，写 UPGRADED_TOAST_FLAG 给 popup/工作台
+ * 弹「✓ 已升级到 vX.Y.Z」toast。
+ *
+ * Why：v0.7.5 加 chrome.runtime.reload() 一键重载后，如果用户没真解压新版 zip
+ * 就点 reload，扩展重启仍是旧版 — 用户没反馈难以发觉。这条链路给「真升完了」
+ * 闭合反馈。
+ */
+export const UPGRADE_INTENT_KEY = 'mooUpgradeIntent'
+export const UPGRADED_TOAST_KEY = 'mooUpgradedToast'
+
+export interface UpgradeIntent {
+  /** 用户点 reload 时期望升到的版本（来自 LatestVersionInfo.latest，不带 v 前缀）*/
+  expected: string
+  /** 写 intent 的时刻 — 太老（> 1h）当过期，防漏对比情况下 toast 永远不出 */
+  at: number
+}
+
+export interface UpgradedToastInfo {
+  /** 升级后的版本号 */
+  version: string
+  /** 升级完成时刻 */
+  at: number
+}
+
 const GITEE_LATEST_URL = 'https://gitee.com/api/v5/repos/charsen/moo-chrome-dev-tool/releases/latest'
 
 export interface LatestVersionInfo {
@@ -61,6 +87,45 @@ export async function fetchLatestVersion(): Promise<{ tag: string; url: string }
     return { tag, url: url || 'https://gitee.com/charsen/moo-chrome-dev-tool/releases' }
   } catch {
     return null
+  }
+}
+
+/**
+ * v0.7.6：reload 前写 UPGRADE_INTENT_KEY 让 SW onInstalled('update') 能对比。
+ * 调用方一般是 useVersionCheck.reloadExtension。
+ */
+export async function writeUpgradeIntent(expected: string): Promise<void> {
+  try {
+    const intent: UpgradeIntent = { expected, at: Date.now() }
+    await chrome.storage.local.set({ [UPGRADE_INTENT_KEY]: intent })
+  } catch { /* storage 写失败不挡 reload，最多没有 toast */ }
+}
+
+/**
+ * v0.7.6：SW onInstalled('update') 调 — 拿当前 manifest.version 跟之前写的
+ * expected 对比。匹配 → 升级真完成 → 写 toast flag + 清 update banner +
+ * 清 intent。不匹配（或 intent 太老 > 1h）→ 不动 toast。
+ */
+export async function checkUpgradeFinished(): Promise<void> {
+  try {
+    const r = await chrome.storage.local.get(UPGRADE_INTENT_KEY)
+    const intent = r[UPGRADE_INTENT_KEY] as UpgradeIntent | undefined
+    if (!intent || !intent.expected || !intent.at) return
+    // 1 小时窗口内有效 — 太老（用户点 reload 后忘了解压几天后才装上）当过期
+    if (Date.now() - intent.at > 60 * 60_000) {
+      await chrome.storage.local.remove(UPGRADE_INTENT_KEY)
+      return
+    }
+    const current = chrome.runtime?.getManifest?.()?.version ?? ''
+    if (current === intent.expected) {
+      const toast: UpgradedToastInfo = { version: current, at: Date.now() }
+      // 三个写操作一起：toast flag + 清 update banner + 清 intent
+      await chrome.storage.local.set({ [UPGRADED_TOAST_KEY]: toast })
+      await chrome.storage.local.remove([VERSION_CHECK_FLAG_KEY, UPGRADE_INTENT_KEY])
+    }
+    // 不匹配：intent 留着继续等下次 onInstalled（用户可能反复 reload 直到真升上去）
+  } catch (e) {
+    console.warn('[Moo] checkUpgradeFinished failed:', (e as Error).message)
   }
 }
 

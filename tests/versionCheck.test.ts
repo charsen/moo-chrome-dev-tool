@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { isNewer, fetchLatestVersion, runVersionCheck, VERSION_CHECK_FLAG_KEY } from '@/utils/versionCheck'
+import {
+  isNewer, fetchLatestVersion, runVersionCheck, VERSION_CHECK_FLAG_KEY,
+  writeUpgradeIntent, checkUpgradeFinished, UPGRADE_INTENT_KEY, UPGRADED_TOAST_KEY
+} from '@/utils/versionCheck'
 
 /**
  * v0.6.2 后立的版本检查机制单测。
@@ -128,5 +131,79 @@ describe('runVersionCheck', () => {
     }), { status: 200 })))
     await runVersionCheck()
     expect(storage[VERSION_CHECK_FLAG_KEY]).toBeUndefined()
+  })
+})
+
+describe('writeUpgradeIntent + checkUpgradeFinished (v0.7.6 升级闭合)', () => {
+  let storage: Record<string, unknown>
+
+  function setupChrome(currentVersion: string) {
+    storage = {}
+    ;(globalThis as { chrome?: unknown }).chrome = {
+      runtime: { getManifest: () => ({ version: currentVersion }) },
+      storage: {
+        local: {
+          async get(key: string | string[]) {
+            if (Array.isArray(key)) {
+              return Object.fromEntries(key.map(k => [k, storage[k]]))
+            }
+            return { [key]: storage[key] }
+          },
+          async set(obj: Record<string, unknown>) { Object.assign(storage, obj) },
+          async remove(key: string | string[]) {
+            const keys = Array.isArray(key) ? key : [key]
+            for (const k of keys) delete storage[k]
+          }
+        }
+      }
+    }
+  }
+
+  afterEach(() => {
+    delete (globalThis as { chrome?: unknown }).chrome
+  })
+
+  it('writeUpgradeIntent 写入 expected + at', async () => {
+    setupChrome('0.7.5')
+    await writeUpgradeIntent('0.7.6')
+    const intent = storage[UPGRADE_INTENT_KEY] as { expected: string; at: number } | undefined
+    expect(intent?.expected).toBe('0.7.6')
+    expect(typeof intent?.at).toBe('number')
+    expect(intent!.at).toBeGreaterThan(0)
+  })
+
+  it('升级匹配 → 写 UPGRADED_TOAST + 清 VERSION_CHECK_FLAG + 清 INTENT', async () => {
+    setupChrome('0.7.6')  // 当前已经是 0.7.6
+    storage[UPGRADE_INTENT_KEY] = { expected: '0.7.6', at: Date.now() - 1000 }
+    storage[VERSION_CHECK_FLAG_KEY] = { latest: '0.7.6', current: '0.7.5', url: 'x', checkedAt: Date.now() }
+    await checkUpgradeFinished()
+    const toast = storage[UPGRADED_TOAST_KEY] as { version: string } | undefined
+    expect(toast?.version).toBe('0.7.6')
+    expect(storage[VERSION_CHECK_FLAG_KEY]).toBeUndefined()  // banner 清
+    expect(storage[UPGRADE_INTENT_KEY]).toBeUndefined()  // intent 清
+  })
+
+  it('升级不匹配（manifest 仍是旧）→ 不动 toast / banner / intent 留着等下次', async () => {
+    setupChrome('0.7.5')  // 没真升上去
+    storage[UPGRADE_INTENT_KEY] = { expected: '0.7.6', at: Date.now() - 1000 }
+    storage[VERSION_CHECK_FLAG_KEY] = { latest: '0.7.6', current: '0.7.5', url: 'x', checkedAt: Date.now() }
+    await checkUpgradeFinished()
+    expect(storage[UPGRADED_TOAST_KEY]).toBeUndefined()  // 没 toast
+    expect(storage[VERSION_CHECK_FLAG_KEY]).toBeDefined()  // banner 还在
+    expect(storage[UPGRADE_INTENT_KEY]).toBeDefined()  // intent 留着
+  })
+
+  it('intent 超过 1h 过期 → 清 intent 不发 toast', async () => {
+    setupChrome('0.7.6')
+    storage[UPGRADE_INTENT_KEY] = { expected: '0.7.6', at: Date.now() - 2 * 60 * 60_000 }  // 2h 前
+    await checkUpgradeFinished()
+    expect(storage[UPGRADED_TOAST_KEY]).toBeUndefined()
+    expect(storage[UPGRADE_INTENT_KEY]).toBeUndefined()  // 过期清掉
+  })
+
+  it('没 intent → no-op（不抛错）', async () => {
+    setupChrome('0.7.6')
+    await checkUpgradeFinished()  // 不应 throw
+    expect(storage[UPGRADED_TOAST_KEY]).toBeUndefined()
   })
 })
