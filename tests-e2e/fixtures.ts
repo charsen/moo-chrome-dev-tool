@@ -73,7 +73,17 @@ export const expect = test.expect
  * Gitee fetch 在 fixture launchPersistentContext args 加 `--host-resolver-rules` block
  * （留个备忘，未发现 popup-* 测试受 update-banner 干扰前先不动 launch args）。
  */
-const E2E_TRANSIENT_FLAGS = ['mooNeedsHostPermUpgrade', 'mooLatestVersionInfo'] as const
+// v0.7.6 lab-tester 13 审：补 mooDroppedMatchPatterns（v0.7.0 加的 SW
+// syncContentScripts 副产物，fullyParallel=false 串行跑前面 spec 残留时让
+// onInstalled-upgrade-chain D1 偶发红）+ mooUpgradeIntent / mooUpgradedToast
+// （v0.7.6 升级闭合 flag，理论上 SW 不会主动写但 spec 间残留写过测过的）
+const E2E_TRANSIENT_FLAGS = [
+  'mooNeedsHostPermUpgrade',
+  'mooLatestVersionInfo',
+  'mooDroppedMatchPatterns',
+  'mooUpgradeIntent',
+  'mooUpgradedToast'
+] as const
 
 export async function seedStorage(sw: Worker, data: Record<string, unknown>) {
   await sw.evaluate(async ({ d, flags }) => {

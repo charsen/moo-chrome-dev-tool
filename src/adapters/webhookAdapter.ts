@@ -94,14 +94,16 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
         // 只 log header 名字不打 value：用户配的 server.headers 可能含敏感字段
         // （token 已经在 body 里，但有人会额外手配 Authorization 等），SW console
         // 落盘后任何能读 chrome://extensions 日志的进程都能拿到。
-        // v0.4.8：bodyPreview 缩短到 200 + 显式 ⚠ 警告（服务端响应可能回显用户提交内容含 token / 截图 base64，
-        // SW console 落盘后 chrome://extensions 错误页能看，敏感数据扩散）
-        console.warn('[Moo submit-fail] ⚠ bodyPreview 可能含 token / 截图 base64 等敏感数据', {
+        // v0.7.6 general-purpose P2-3：bodyPreview 默认不打（即便有 ⚠ 警告，敏感
+        // 数据仍写入 SW console 落盘）。需要时设 chrome.storage.local.mooDebug=true 打开。
+        const debugInfo = await chrome.storage.local.get('mooDebug').catch(() => ({}))
+        const logBody = (debugInfo as { mooDebug?: boolean }).mooDebug === true
+        console.warn('[Moo submit-fail]', {
           endpoint: server.endpoint,
           finalUrl: resp.url,
           status: resp.status,
           statusText: resp.statusText,
-          bodyPreview: text.slice(0, 200),
+          ...(logBody ? { bodyPreview: text.slice(0, 200) } : { bodyHint: '(bodyPreview hidden — chrome.storage.local.set({mooDebug:true}) to enable)' }),
           headerNames: Object.keys(safeHeaders)
         })
       }

@@ -431,7 +431,13 @@ export async function submitToZentao(
     // 注意：submitBug 第三参传空数组 —— files[] 字段被禅道忽略，靠 ajaxUpload 链路绑附件
     const r = await zentaoClientSubmit(effectiveEnv, fields, [])
     if (!r.ok) {
-      return { ok: false, error: r.error }
+      // v0.7.6 P1-3 (general-purpose 12 审)：bug-create 失败时 N 个附件已上传成禅道
+      // 孤儿 fileID（管理员清不了，dogfood 撞「retry 5 次留 25 个孤儿附件」）。
+      // 把 uploaded urls 拼进 error 让管理员能溯源清理（retry 时同款拼防多次重传也累积）
+      const orphanHint = uploaded.length > 0
+        ? `\n\n⚠ 已上传 ${uploaded.length} 个附件未能绑到此 bug（管理员可手动清理）：\n${uploaded.map(u => `  • ${u.url} (${u.displayName})`).join('\n')}`
+        : ''
+      return { ok: false, error: r.error + orphanHint }
     }
     return {
       ok: true,
@@ -440,7 +446,10 @@ export async function submitToZentao(
       viewUrl: r.data.viewUrl
     }
   } catch (e) {
-    return { ok: false, error: `网络错误：${(e as Error).message}` }
+    const orphanHint = uploaded.length > 0
+      ? `\n\n⚠ 已上传 ${uploaded.length} 个附件未能绑到此 bug：\n${uploaded.map(u => `  • ${u.url}`).join('\n')}`
+      : ''
+    return { ok: false, error: `网络错误：${(e as Error).message}${orphanHint}` }
   }
 }
 
