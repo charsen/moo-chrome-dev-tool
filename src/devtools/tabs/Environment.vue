@@ -295,10 +295,18 @@ async function evaluateSuggestion() {
   if (!initialized.value || draft.value.projects.length === 0) return
   const pattern = await currentTabAsMatchPattern()
   if (!pattern) return
-  const tabId = chrome.devtools?.inspectedWindow?.tabId
-  if (!tabId) return
+  // v0.7.4：拿 URL — DevTools 里走 inspectedWindow.tabId；options 浮窗里走 fallback
   let url: string | undefined
-  try { url = (await chrome.tabs.get(tabId))?.url } catch { return }
+  try {
+    const tabId = chrome.devtools?.inspectedWindow?.tabId
+    if (tabId) {
+      url = (await chrome.tabs.get(tabId))?.url
+    } else {
+      const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+      url = tabs[0]?.url
+      if (url?.startsWith('chrome-extension://') || url?.startsWith('chrome://')) return
+    }
+  } catch { return }
   if (!url) return
   // 当前 URL 命中任何 enabled 项目 → 不弹（globalEnabled=false 仍弹，因为用户在 Environment Tab 显式想配）
   const matched = matchProjects({ ...draft.value, globalEnabled: true }, url)
@@ -352,13 +360,25 @@ watch(() => activeProject.value?.id, () => { void evaluateSuggestion() })
 /**
  * 拿当前 DevTools inspected tab 的 URL，转 chrome MV3 match pattern。
  * URL 转换边界 case 见 @/utils/urlToMatchPattern 单测。
+ *
+ * v0.7.4：options 浮窗里 chrome.devtools 是 undefined，inspectedWindow 拿不到。
+ * 退到 chrome.tabs.query 拿 lastFocusedWindow active tab —— 但要排除浮窗自身
+ * 的 chrome-extension:// URL（用户用 popup → 弹浮窗 → 浮窗自己 active tab 是
+ * 自己时不该自填）。
  */
 async function currentTabAsMatchPattern(): Promise<string | null> {
   try {
     const tabId = chrome.devtools?.inspectedWindow?.tabId
-    if (!tabId) return null
-    const tab = await chrome.tabs.get(tabId)
-    return urlToMatchPattern(tab.url ?? '')
+    if (tabId) {
+      const tab = await chrome.tabs.get(tabId)
+      return urlToMatchPattern(tab.url ?? '')
+    }
+    // fallback for options 浮窗：chrome.tabs.query 拿上一个聚焦的普通窗口的 active tab
+    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+    const url = tabs[0]?.url ?? ''
+    // 排除自己（chrome-extension://...src/options/index.html）和无效页（chrome:// 等）
+    if (url.startsWith('chrome-extension://') || url.startsWith('chrome://')) return null
+    return urlToMatchPattern(url)
   } catch {
     return null
   }

@@ -36,7 +36,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { nextTick, onBeforeUpdate, ref } from 'vue'
 import Environment from '@/devtools/tabs/Environment.vue'
 import History from '@/devtools/tabs/History.vue'
 import Settings from '@/devtools/tabs/Settings.vue'
@@ -53,7 +53,10 @@ type TabKey = typeof tabs[number]['key']
 const active = ref<TabKey>('env')  // 浮窗默认进环境（最常用）
 
 // ARIA tabs 键盘导航 —— 跟 Panel.vue 同款 v0.4.9 implementation
+// v0.7.4 vue-craft 审：Vue 3 函数 ref 没在 update 前清空数组 → hot reload / active
+// 切换会残留旧元素 ref，Home/End 偶发指向 stale。补 onBeforeUpdate 重置。
 const tabRefs: HTMLElement[] = []
+onBeforeUpdate(() => { tabRefs.length = 0 })
 function onTabKeydown(e: KeyboardEvent) {
   const i = tabs.findIndex(t => t.key === active.value)
   if (i < 0) return

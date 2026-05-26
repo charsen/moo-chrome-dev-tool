@@ -171,16 +171,18 @@
 
     <footer class="foot">
       <!-- v0.7.4：悬浮球当前页显示/隐藏（session 级，chrome 重启自动恢复）。
-           同事反馈「不用进 F12 那么深就能藏悬浮球」需求。currentHost 不能拿就
-           整个 toggle 禁掉（chrome:// 等场景）。 -->
-      <div v-if="currentHost" class="rec-toggle" :title="`在 ${currentHost} 临时隐藏（chrome 重启自动恢复）`">
-        <span class="rec-label">悬浮球（{{ currentHost }}）</span>
+           同事反馈「不用进 F12 那么深就能藏悬浮球」需求。
+           v0.7.4 vue-craft 审：chrome:// / file:// 无 host 时改 disabled 占位（保
+           视觉锚一致），不要整行隐藏让用户怀疑「功能丢了」。host 长截断防撑爆 320px。 -->
+      <div class="rec-toggle" :title="currentHost ? `在 ${currentHost} 临时隐藏（chrome 重启自动恢复）` : '当前页面不支持（chrome:// / 新标签页等）'">
+        <span class="rec-label">悬浮球{{ currentHost ? `（${displayHost}）` : '（当前页面不支持）' }}</span>
         <button
           type="button"
           role="switch"
-          :class="['popup-switch', { 'is-on': !ballHiddenOnHost }]"
-          :aria-checked="!ballHiddenOnHost ? 'true' : 'false'"
-          :disabled="ballBusy"
+          :class="['popup-switch', { 'is-on': currentHost && !ballHiddenOnHost }]"
+          :aria-checked="currentHost && !ballHiddenOnHost ? 'true' : 'false'"
+          :aria-label="currentHost ? `悬浮球在 ${currentHost} ${ballHiddenOnHost ? '隐藏' : '显示'}` : '当前页面不支持悬浮球开关'"
+          :disabled="!currentHost || ballBusy"
           @click="toggleBallOnHost"
         >
           <span class="popup-switch-thumb" />
@@ -273,6 +275,8 @@ const HIDDEN_HOSTS_KEY = 'mooHiddenFloatingBallHosts'
 const currentHost = ref('')
 const ballHiddenOnHost = ref(false)
 const ballBusy = ref(false)
+// v0.7.4 vue-craft 审：长 host 撑爆 popup 320px → 24 字符内显原文，超截 + ellipsis
+const displayHost = computed(() => currentHost.value.length > 24 ? currentHost.value.slice(0, 24) + '…' : currentHost.value)
 // v0.5.3 #128：host_permission 改 optional 后的开关状态
 const hostEnabled = ref(false)
 const hostBusy = ref(false)
@@ -432,14 +436,19 @@ async function toggleHostPermission() {
 // v0.7.4：打开「完整配置」浮窗 — chrome.windows.create type:'popup' 独立小窗，
 // popup 关闭后浮窗仍在，用户可拖位置 / 调大小。复用 DevTools Environment /
 // Settings / History 三 Tab。同事反馈「不用进 F12」需求。
-function openOptionsWindow() {
-  chrome.windows.create({
-    url: chrome.runtime.getURL('src/options/index.html'),
-    type: 'popup',
-    width: 760,
-    height: 720
-  })
-  window.close()  // popup 自动关，让用户视觉聚焦到新弹的配置窗
+// v0.7.4 mv3-pro 审：必须 await create 完成再 window.close，防 popup 销毁瞬间
+// create 请求在 message port 上被丢（chrome 130+ 偶发观察）。
+async function openOptionsWindow() {
+  try {
+    await chrome.windows.create({
+      url: chrome.runtime.getURL('src/options/index.html'),
+      type: 'popup',
+      width: 760,
+      height: 720
+    })
+  } finally {
+    window.close()  // 不管 create 成败都关 popup（成功 → 视觉聚焦新窗；失败 → 至少不卡住）
+  }
 }
 
 // v0.7.4：toggle 当前 host 的悬浮球显示状态（session 级写 chrome.storage.session）

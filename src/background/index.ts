@@ -134,6 +134,19 @@ installRecordingListeners()
 // v0.7.0：content scripts 动态注册 listener（config 变化 + 权限变化 → 重 sync）
 installDynamicScriptsListeners()
 
+// v0.7.4：chrome.storage.session 默认 access level = TRUSTED_CONTEXTS only（chrome 112+）
+// content world 直接 get/set 会抛「Access to storage is not allowed from this context」。
+// popup 写「悬浮球当前 host 隐藏」session 列表 + content world 读 + onChanged 监听都需要
+// 这个权限。一次性调用幂等，每次 SW spin-up 都 set（chrome 重启会重置）。
+// 不调 = popup toggle 改了但 content 永远收不到 → 悬浮球毫无变化 = 整个 toggle 链路废。
+chrome.storage.session?.setAccessLevel?.({
+  accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS'
+})?.catch(e => {
+  // 低版本 chrome / 没 setAccessLevel API / 单测 mock 缺 session → 静默
+  // （content world 隐藏功能降级到不可用，不影响其它功能）
+  console.warn('[Moo] storage.session.setAccessLevel 不可用：', (e as Error).message)
+})
+
 // SW 每次 spin-up（不止 onStartup）都立刻 flush 一次：MV3 SW 空闲 ~30s 被回收，
 // 中途任何消息/alarm 唤醒都走这条路径。之前只 onStartup 主动 flush，意味着
 // 用户在浏览器中途的失败 submit 要干等 alarm 周期（5min）才会重试。
