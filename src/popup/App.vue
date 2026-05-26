@@ -264,8 +264,8 @@ import { listHistory } from '@/storage/history'
 import { relativeTime } from '@/utils/relativeTime'
 import { t } from '@/i18n'
 import { UPGRADE_FLAG_KEY } from '@/utils/upgradeFlag'
-import { VERSION_CHECK_FLAG_KEY, type LatestVersionInfo, runVersionCheck } from '@/utils/versionCheck'
-import { MSG } from '@/types/messages'
+import { VERSION_CHECK_FLAG_KEY, type LatestVersionInfo } from '@/utils/versionCheck'
+import { useVersionCheck } from '@/composables/useVersionCheck'
 
 const version = ref(chrome.runtime.getManifest().version)
 // 显示尺寸 28px，用 32 比 48 更省字节 + 缩放损失更小（lighthouse image-size-responsive）
@@ -320,53 +320,14 @@ async function dismissUpdate() {
   } catch {}
 }
 
-// v0.7.5：chrome.runtime.reload() 等价 chrome://extensions 点 ↻（重读 manifest +
-// 所有 dist 文件），免去用户手动跳扩展页。
-// 前提：用户已解压新版 zip 覆盖原扩展目录。没覆盖 reload 后还是旧版（chrome 不知
-// 道有新文件，用户责任）。
-// P0 防丢：录屏中 reload 会让 offscreen MediaRecorder 销毁 + chunks 全丢。先查
-// SW 录屏状态，正在录就 confirm 让用户决定。SW 不可达时 fallback 直接 reload。
-async function reloadExtension() {
-  try {
-    const res = await chrome.runtime.sendMessage({ type: MSG.QUERY_RECORDING_STATE }) as
-      | { recording?: boolean } | undefined
-    if (res?.recording) {
-      if (!confirm('Moo 正在录屏 — 重新加载会让已录内容丢失。继续吗？')) return
-    }
-  } catch { /* SW 不可达，直接 reload 让用户能恢复 */ }
-  chrome.runtime.reload()
-}
-
-// v0.7.5：版本号 chip 点击触发手动检查更新（不等 24h alarm）。
-const versionChecking = ref(false)
-const versionCheckedAt = ref('')
-const versionCheckJustDone = ref(false)  // 「✓ 已是最新」临时高亮（仅当真没新版时）
-let versionCheckDoneTimer: number | undefined
-async function manualVersionCheck() {
-  if (versionChecking.value) return
-  versionChecking.value = true
-  versionCheckJustDone.value = false
-  if (versionCheckDoneTimer) clearTimeout(versionCheckDoneTimer)
-  const start = Date.now()
-  try {
-    await runVersionCheck()
-    // 最小 600ms spinner 显示防一闪而过（fetch Gitee API 通常 < 500ms）
-    const elapsed = Date.now() - start
-    if (elapsed < 600) await new Promise(r => setTimeout(r, 600 - elapsed))
-    const now = new Date()
-    versionCheckedAt.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-    // 仅当真没新版才高亮「已是最新」 —— 有新版会触发 onChanged → banner 弹起来抢戏
-    if (!updateInfo.value) {
-      versionCheckJustDone.value = true
-      versionCheckDoneTimer = window.setTimeout(() => {
-        versionCheckJustDone.value = false
-        versionCheckDoneTimer = undefined
-      }, 2500)
-    }
-  } finally {
-    versionChecking.value = false
-  }
-}
+// v0.7.5：版本检查 UX 抽到 useVersionCheck composable（popup + 工作台同款行为）
+const {
+  checking: versionChecking,
+  lastChecked: versionCheckedAt,
+  checkJustDone: versionCheckJustDone,
+  runCheck: manualVersionCheck,
+  reloadExtension
+} = useVersionCheck({ hasUpdate: () => !!updateInfo.value })
 
 async function dismissUpgrade() {
   needsHostPermUpgrade.value = false
@@ -639,10 +600,7 @@ onBeforeUnmount(() => {
     chrome.storage.onChanged.removeListener(storageWatcher)
     storageWatcher = null
   }
-  if (versionCheckDoneTimer) {
-    clearTimeout(versionCheckDoneTimer)
-    versionCheckDoneTimer = undefined
-  }
+  // versionCheck timer cleanup 已由 useVersionCheck composable 自管
 })
 
 </script>

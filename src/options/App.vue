@@ -90,8 +90,8 @@ import Overview from '@/devtools/tabs/Overview.vue'
 import Environment from '@/devtools/tabs/Environment.vue'
 import History from '@/devtools/tabs/History.vue'
 import Settings from '@/devtools/tabs/Settings.vue'
-import { VERSION_CHECK_FLAG_KEY, type LatestVersionInfo, runVersionCheck } from '@/utils/versionCheck'
-import { MSG } from '@/types/messages'
+import { VERSION_CHECK_FLAG_KEY, type LatestVersionInfo } from '@/utils/versionCheck'
+import { useVersionCheck } from '@/composables/useVersionCheck'
 
 const logoUrl = chrome.runtime.getURL('icons/icon-48.png')
 const version = chrome.runtime.getManifest().version
@@ -103,8 +103,14 @@ const inspectedHost = (window as { __mooInspectedHost?: string }).__mooInspected
 // chrome.storage.local VERSION_CHECK_FLAG_KEY。这里读 flag + 监听 onChanged +
 // 手动触发不等 24h。跟 popup 同款行为。
 const updateInfo = ref<LatestVersionInfo | null>(null)
-const checking = ref(false)
-const lastChecked = ref('')  // 「已是最新（HH:mm 查）」显示
+// v0.7.5：版本检查 UX 抽到 useVersionCheck composable（popup + 工作台同款行为）
+const {
+  checking,
+  lastChecked,
+  checkJustDone,
+  runCheck: checkNow,
+  reloadExtension
+} = useVersionCheck({ hasUpdate: () => !!updateInfo.value })
 
 function loadUpdateFlag() {
   void chrome.storage.local.get(VERSION_CHECK_FLAG_KEY).then(r => {
@@ -121,48 +127,8 @@ function loadUpdateFlag() {
   }).catch(() => { updateInfo.value = null })
 }
 
-// v0.7.5：chrome.runtime.reload() 等价 chrome://extensions ↻ — 重读 manifest +
-// 所有 dist 文件。前提：用户已解压新版 zip 覆盖原扩展目录。
-// P0 防丢：录屏中 reload 会让 offscreen MediaRecorder 销毁 + chunks 全丢。
-async function reloadExtension() {
-  try {
-    const res = await chrome.runtime.sendMessage({ type: MSG.QUERY_RECORDING_STATE }) as
-      | { recording?: boolean } | undefined
-    if (res?.recording) {
-      if (!confirm('Moo 正在录屏 — 重新加载会让已录内容丢失。继续吗？')) return
-    }
-  } catch { /* SW 不可达，直接 reload */ }
-  chrome.runtime.reload()
-}
-
-const checkJustDone = ref(false)  // v0.7.5：「✓ 已是最新」临时高亮防一闪而过
-let checkDoneTimer: number | undefined
-async function checkNow() {
-  if (checking.value) return
-  checking.value = true
-  checkJustDone.value = false
-  if (checkDoneTimer) clearTimeout(checkDoneTimer)
-  const start = Date.now()
-  try {
-    await runVersionCheck()
-    loadUpdateFlag()
-    // 最小 600ms spinner 显示（runVersionCheck 通常 < 500ms 一闪而过用户看不见）
-    const elapsed = Date.now() - start
-    if (elapsed < 600) await new Promise(r => setTimeout(r, 600 - elapsed))
-    const now = new Date()
-    lastChecked.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-    // 仅当没新版才高亮反馈 —— 有新版 update-link 会取代 check 按钮显示
-    if (!updateInfo.value) {
-      checkJustDone.value = true
-      checkDoneTimer = window.setTimeout(() => {
-        checkJustDone.value = false
-        checkDoneTimer = undefined
-      }, 2500)
-    }
-  } finally {
-    checking.value = false
-  }
-}
+// 注：runCheck 没法直接调 loadUpdateFlag —— chrome.storage.onChanged 会异步同步，
+// 但 same-context write 不一定 fire onChanged，所以 storageWatcher 兜底重读
 
 let storageWatcher: ((c: Record<string, chrome.storage.StorageChange>, area: string) => void) | null = null
 onMounted(() => {
@@ -177,10 +143,7 @@ onBeforeUnmount(() => {
     chrome.storage.onChanged.removeListener(storageWatcher)
     storageWatcher = null
   }
-  if (checkDoneTimer) {
-    clearTimeout(checkDoneTimer)
-    checkDoneTimer = undefined
-  }
+  // versionCheck timer cleanup 已由 useVersionCheck composable 自管
 })
 
 // v0.7.5：tab 顺序按使用频率 — 概览（每次看）/ 历史（次频）/ 环境（一次配）/ 设置（极少改）
