@@ -2,6 +2,88 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.7.6
+
+2026-05-26 发版。无 BREAKING — **2 个 P0 + 6 个 P1 + 9 个 P2**（chrome-devtools MCP 真机抓 + 8 agent 17 审找到）。
+
+### 🔴 P0 — 配项目后悬浮球不出现（旗舰修，dogfood 真撞，chrome-devtools MCP 实地复现）
+
+v0.7.x dynamic content_scripts 设计漏：chrome `chrome.scripting.registerContentScripts` **只对未来 navigation 生效**，已打开的 tab 不回填注入 → 用户配好 matchPatterns 后悬浮球永不在当前 tab 出现 → 必须手动 reload extension + 刷新页面（2 步 workaround，用户以为「功能坏了」）。
+
+完整闭环 2 步修：
+- **SW 端 backfill**：`syncContentScripts` register 成功后 `chrome.tabs.query({url:matches})` + `chrome.scripting.executeScript` 注入已打开 tab（ISOLATED + MAIN world）。chrome:// / chrome-extension:// 自动跳过
+- **content 端孤儿 host 清理**：reload extension 时 chrome 销毁 SW + content script，但 `#__moo_dev_tool_host__` DOM 留着。backfill 再注入时 `getElementById(HOST_ID)` 命中 → 跳过 Vue mount → host 是空壳。修：检测孤儿 host `remove()` 重建（attachShadow 同 host 二次调用 throw 必须 remove）
+
+chrome-devtools MCP 实地验：reload extension（吃新 dist）→ **不刷新 wn.* tab** → 等 3s → 截图看悬浮球真出现 ✓。e2e R3 backfill regression guard 锁住未来回归。
+
+### 🔴 升级闭合 — 「✓ 已升级到 vX.Y.Z」toast（mv3-pro P2 闭环）
+
+v0.7.5 加 `chrome.runtime.reload()` 一键重载后，用户如果没真解压 zip 就点 reload，扩展重启仍是旧版 → 用户看不到「升级失败」反馈，banner 还在以为重复点击。
+
+完整闭合：
+- `reloadExtension` 前写 `UPGRADE_INTENT { expected: latestVersion, at }` 到 storage.local
+- SW `onInstalled('update')` 调 `checkUpgradeFinished` 对比 `manifest.version` vs `expected`
+- 匹配 → 写 `UPGRADED_TOAST` 触发 popup/工作台显示绿色 banner「✓ 已升级到 vX.Y.Z」3s 自动消
+- 不匹配 → 不动 intent 等下次 reload
+- intent 24h 过期清理（dogfood 用户开会回来场景，1h 太短）
+
+### P1 — 业务深扫真撞 4 条（general-purpose / mv3-pro 12 审）
+
+- **历史重提丢禅道字段**（dogfood「我选了严重 2 + 指派 X 重提变回默认」）：BugHistoryEntry schema 扩 5 字段（zentaoType/Severity/Pri/AssignedTo/ModuleId），buildHistoryEntry 快照 + History.vue resubmit 传字段
+- **webhook entry 调 zentao fetchStatus 404 silent skip**：handler 加 `entry.serverId vs project.kind` 一致校验
+- **多 server fetchStatus 找错 server**：AdapterFetchStatusCtx 加 serverId，webhookAdapter 优先 `ctx.serverId` 反查（v0.5.x 老 entry fallback first endpoint）
+- **附件孤儿 fileID 文案**（dogfood「retry 5 次留 25 个孤儿附件」）：submitToZentao 失败 error 拼 uploaded urls 让管理员能溯源清理
+
+### P1 — 11 审 P0/P1（之前累的也一波加进）
+
+- **🔴 storage.session content world 默认 not accessible**（chrome 112+）：SW 启动调 `setAccessLevel TRUSTED_AND_UNTRUSTED_CONTEXTS`，整个悬浮球 toggle 链路真活起来（不调 = 链路完全废）
+- **runVersionCheck 并发 race**：模块级 `inflightCheck` Promise guard 重入合并
+- **register 非原子 retry**：抛错 retry 一次缩短裸奔窗口
+- **saveConfig quota fail silent**：try/catch + 写 `mooConfigQuotaFailed` flag 不让 await 抛红
+- **Environment fallback URL**（v0.7.4 vue-craft 11 审）：options 浮窗 `chrome.tabs.query lastFocusedWindow` 兜底 + 排除 chrome-extension:// 自身
+
+### P2 — 9 条
+
+- popup chip focus halo / `.moo-chip--btn` outline 紧贴边缘
+- popup banner role="alert"+aria-live="polite" ARIA 矛盾 → 去 aria-live 让 role 主导
+- `.dropped-msg code` light mode 对比度 1.1:1 → 改 var(--moo-c-bg-elev)
+- `.moo-submit-success` 加 role="status" aria-live="polite" SR 用户能听到「提交成功」
+- `.update-link:hover` var(--moo-c-warn) 未定义 → 改 var(--moo-c-warn-fg)
+- `.update-line` min-height: 22px 防状态切换 4px 抖动
+- captureVisibleTab quota 文案误导 → 区分 quota error / 权限/保护页
+- Annotator emit cancel(reason='error') + ContentApp toast 「截图加载失败」(不是 silent 退 idle 让用户摸不着头脑)
+- webhookAdapter console.warn bodyPreview 默认不打（chrome.storage.local mooDebug=true 才显示）
+- retryQueue per-item cooldown 60s 防同一 zentao bug 双发（dogfood「重提一条出来 2 条」修）
+- history cap-trim 路径也设 trimmed flag（之前只 quota fail 设）
+- upgrade intent 1h → 24h（dogfood 开会回来场景）
+- popup「悬浮球（host）」toggle chrome:// 等场景 disabled 占位（不 v-if 整行隐藏）
+- popup chip 改可点击 + 「✓ 已是最新」2.5s 高亮反馈
+
+### 重构
+
+- 抽 `useVersionCheck` composable（popup + 工作台同款 80 行重复 → composable）
+- 注释清理：v0.7.4/v0.7.5 期间「同事反馈」叙事 19 处简化保留 essence
+
+### 测试基础设施
+
+- 修 D1 dropped-banner e2e 偶发 flake — fixture seedStorage 加 transient flag（mooDroppedMatchPatterns / mooUpgradeIntent / mooUpgradedToast）
+- 新 e2e：R3 backfill regression guard + upgrade-closure 5 case + reload-during-recording 3 case + popup-version-chip-check 2 case + options-update-check 2 case
+- 新单测：submitHandler 禅道 5 字段透传 + webhookAdapter fetchStatus serverId fallback + writeUpgradeIntent / checkUpgradeFinished 5 case
+- **613 单测 / 132 e2e × 6 跑 = 792 case 0 fail 0 flake**
+
+### 8 agent 17 审
+
+mv3-pro / vue-craft / general-purpose / code-simplifier / lab-tester / Plan / Explore / release-captain — 含 v0.7.5 候选 11 审 + v0.7.6 候选 12 审 + 业务深扫 13 审。
+
+### 留 v0.7.7+ / v0.8.x
+
+- useRecorder 30s race tripwire（content stop + offscreen tripwire 在 inactive tab 节流叠加，深 race 复杂）
+- passwordMask iframe / shadow DOM 限制（chrome 设计 limit 不修）
+- 多上下文 mooConfig lost update（非 v0.7.x 新引入，Settings 早有同款）
+- Plan v0.8 路线：useInspectedTab composable / CWS build flag / 4 Tab 公共层
+
+---
+
 ## v0.7.5
 
 2026-05-26 发版。无 BREAKING — 升级 UX 大改 + 5 agent + 9 审 P0/P1 修。

@@ -89,6 +89,20 @@ v0.7.0 dynamic register + v0.6.0 optional_host_permissions 之后，**fresh inst
 14. **版本检查 chip + 工作台「检查更新」（v0.7.5）**：popup 头部版本号 `v0.x.x` chip 点击 → 600ms spinner →「✓ 已是最新」高亮 2.5s → 回原。工作台 brand 区「⟳ 检查更新」按钮同款。
 15. **chrome.runtime.reload() 升级链路（v0.7.5）**：人工模拟「有新版」场景（手动写 `chrome.storage.local.set({mooLatestVersionInfo: {...}})` 或回滚到老版本让 SW alarm 触发）→ popup banner 出现「3 步升级」+ 点「③ 重新加载」按钮 → 扩展真重启（manifest 重读 + SW 重启）。**录屏中点 reload 应弹 confirm 防丢**（mv3-pro P0 修过）。
 
+### v0.7.6 必走手测（lab-tester 14 审建议）
+
+playwright e2e 物理驱不动的真用户场景，必须手测兜底：
+
+16. **🔴 旗舰 P0：配 matchPatterns 后已开 tab 立即出悬浮球**（v0.7.6 backfill 闭环）：
+   - 装 v0.7.6 → 任意业务页 wn.* 已经开着 → 工作台「环境」配 matchPatterns
+   - **不刷新 tab + 不 reload extension** → 悬浮球 ≤ 3s 内出现
+   - 反 case：reload extension 后**也不刷新 tab** → 悬浮球**重新**出现（孤儿 host 重建链路）
+17. **popup 版本 chip 检查更新真链路**：点 chip → spinner ≥ 600ms → 「✓ 已是最新」绿色高亮 2.5s →（实测真 fetch Gitee API，不是 mock）
+18. **录屏涟漪 + 点击标记**：⌥⇧R 启录 → 真鼠标点击 → 视频里看红圈涟漪 + 落点
+19. **工作台浮窗 brand-meta 「📍 host」**：popup 点「⚙ 完整配置」→ 浮窗 brand-meta 显示当前 chrome 主窗口 active tab 的 host（不是浮窗自身 chrome-extension）
+20. **popup「悬浮球（host）」toggle 跨 tab 一致性**：popup 点 toggle → 当前 tab 悬浮球消失，**另开一个 host 不同的 tab** → 悬浮球出现（toggle 只藏当前 host）
+21. **升级闭合「✓ 已升级到 vX.Y.Z」toast**：手动设 `chrome.storage.local.set({mooUpgradeIntent:{expected:'0.7.6',at:Date.now()}})` → reload extension → popup 开 → 看到绿色「✓ 已升级到 v0.7.6」3s 自动消
+
 ## 自动化测试（chrome-devtools MCP / playwright MCP）注意
 
 - 悬浮球用 pointer 事件自实现 click 判定（防 drag 误触）。CDP `click` / `click_at` 合成事件**可能触发不了**截图按钮 —— v0.3.0+ 已加 dragEndedAt 时间窗（250ms 之外的合成 click 放过），但极快连击仍有打架。如自动化遇「click 报 success 但 Annotator 不弹」，先确认 host 已创建、再尝试隔 300ms 重试。
