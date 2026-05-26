@@ -24,6 +24,29 @@
           :ref="el => { if (el) tabRefs[i] = el as HTMLElement }"
           @click="active = t.key"
         >
+          <!-- v0.7.5 同事反馈：4 个 tab 图标要保留才显得精致。从 Panel.vue v0.4.9 同款抄来。 -->
+          <span class="tab-icon" aria-hidden="true">
+            <svg v-if="t.key === 'overview'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3"  width="7" height="7" rx="1.5"/>
+              <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+              <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+              <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+            </svg>
+            <svg v-else-if="t.key === 'env'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4"  width="18" height="6" rx="1.5"/>
+              <rect x="3" y="14" width="18" height="6" rx="1.5"/>
+              <circle cx="7" cy="7" r=".8" fill="currentColor"/>
+              <circle cx="7" cy="17" r=".8" fill="currentColor"/>
+            </svg>
+            <svg v-else-if="t.key === 'history'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M12 7v5l3.5 2"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>
+            </svg>
+          </span>
           <span class="tab-label">{{ t.label }}</span>
         </button>
       </nav>
@@ -121,6 +144,8 @@ function onTabKeydown(e: KeyboardEvent) {
   font-size: 12px;
   font-weight: 500;
 }
+.tab-icon { display: inline-flex; }
+.tab-icon svg { width: 14px; height: 14px; flex: none; }
 .tab:hover { color: var(--moo-c-text); background: var(--moo-c-bg-elev); }
 .tab.is-active {
   color: var(--moo-c-brand-fg);
