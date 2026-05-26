@@ -74,10 +74,11 @@ const logoUrl = chrome.runtime.getURL('icons/icon-48.png')
 // host 由 options/main.ts pre-mount shim 通过 chrome.windows.getLastFocused 拿好。
 const inspectedHost = (window as { __mooInspectedHost?: string }).__mooInspectedHost ?? ''
 
+// v0.7.5 同事反馈：tab 顺序按使用频率排 — 概览（每次看）/ 历史（次频）/ 环境（一次配）/ 设置（极少改）
 const tabs = [
   { key: 'overview', label: '概览' },
-  { key: 'env',      label: '环境' },
   { key: 'history',  label: '历史' },
+  { key: 'env',      label: '环境' },
   { key: 'settings', label: '设置' }
 ] as const
 
