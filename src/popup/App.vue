@@ -5,7 +5,18 @@
         <img class="logo" :src="logoUrl" alt="Moo" />
         <h1>Moo Dev Tool</h1>
       </div>
-      <span class="moo-chip">v{{ version }}</span>
+      <!-- v0.7.5：版本号 chip 改成可点击按钮 — 同事反馈「想主动检查更新但没入口」。
+           点击调 runVersionCheck（不等 24h alarm）；有新版 onChanged 自动让 banner 弹起来。 -->
+      <button
+        type="button"
+        class="moo-chip moo-chip--btn"
+        :disabled="versionChecking"
+        :title="versionCheckedAt ? `点击检查更新（上次 ${versionCheckedAt} 查）` : '点击检查更新'"
+        @click="manualVersionCheck"
+      >
+        <template v-if="versionChecking">⟳ 检查中…</template>
+        <template v-else>v{{ version }}</template>
+      </button>
     </header>
 
     <!-- v0.6.0 / v0.7.0 BREAKING：host_permissions optional + content_scripts 动态注册升级时
@@ -253,7 +264,7 @@ import { listHistory } from '@/storage/history'
 import { relativeTime } from '@/utils/relativeTime'
 import { t } from '@/i18n'
 import { UPGRADE_FLAG_KEY } from '@/utils/upgradeFlag'
-import { VERSION_CHECK_FLAG_KEY, type LatestVersionInfo } from '@/utils/versionCheck'
+import { VERSION_CHECK_FLAG_KEY, type LatestVersionInfo, runVersionCheck } from '@/utils/versionCheck'
 
 const version = ref(chrome.runtime.getManifest().version)
 // 显示尺寸 28px，用 32 比 48 更省字节 + 缩放损失更小（lighthouse image-size-responsive）
@@ -316,6 +327,22 @@ async function dismissUpdate() {
 function reloadExtension() {
   chrome.runtime.reload()
   // popup 不需要 window.close —— reload 会重启整个扩展运行时，popup 自然销毁
+}
+
+// v0.7.5：版本号 chip 点击触发手动检查更新（不等 24h alarm）。有新版 onChanged 会
+// 让 updateInfo 自动更新 + banner 自动弹；没新版 chip 短暂显示「已最新」反馈
+const versionChecking = ref(false)
+const versionCheckedAt = ref('')
+async function manualVersionCheck() {
+  if (versionChecking.value) return
+  versionChecking.value = true
+  try {
+    await runVersionCheck()
+    const now = new Date()
+    versionCheckedAt.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  } finally {
+    versionChecking.value = false
+  }
 }
 
 async function dismissUpgrade() {
@@ -1024,6 +1051,23 @@ onBeforeUnmount(() => {
   transition: transform var(--moo-motion-fast);
 }
 .popup-switch.is-on .popup-switch-thumb { transform: translateX(14px); }
+
+/* v0.7.5：版本号 chip 作为按钮 — 用户主动检查更新入口 */
+.moo-chip--btn {
+  border: none;
+  cursor: pointer;
+  font-family: var(--moo-ff-mono);
+  transition: background-color var(--moo-motion-fast), color var(--moo-motion-fast);
+}
+.moo-chip--btn:hover:not(:disabled) {
+  background: var(--moo-c-brand-soft);
+  color: var(--moo-c-brand);
+}
+.moo-chip--btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
+}
+.moo-chip--btn:disabled { opacity: .7; cursor: progress; }
 
 .foot { margin-top: 12px; text-align: center; }
 
