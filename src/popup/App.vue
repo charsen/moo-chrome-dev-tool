@@ -587,6 +587,11 @@ onBeforeUnmount(() => {
   background: var(--moo-c-bg);
   font-family: var(--moo-ff-sans);
   color: var(--moo-c-text);
+  /* v0.7.5：popup 4 角圆化让视觉精致（同事反馈）。chrome 113+ macOS popup
+     window 自带系统级圆角，跟这里 10px 对齐完美；Windows/Linux chrome popup
+     仍方角，内部 dark 块圆角也比纯方更精致一档。 */
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .head {
@@ -1050,4 +1055,14 @@ onBeforeUnmount(() => {
   background: var(--moo-c-bg);
 }
 .help-pop b { color: var(--moo-c-text); font-weight: 600; }
+</style>
+
+<!-- v0.7.5：unscoped 全局让 html/body 透明，让 .popup 的 border-radius 真起作用 —
+     chrome popup window 自己 backdrop（macOS 系统圆角处 / Windows 方角 padding 处）
+     就不被 popup dark bg 盖住，露出 chrome shell 透明融合 -->
+<style>
+html, body {
+  margin: 0;
+  background: transparent;
+}
 </style>
