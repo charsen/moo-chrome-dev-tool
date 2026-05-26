@@ -118,15 +118,10 @@
     <section v-else class="state state--empty">
       <div class="empty-illust">👋</div>
       <div class="state-title">{{ firstRun ? '欢迎使用 Moo Dev Tool' : '还没有项目' }}</div>
-      <p class="hint" v-if="firstRun">
-        截图 / 录屏 + 自动抓请求 / 错误，一键提交 bug。
+      <p class="hint">
+        <template v-if="firstRun">截图 / 录屏 + 自动抓请求 / 错误，一键提交 bug。点底部 <b>⚙ 打开工作区</b> 配第一个项目。</template>
+        <template v-else>点底部 <b>⚙ 打开工作区</b> 新建项目。</template>
       </p>
-      <ol class="onboard-steps">
-        <li>点底部 <b>⚙ 打开工作区</b>（或按 <span class="kbd">F12</span> → <b>Moo</b>）</li>
-        <li><b>环境</b> 新建项目 + URL 匹配（如 <code>https://*.example.com/*</code>）</li>
-        <li v-if="firstRun">访问命中页 → 悬浮球自动出现</li>
-      </ol>
-      <button v-if="firstRun" class="onboard-cta" @click="dismissOnboard">我看完了 →</button>
     </section>
 
     <!-- 最近提交（有任何 history 都显示，不限 matched / nomatch / empty 三态） -->
