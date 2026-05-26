@@ -49,3 +49,43 @@ export function stealPageFocusRepeatedly(onSettled?: () => void): () => void {
   })
   return () => { timers.forEach(t => clearTimeout(t)) }
 }
+
+/**
+ * v0.7.8：persistent focus guard — 防 page 富文本编辑器 / element-ui dialog 等
+ * **持续抢回**焦点的 trap。setTimeout 反复 blur 只在 mount 后 400ms 内有效，
+ * 用户实际点 input 时已超时 → trap 抢回。
+ *
+ * 修法：page document 上 focusin / focusout capture phase listener，检测焦点
+ * 切到 Moo host element 时 `stopImmediatePropagation` 让 page modal trap
+ * 收不到 event 不会触发抢回逻辑。
+ *
+ * 副作用：会阻所有 page focusin/out listener（capture phase），不只 modal trap。
+ * 但 Moo overlay 期间这是值得的（用户 dogfood 反馈输入不了字比 page 其它
+ * focus 副作用严重）。unmount 时拆除恢复。
+ *
+ * 用法：
+ * ```ts
+ * let cleanup: (() => void) | null = null
+ * onMounted(() => { cleanup = guardFocusForHost(HOST_ID) })
+ * onBeforeUnmount(() => cleanup?.())
+ * ```
+ */
+export function guardFocusForHost(hostId: string): () => void {
+  function onFocusEvent(e: FocusEvent) {
+    // composedPath 跨 closed shadow boundary，能看到事件源到 page document 的完整链
+    // 如果链上有 Moo host element → 焦点是 Moo 内的，page modal trap 不该响应
+    const path = e.composedPath()
+    for (const n of path) {
+      if (n instanceof Element && n.id === hostId) {
+        e.stopImmediatePropagation()
+        return
+      }
+    }
+  }
+  document.addEventListener('focusin', onFocusEvent, true)
+  document.addEventListener('focusout', onFocusEvent, true)
+  return () => {
+    document.removeEventListener('focusin', onFocusEvent, true)
+    document.removeEventListener('focusout', onFocusEvent, true)
+  }
+}

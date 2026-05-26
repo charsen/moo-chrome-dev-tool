@@ -299,7 +299,8 @@ const ZENTAO_MAX_ATTACHMENT_MB = 49
 import { formatSubmitResult } from '@/utils/submitMessage'
 import { safeSendMessage } from '@/utils/messaging'
 import { redactUrl } from '@/utils/redact'
-import { stealPageFocusRepeatedly } from '@/utils/stealPageFocus'
+import { stealPageFocusRepeatedly, guardFocusForHost } from '@/utils/stealPageFocus'
+import { HOST_ID } from './styles'
 import SubmitFormZentao from './components/SubmitFormZentao.vue'
 import SubmitFormWebhook from './components/SubmitFormWebhook.vue'
 import type { ZentaoFormFields } from './components/SubmitFormZentao.types'
@@ -825,15 +826,23 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
-// v0.7.7 P0 (dogfood 真撞)：用户在 page modal（element-ui dialog 等带 focus trap 的
-// 组件）focus 状态触发截图 → SubmitDialog 弹出 → page modal trap 抢回焦点 →
-// 用户点 SubmitDialog 标题 / 描述 input 但**输入不了字**（每次 focus 立刻被 trap 抢走）。
-// 修：stealPageFocusRepeatedly 50/100/200/400ms 反复 blur page activeElement 跟
-// page modal trap 拼速度，最后一次 focus 我们自己的 titleInput。
+// v0.7.7→v0.7.8 P0 (dogfood 真撞 2 次)：用户在 page modal / 富文本编辑器 focus
+// 状态触发截图 → SubmitDialog 弹出 → page modal trap **持续**抢回焦点 →
+// 用户点 SubmitDialog 标题 / 描述 input 但**输入不了字**。
+//
+// 修法链：
+// 1. stealPageFocusRepeatedly mount 时反复 blur 抢回主导
+// 2. **guardFocusForHost 持久 listener**：page document focusin/focusout capture
+//    phase 监听，焦点切到 Moo host 时 stopImmediatePropagation 让 page modal
+//    trap 收不到 event 不会抢回（v0.7.7 反复 blur 只 400ms 内有效不够，富文本
+//    编辑器持续 trap 用户点 input 时已超时）
+//
 // 详见 utils/stealPageFocus 注释。
 let stealFocusCleanup: (() => void) | null = null
+let focusGuardCleanup: (() => void) | null = null
 onMounted(() => {
   window.addEventListener('keydown', onKeydown, true)
+  focusGuardCleanup = guardFocusForHost(HOST_ID)  // 持久 guard
   stealFocusCleanup = stealPageFocusRepeatedly(() => {
     titleInput.value?.focus()
   })
@@ -845,6 +854,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown, true)
   // v0.7.7 P0：清 stealPageFocusRepeatedly 的 timer 防泄漏
   if (stealFocusCleanup) { stealFocusCleanup(); stealFocusCleanup = null }
+  // v0.7.8 P0：清持久 focus guard listener
+  if (focusGuardCleanup) { focusGuardCleanup(); focusGuardCleanup = null }
   if (successTimer) clearTimeout(successTimer)
   if (clearElementsConfirmTimer) clearTimeout(clearElementsConfirmTimer)
   if (copyHintTimer) clearTimeout(copyHintTimer)
