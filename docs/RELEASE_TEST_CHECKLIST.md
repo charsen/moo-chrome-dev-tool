@@ -81,6 +81,14 @@ v0.7.0 dynamic register + v0.6.0 optional_host_permissions 之后，**fresh inst
 
 **任何一步偏离预期 = 红 = 不能发版**。v0.7.1 装上即炸 P0 就是这条链路上的 silent 回归（自动化没覆盖到，dogfood 时才撞）。
 
+### v0.7.4+ 手测项追加（涉及 popup / 工作区 / 更新链路必跑）
+
+11. **悬浮球当前页 toggle（v0.7.4）**：popup footer「悬浮球（host）」开关点击 → 当前页悬浮球立即消失 / 恢复（< 50ms）。chrome:// 等无 host 页 → toggle 显「(当前页面不支持)」disabled。
+12. **工作区浮窗（v0.7.4）**：popup「⚙ 打开工作区（独立浮窗）」按钮 → 弹独立 760×720 chrome window → 4 Tab（概览/历史/环境/设置）可切，brand-meta 显「📍 host」。
+13. **popup 4 角圆角（v0.7.4）**：macOS chrome 113+ popup 4 角圆角对齐内部 dark 块，Windows/Linux chrome 方角时内部块仍圆。
+14. **版本检查 chip + 工作台「检查更新」（v0.7.5）**：popup 头部版本号 `v0.x.x` chip 点击 → 600ms spinner →「✓ 已是最新」高亮 2.5s → 回原。工作台 brand 区「⟳ 检查更新」按钮同款。
+15. **chrome.runtime.reload() 升级链路（v0.7.5）**：人工模拟「有新版」场景（手动写 `chrome.storage.local.set({mooLatestVersionInfo: {...}})` 或回滚到老版本让 SW alarm 触发）→ popup banner 出现「3 步升级」+ 点「③ 重新加载」按钮 → 扩展真重启（manifest 重读 + SW 重启）。**录屏中点 reload 应弹 confirm 防丢**（mv3-pro P0 修过）。
+
 ## 自动化测试（chrome-devtools MCP / playwright MCP）注意
 
 - 悬浮球用 pointer 事件自实现 click 判定（防 drag 误触）。CDP `click` / `click_at` 合成事件**可能触发不了**截图按钮 —— v0.3.0+ 已加 dragEndedAt 时间窗（250ms 之外的合成 click 放过），但极快连击仍有打架。如自动化遇「click 报 success 但 Annotator 不弹」，先确认 host 已创建、再尝试隔 300ms 重试。
