@@ -60,6 +60,27 @@ chrome://extensions 「加载已解压的扩展程序」指向 `<repo>/dist`。
 
 **修复**：chrome://extensions Moo 「重新加载」+ 所有已打开 tab 刷新。或干脆走路 A 用 release zip。
 
+## v0.7.x 必走的 fresh install 手测链路（自动化驱不了）
+
+v0.7.0 dynamic register + v0.6.0 optional_host_permissions 之后，**fresh install 流程靠 e2e 验不了**（playwright 给不出 user gesture 让 chrome.permissions.request work，lab-tester 8 审 5 路径调研已确认）。已有 e2e：
+- E1/E2/E3（API 契约层）：验 chrome.scripting.registerContentScripts 调用契约
+- R1/R2（真链路层，v0.7.4）：用 mandatory manifest cpSync 绕 user gesture 验 grant 后全链路
+
+**仍需手测**（每次涉及 popup banner / host_permission / content script 注入 链路变更必跑）：
+
+1. 移除 chrome 里旧的 Moo unpacked 实例（防权限缓存干扰）
+2. 解压新版 zip → chrome://extensions 「加载已解压的扩展程序」装
+3. **预期**：popup 弹「升级 — 上报功能需要重新启用」banner（红色）
+4. 点 banner「一键启用上报功能」按钮
+5. **预期**：chrome 原生弹窗问「Moo Dev Tool 想要：在所有网站上读取和更改您的数据」
+6. 点「允许」
+7. **预期**：banner 消失，popup「✓ 已启用」（绿 dot）
+8. 访问任意配过 matchPatterns 的页面 → F5 刷新
+9. **预期**：右下角悬浮球出现（黑色雕鸟 + 截图按钮 + 录屏按钮）
+10. F12 console 看：无 `Denying load` / `chrome-extension://invalid/` / `Failed to fetch dynamically imported`
+
+**任何一步偏离预期 = 红 = 不能发版**。v0.7.1 装上即炸 P0 就是这条链路上的 silent 回归（自动化没覆盖到，dogfood 时才撞）。
+
 ## 自动化测试（chrome-devtools MCP / playwright MCP）注意
 
 - 悬浮球用 pointer 事件自实现 click 判定（防 drag 误触）。CDP `click` / `click_at` 合成事件**可能触发不了**截图按钮 —— v0.3.0+ 已加 dragEndedAt 时间窗（250ms 之外的合成 click 放过），但极快连击仍有打架。如自动化遇「click 报 success 但 Annotator 不弹」，先确认 host 已创建、再尝试隔 300ms 重试。
