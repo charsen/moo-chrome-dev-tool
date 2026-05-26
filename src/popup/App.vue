@@ -23,7 +23,9 @@
 
     <!-- v0.6.0 / v0.7.0 BREAKING：host_permissions optional + content_scripts 动态注册升级时
          老用户首次打开需要主动启用。banner 醒目展示直到用户开启或显式关闭。 -->
-    <div v-if="needsHostPermUpgrade" class="upgrade-banner" role="alert" aria-live="polite">
+    <!-- v0.7.6 vue-craft 审：role=alert 隐含 assertive，跟 aria-live=polite 矛盾。
+         banner 是 critical 升级提示，去 aria-live 让 role 主导（SR 立即播报） -->
+    <div v-if="needsHostPermUpgrade" class="upgrade-banner" role="alert">
       <div class="upgrade-title">升级 — 上报功能需要重新启用</div>
       <div class="upgrade-msg">为符合 Chrome Web Store 评审要求，「向上报服务器发送请求」改为可选权限。点下方按钮一次性启用，之后所有提交照旧工作。</div>
       <button
@@ -36,15 +38,17 @@
     </div>
 
     <!-- v0.7.6：升级成功 toast — 用户点 reload + SW onInstalled 验证升级真完成后弹，
-         3 秒自动消 + 可点 dismiss。排在最前防被 upgrade / dropped / update banner 挤掉 -->
-    <div v-else-if="upgradedToast" class="upgraded-toast" role="status" aria-live="polite">
-      <div class="upgraded-title">✓ 已升级到 v{{ upgradedToast.version }}</div>
+         3 秒自动消 + 可点 dismiss。
+         v0.7.6 vue-craft P2：从 v-else-if 链拎到最前面（v-if 不参与排他），不让
+         needsHostPermUpgrade banner 抢戏 — 用户刚升级完更想看「✓ 已升级」反馈 -->
+    <div v-if="upgradedToast" class="upgraded-toast" role="status">
+      <div class="upgraded-title"><span aria-hidden="true">✓ </span>已升级到 v{{ upgradedToast.version }}</div>
       <button type="button" class="upgrade-dismiss" @click="dismissUpgradedToast">知道了</button>
     </div>
 
     <!-- v0.7.0：matchPatterns 被 translator drop 的 banner（v0.6→v0.7 老 patterns 升级失效引导）
          v-else-if 排他于 upgrade-banner（host permission 没开优先 pattern 问题不抢戏） -->
-    <div v-else-if="droppedPatternsInfo" class="dropped-banner" role="alert" aria-live="polite">
+    <div v-else-if="droppedPatternsInfo" class="dropped-banner" role="alert">
       <div class="dropped-title">⚠ {{ droppedPatternsInfo.count }} 个 URL 匹配规则与 v0.7.0 不兼容</div>
       <div class="dropped-msg">
         chrome MV3 严格要求 <code>https?://host/path</code> 形态。被 drop 的示例：
@@ -1063,7 +1067,9 @@ onBeforeUnmount(() => {
 }
 .dropped-title { font-weight: 600; margin-bottom: 4px; color: var(--moo-c-text); }
 .dropped-msg { color: var(--moo-c-text-muted); line-height: 1.6; margin-bottom: 6px; }
-.dropped-msg code { padding: 0 4px; background: var(--moo-c-bg); border-radius: 3px; }
+/* v0.7.6 vue-craft P1：warn-soft 浅黄底上 var(--moo-c-bg) 白底 light mode 对比度 1.1:1 几乎看不见 →
+   改 -bg-elev（淡一档灰）light/dark 都 OK */
+.dropped-msg code { padding: 0 4px; background: var(--moo-c-bg-elev); border-radius: 3px; }
 .dropped-samples { color: var(--moo-c-text); font-family: monospace; }
 
 .rec-toggle {

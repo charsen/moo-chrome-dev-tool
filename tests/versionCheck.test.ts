@@ -193,12 +193,20 @@ describe('writeUpgradeIntent + checkUpgradeFinished (v0.7.6 升级闭合)', () =
     expect(storage[UPGRADE_INTENT_KEY]).toBeDefined()  // intent 留着
   })
 
-  it('intent 超过 1h 过期 → 清 intent 不发 toast', async () => {
+  it('intent 超过 24h 过期 → 清 intent 不发 toast', async () => {
     setupChrome('0.7.6')
-    storage[UPGRADE_INTENT_KEY] = { expected: '0.7.6', at: Date.now() - 2 * 60 * 60_000 }  // 2h 前
+    storage[UPGRADE_INTENT_KEY] = { expected: '0.7.6', at: Date.now() - 25 * 60 * 60_000 }  // 25h 前
     await checkUpgradeFinished()
     expect(storage[UPGRADED_TOAST_KEY]).toBeUndefined()
     expect(storage[UPGRADE_INTENT_KEY]).toBeUndefined()  // 过期清掉
+  })
+
+  it('intent 23h 内还有效 → 升级匹配后弹 toast（dogfood 用户开会回来场景）', async () => {
+    setupChrome('0.7.6')
+    storage[UPGRADE_INTENT_KEY] = { expected: '0.7.6', at: Date.now() - 23 * 60 * 60_000 }  // 23h 前
+    await checkUpgradeFinished()
+    const toast = storage[UPGRADED_TOAST_KEY] as { version: string } | undefined
+    expect(toast?.version).toBe('0.7.6')
   })
 
   it('没 intent → no-op（不抛错）', async () => {

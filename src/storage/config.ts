@@ -139,10 +139,26 @@ export async function loadConfig(): Promise<MooConfig> {
   return config
 }
 
+/** v0.7.6：quota 超时 popup banner 引导清理用的 flag。general-purpose 11 审找的真痛点 —
+ *  之前 saveConfig 无 try/catch 直接 throw，UI 看似切换但实际没保存（Environment / Settings
+ *  改字段时 silent 丢）。现在 catch 后写 flag 让 popup 弹「⚠ 配置写入失败：存储已满，请清理历史」 */
+export const QUOTA_FAIL_FLAG_KEY = 'mooConfigQuotaFailed'
+
 export async function saveConfig(config: MooConfig): Promise<void> {
   // Vue 响应式对象在结构化克隆时可能丢字段，先解到纯对象再写入
   const plain = JSON.parse(JSON.stringify(config)) as MooConfig
-  await chrome.storage.local.set({ [CONFIG_KEY]: plain })
+  try {
+    await chrome.storage.local.set({ [CONFIG_KEY]: plain })
+    // 写入成功 → 清掉之前的 quota flag（用户清理历史后又能写了）
+    void chrome.storage.local.remove(QUOTA_FAIL_FLAG_KEY).catch(() => {})
+  } catch (e) {
+    // 通常是 chrome.storage.local 5MB quota 超出 — 写 flag 让 popup banner 提示
+    // 用户清理历史 / 减少 capture buffer。不要 silent 让 await 失败抛红 Vue 红屏
+    void chrome.storage.local.set({
+      [QUOTA_FAIL_FLAG_KEY]: { message: (e as Error).message, at: Date.now() }
+    }).catch(() => { /* storage 完全锁死也无能为力，至少 throw 给调用方 */ })
+    throw e
+  }
   if (import.meta.env.DEV) console.log('[Moo:config] saved', plain)
 }
 

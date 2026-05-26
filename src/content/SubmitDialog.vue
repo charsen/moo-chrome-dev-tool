@@ -8,8 +8,10 @@
     initial-focus="container"
     @close="onMaskClick"
   >
-      <!-- 提交成功内嵌反馈：取代 toast 一闪而过的反馈方式 -->
-      <div v-if="successInfo" class="moo-submit-success">
+      <!-- 提交成功内嵌反馈：取代 toast 一闪而过的反馈方式。
+           v0.7.6 vue-craft P1：加 role=status + aria-live=polite 让 SR 用户能读到「提交成功 #xxx」反馈
+           （之前漏了，失败横幅 line 257 有 role=alert 成功路径不对称） -->
+      <div v-if="successInfo" class="moo-submit-success" role="status" aria-live="polite">
         <div class="moo-success-icon" aria-hidden="true">✓</div>
         <div class="moo-success-title">提交成功</div>
         <div v-if="successInfo.remoteId" class="moo-success-id">

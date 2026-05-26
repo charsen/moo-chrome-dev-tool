@@ -111,8 +111,9 @@ export async function checkUpgradeFinished(): Promise<void> {
     const r = await chrome.storage.local.get(UPGRADE_INTENT_KEY)
     const intent = r[UPGRADE_INTENT_KEY] as UpgradeIntent | undefined
     if (!intent || !intent.expected || !intent.at) return
-    // 1 小时窗口内有效 — 太老（用户点 reload 后忘了解压几天后才装上）当过期
-    if (Date.now() - intent.at > 60 * 60_000) {
+    // 24 小时窗口内有效 — 用户点 reload 后开会去了/忘解压超过几小时再装上是常见场景
+    // （v0.7.6 初版 1h 太短，dogfood 慢响应高发，general-purpose 11 审改 24h）
+    if (Date.now() - intent.at > 24 * 60 * 60_000) {
       await chrome.storage.local.remove(UPGRADE_INTENT_KEY)
       return
     }

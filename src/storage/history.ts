@@ -109,8 +109,13 @@ export async function addHistoryEntry(entry: BugHistoryEntry): Promise<WriteResu
   return withWriteMutex(async () => {
     const list = await read()
     list.unshift(shrunk)
+    // v0.7.6：cap-trim 也算 trimmed（general-purpose 11 审 P2）— 之前只有 quota
+    // 失败路径设 trimmed，正常 30 条满后丢老的用户看不到。调用方据此决定是否提示
+    const beforeCap = list.length
     if (list.length > MAX_ENTRIES) list.length = MAX_ENTRIES
-    return write(list)
+    const capTrimmed = beforeCap - list.length
+    const result = await write(list)
+    return { ...result, trimmed: result.trimmed + capTrimmed }
   })
 }
 
