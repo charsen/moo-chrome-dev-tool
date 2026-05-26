@@ -37,10 +37,19 @@ const RETRY_MAX_BODY_BYTES = 1_000_000
 const RETRY_MAX_QUEUE_LEN = 50
 /** 单条最多重试 5 次，超过丢弃（持续 5xx 一般是服务端永久故障） */
 export const RETRY_MAX_ATTEMPTS = 5
+/**
+ * v0.7.6：per-item 重试冷却 — 防同一条在 90s flush-cooldown 过期后再次 alarm
+ * 立即重发让禅道侧产生重复 bug（general-purpose 业务深扫 P2-4，dogfood 真撞
+ * 「重提一条出来 2 条 bug」根因）。zentao multipart 80s 才超时返错时，flush-
+ * cooldown 不能覆盖；per-item 60s 兜底「这条 item 60s 内不能再发」。
+ */
+export const PER_ITEM_RETRY_COOLDOWN_MS = 60_000
 
 interface QueuedBase {
   enqueuedAt: number
   attempts: number
+  /** v0.7.6：本 item 上次 attempt 开始时间 — 防 cooldown 内重发让远端产生重复 bug */
+  lastAttemptAt?: number
   /** 上次尝试的 HTTP 状态（zentao 路径下：成功 = 不入队；4xx-token-related = 不入队；5xx/网络错 = 入此字段） */
   lastStatus?: number
   /** 上次失败原因摘要 */
@@ -81,6 +90,7 @@ function normalizeQueueItem(raw: unknown): QueuedItem | null {
       kind: 'zentao',
       enqueuedAt: r.enqueuedAt,
       attempts: r.attempts ?? 0,
+      lastAttemptAt: r.lastAttemptAt,
       projectId: r.projectId,
       req: r.req,
       lastStatus: r.lastStatus,
@@ -93,6 +103,7 @@ function normalizeQueueItem(raw: unknown): QueuedItem | null {
     kind: 'webhook',
     enqueuedAt: r.enqueuedAt,
     attempts: r.attempts ?? 0,
+    lastAttemptAt: r.lastAttemptAt,
     endpoint: r.endpoint,
     method: r.method ?? 'POST',
     headers: r.headers ?? {},
@@ -285,6 +296,12 @@ async function doFlush(): Promise<number> {
 
   for (const q of list) {
     if (q.attempts >= RETRY_MAX_ATTEMPTS) continue
+    // v0.7.6 P2-4：per-item cooldown — 防同条在远端慢响应（zentao multipart 80s）
+    // + flush 90s cooldown 之后立即重发让远端产生重复 bug（dogfood 撞过）
+    if (q.lastAttemptAt && Date.now() - q.lastAttemptAt < PER_ITEM_RETRY_COOLDOWN_MS) {
+      remaining.push(q)  // 留在队列等下次 alarm，不丢
+      continue
+    }
     const adapter = getAdapter(q.kind)
     if (!adapter) {
       // 未注册 adapter（历史 storage 残留 kind） → drop
@@ -294,6 +311,7 @@ async function doFlush(): Promise<number> {
     // zentao 路径需要 project 查 baseUrl；webhook payload 自带 endpoint，project undefined 也行
     const projectId = q.kind === 'zentao' ? (q as QueuedZentao).projectId : undefined
     const project = projectId ? (await getConfig()).projects.find(p => p.id === projectId) : undefined
+    q.lastAttemptAt = Date.now()  // 标记本次开始尝试（不管 outcome 都更新，避免 60s 内重试）
     const outcome = await adapter.retryFromPayload(q, project)
     if (outcome.kind === 'ok') { processed++; continue }
     if (outcome.kind === 'drop') continue

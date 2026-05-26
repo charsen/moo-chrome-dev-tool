@@ -158,19 +158,66 @@ export async function syncContentScripts(): Promise<void> {
     // v0.7.3 mv3-pro 7 审 P1：register 抛错时用户会落到「俩都没注册」裸奔态（pattern
     // 边界 / quota / API 内部 race 都可能）。下次 SW spin-up 自愈（index.ts:158 兜底），
     // 但缩短裸奔窗口仍值得 —— retry 一次。两次都失败再 log + 等 spin-up 兜底。
+    let registerOK = false
     try {
       await chrome.scripting.registerContentScripts(newScripts)
+      registerOK = true
     } catch (firstErr) {
       console.warn('[Moo] syncContentScripts register first attempt failed:', (firstErr as Error).message, '— retry once')
       try {
         await chrome.scripting.registerContentScripts(newScripts)
+        registerOK = true
       } catch (retryErr) {
         console.warn('[Moo] syncContentScripts register retry failed:', (retryErr as Error).message, '— 等 SW spin-up 兜底')
       }
     }
+
+    // v0.7.6 P0：dynamic register 后 chrome **不向已打开 tab 回填注入** —
+    // 用户「配好 matchPatterns 但当前 tab 没悬浮球，得手动刷新」是 dogfood 真痛点
+    // （chrome-devtools MCP 实地复现确认）。这里主动 executeScript 一次性补回填。
+    if (registerOK) await backfillExistingTabs(matches, paths)
   } catch (e) {
     // chrome.scripting API 在 SW 早期 spin-up 阶段可能抛 / 权限边界 / 用户改 manifest race
     console.warn('[Moo] syncContentScripts 失败:', (e as Error).message)
+  }
+}
+
+/**
+ * v0.7.6：用户配好 matchPatterns 后，对已打开 tab 主动 executeScript 回填注入，
+ * 不让用户「配置看着生效但悬浮球没出」（chrome dynamic register 只对未来 navigation
+ * 生效是设计 limitation，所以这里补一次性 inject）。
+ *
+ * 兼容 manifest match pattern 语法 — chrome.tabs.query 接受 url glob 数组（跟
+ * matchPatterns 同款 chrome MV3 spec：`scheme://host/path`）。每个 matched tab 跑
+ * 一次 executeScript（target=tabId, files=hashed loader paths），chrome 内部去重
+ * 防同一 tab 重复 inject（已注入的 content script 二次 inject chrome 跳过）。
+ *
+ * 失败静默 — content script 已 register，未来导航仍能注入，回填只是 nice-to-have。
+ */
+async function backfillExistingTabs(
+  matches: string[],
+  paths: { mainWorld: string[]; iso: string[] }
+): Promise<void> {
+  try {
+    const tabs = await chrome.tabs.query({ url: matches })
+    for (const tab of tabs) {
+      if (!tab.id || !tab.url) continue
+      // chrome:// / chrome-extension:// 等不允许注入，chrome 自动拒
+      if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) continue
+      // ISOLATED world (主 content script) 回填
+      void chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: paths.iso
+      }).catch(() => { /* 已注入过 / 权限 / page navigated 都 OK，下次刷新自动注入 */ })
+      // MAIN world 同款
+      void chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: paths.mainWorld,
+        world: 'MAIN'
+      }).catch(() => { /* same */ })
+    }
+  } catch (e) {
+    console.warn('[Moo] backfillExistingTabs 失败:', (e as Error).message)
   }
 }
 
