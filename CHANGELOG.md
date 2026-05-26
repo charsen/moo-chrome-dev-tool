@@ -2,6 +2,25 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.7.7
+
+2026-05-26 发版。**🔴 dogfood hotfix** — v0.7.6 发布 5 分钟内用户撞 P0：Annotator 文字工具输入泄漏到宿主页 input。
+
+### 🔴 P0 — Annotator 文字工具字符泄漏到宿主页
+
+**症状**（dogfood 真撞 + 截图证据）：用户在 page input focus 状态（如 element-ui modal 的「区域」搜索框）按 ⌘⇧B 截图 → Annotator 弹出 → 选「T 文字」工具点画布位置 → 用户输入「水电费健康拉数据分」**字符同时进入宿主页「区域」input**。
+
+根因：Annotator mount 时**没偷走宿主页焦点**，page input 仍 focus 接键盘。Annotator 自己的 text input.focus() 在 `nextTick` 调，时序输给 page focus stay → 字符泄漏。
+
+修：
+- `stealPageFocus()` helper：blur `document.activeElement`（除 BODY / HTML）
+- Annotator `onMounted` 立即调
+- text mode 创建 input 前再调（防用户期间又点 page 抢回 focus）
+
+无新 BREAKING。612 单测 / 132 e2e 仍全过（修不破已有断面）。
+
+---
+
 ## v0.7.6
 
 2026-05-26 发版。无 BREAKING — **2 个 P0 + 6 个 P1 + 9 个 P2**（chrome-devtools MCP 真机抓 + 8 agent 17 审找到）。

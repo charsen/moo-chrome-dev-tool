@@ -1,6 +1,6 @@
 {
   "name": "moo-chrome-dev-tool",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "private": true,
   "type": "module",
   "description": "前后端业务调试 Chrome 扩展",

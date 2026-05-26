@@ -222,7 +222,22 @@ const modeHint = computed(() => {
   return ''
 })
 
+// v0.7.7 P0 (dogfood 真撞 chrome-devtools MCP 复现)：Annotator 开启时偷走宿主页焦点 —
+// 用户在 page input focus 状态触发截图 → Annotator 弹出 → page input 仍 focus →
+// 用户键盘输入 Annotator 文字工具时字符泄漏到 page input。fix: mount 时立即 blur 宿主
+// 页 activeElement（除了 body）。Annotator 关闭时 emit cancel/finish 不主动恢复 focus
+// （让 ContentApp / 用户自己决定下一步焦点）。
+function stealPageFocus() {
+  try {
+    const active = document.activeElement
+    if (active instanceof HTMLElement && active.tagName !== 'BODY' && active.tagName !== 'HTML') {
+      active.blur()
+    }
+  } catch { /* SVG / 跨 origin iframe 边界 silent */ }
+}
+
 onMounted(async () => {
+  stealPageFocus()
   const img = new Image()
   img.onload = async () => {
     canvasW.value = img.naturalWidth
@@ -380,6 +395,9 @@ function onDown(e: PointerEvent) {
   if (mode.value === 'text') {
     beginAction()
     editing.value = { type: 'text', x: p.x, y: p.y, text: '' }
+    // v0.7.7 P0：text mode 创建 input 前再偷一次 focus — 防用户在 Annotator 期间
+    // 又点过 page 抢回 focus 后才点 canvas（已知 mounted 偷过一次还不够）
+    stealPageFocus()
     nextTick(() => textInputEl.value?.focus())
     return
   }
