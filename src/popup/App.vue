@@ -119,14 +119,12 @@
       <div class="empty-illust">👋</div>
       <div class="state-title">{{ firstRun ? '欢迎使用 Moo Dev Tool' : '还没有项目' }}</div>
       <p class="hint" v-if="firstRun">
-        这是个前后端调试工具，配好<b>项目</b> + <b>上报服务器</b>后，
-        网页里会出现悬浮球——一键截图/录屏 + 自动抓现场，提交到你的 bug 系统。
+        截图 / 录屏 + 自动抓请求 / 错误，一键提交 bug。
       </p>
       <ol class="onboard-steps">
-        <li>按 <span class="kbd">F12</span> 打开 DevTools</li>
-        <li>切到 <b>Moo</b> 面板 → <b>环境</b> Tab</li>
-        <li>点 <b>+</b> 新建项目，填名字 + URL 匹配规则（如 <code>https://*.example.com/*</code>）</li>
-        <li v-if="firstRun">配好后回到这个页面，悬浮球会自动出现</li>
+        <li>点底部 <b>⚙ 打开工作区</b>（或按 <span class="kbd">F12</span> → <b>Moo</b>）</li>
+        <li><b>环境</b> 新建项目 + URL 匹配（如 <code>https://*.example.com/*</code>）</li>
+        <li v-if="firstRun">访问命中页 → 悬浮球自动出现</li>
       </ol>
       <button v-if="firstRun" class="onboard-cta" @click="dismissOnboard">我看完了 →</button>
     </section>
