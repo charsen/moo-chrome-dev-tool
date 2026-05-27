@@ -55,6 +55,7 @@ import { MSG, type CaptureScreenshotRes, type MatchProjectRes } from '@/types/me
 import { onConfigChanged } from '@/storage/config'
 import { safeSendMessage } from '@/utils/messaging'
 import { useToast } from '@/composables/useToast'
+import { guardFocusForHost } from '@/utils/stealPageFocus'
 import { useRequests } from './useRequests'
 import { useErrors, setErrorsEnabled } from './useErrors'
 import { HOST_ID } from './styles'
@@ -237,10 +238,19 @@ function onUrlSignalMessage(e: MessageEvent) {
   onUrlMaybeChanged()
 }
 
+// v0.7.8 P0：全局 focus guard — page document 上 capture-phase 监听 focusin/out，
+// 焦点切到 Moo host 时 stopImmediatePropagation 让 page 富文本编辑器 / element-ui
+// modal trap 收不到 event 不会抢回。覆盖所有 Moo overlay（Annotator / SubmitDialog /
+// FloatingBall），不需要各组件单独 install。详见 utils/stealPageFocus 注释。
+let focusGuardCleanup: (() => void) | null = null
+
 onMounted(async () => {
   // 请求监听需要尽早启动，匹配项目之前先用默认配置开始收集
   reqApi.start()
   errApi.start()
+  // v0.7.8 P0：guard 必须在所有 overlay 之前安装（user 即使在 mount 链路内点开 page modal，
+  // 后续触发 overlay 时 guard 已生效）
+  focusGuardCleanup = guardFocusForHost(HOST_ID)
   await refreshProject()
   // v0.7.4：读 session 隐藏 host 列表 + 监听跨 popup 同步
   await refreshHostHidden()
@@ -299,6 +309,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', onWindowResize)
   window.removeEventListener('pointerdown', onDocPointerDown, { capture: true })
   clearAllRipples()
+  // v0.7.8 P0：清 focus guard listener
+  if (focusGuardCleanup) { focusGuardCleanup(); focusGuardCleanup = null }
   chrome.runtime.onMessage.removeListener(onRuntimeMessage)
   if (hiddenHostsWatcher) {
     chrome.storage.onChanged.removeListener(hiddenHostsWatcher)
