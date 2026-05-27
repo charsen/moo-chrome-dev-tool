@@ -72,16 +72,22 @@ export const SHADOW_CSS = `
   --moo-c-warn-fg: #b45309;                            /* tokens.css 用 #92400e */
   --moo-sh-lg:     0 12px 32px rgba(15, 23, 42, .18);  /* tokens.css 用 .12 */
 
-  /* === 旧短名 → 新长名别名（避免一次性改 144 处 var(--c-*)） === */
+  /* === 旧短名 → 新长名别名（避免一次性改 144 处 var(--c-*)）。
+        v0.7.9 vue-craft 审计：补全 9 个未桥短名 — 防新写 shadow CSS 顺手用
+        var(--c-focus-ring) 等短名拿到 undefined。新写 shadow 内 CSS 可直接用短名。 === */
   --c-brand:        var(--moo-c-brand);
   --c-brand-hover:  var(--moo-c-brand-hover);
   --c-brand-soft:   var(--moo-c-brand-soft);
+  --c-brand-fg:     var(--moo-c-brand-fg);
   --c-info:         var(--moo-c-info);
+  --c-info-soft:    var(--moo-c-info-soft);
+  --c-info-fg:      var(--moo-c-info-fg);
   --c-text:         var(--moo-c-text);
   --c-text-muted:   var(--moo-c-text-muted);
   --c-text-dim:     var(--moo-c-text-dim);
   --c-text-faint:   var(--moo-c-text-faint);
   --c-border:       var(--moo-c-border);
+  --c-border-soft:  var(--moo-c-border-soft);
   --c-divider:      var(--moo-c-divider);
   --c-bg:           var(--moo-c-bg);
   --c-bg-soft:      var(--moo-c-bg-soft);
@@ -89,11 +95,16 @@ export const SHADOW_CSS = `
   --c-success:      var(--moo-c-success);
   --c-success-soft: var(--moo-c-success-soft);
   --c-success-fg:   var(--moo-c-success-fg);
+  --c-success-halo: var(--moo-c-success-halo);
   --c-danger:       var(--moo-c-danger);
   --c-danger-soft:  var(--moo-c-danger-soft);
   --c-danger-fg:    var(--moo-c-danger-fg);
   --c-warn-soft:    var(--moo-c-warn-soft);
   --c-warn-fg:      var(--moo-c-warn-fg);
+  --c-warn-halo:    var(--moo-c-warn-halo);
+  --c-focus-ring:   var(--moo-c-focus-ring);
+  --c-row-hover:    var(--moo-c-row-hover);
+  --c-scrim:        var(--moo-c-scrim);
   --r-sm:   var(--moo-r-sm);
   --r-md:   var(--moo-r-md);
   --r-lg:   var(--moo-r-lg);

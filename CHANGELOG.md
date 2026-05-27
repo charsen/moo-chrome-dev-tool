@@ -2,6 +2,44 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.8.0
+
+2026-05-27 发版。无 BREAKING — **`/full-team-review` 3 expert agent 全仓审计 → 3 🔴 + 10 🟡 + 5 🟢 全清**。13 业务 + 3 工程文件改动，业务行为完全兼容 + 22 新单测（fuzz payload 校验 / submit orchestrator 编排链）+ 死资产 1.36MB 清理。
+
+### 🔴 严重稳定性加固（3 隐患修，无现网 bug 但都明确）
+
+- **content world telemetry payload shape 校验加严**（`src/content/useRequests.ts` + `useErrors.ts`）：补 `requestHeaders/responseHeaders/requestBody` 非 null object 校验 + `id/startTime` 必填校验 + `push()` 包 try/catch；防 main-world 演化 / 同源脚本意外传 `null` headers 让 `redactHeaders` 调 `Object.entries(null)` 抛 TypeError 污染 chrome://extensions 错误页。12 个 fuzz 单测覆盖。
+- **offscreen state 6 处直写改为走 `transition()`**（`src/offscreen/index.ts`）：track-ended / handleStart 末尾 / 35s tripwire / handleStop 在 starting / handleStop normal / handleCancel 两路 — 之前直接 `state = 'stopping'` 等绕过 stateMachine canTransition invariant，未来加新状态边漏改这些点会静默错误。`cleanup()` 内是唯一允许的直写点（资源释放收尾），注释明示。
+- **chrome.permissions onAdded/onRemoved 加 200ms debounce**（`src/background/dynamicScripts.ts`）：抽 `scheduleSync()` 共用 listener — 用户快速 toggle host_permission 时多 listener 叠加 fire 触发 3-4 次 unregister+register chrome.scripting 撞 quota 风险。
+
+### 🟡 中等加固（10 项）
+
+- **broadcastAutoStopped 用 scripting matches 过滤 tabs**（`src/background/handlers/record.ts`）：从 `tabs.query({})` fan-out 给所有 tab 改成只播给真正注入了 content 的 tab。删 `void chrome.runtime.lastError` 残留。
+- **SW 监听 `storage.onChanged` 兜底 `OFFSCREEN_AUTO_STOPPED`** + 删 offscreen 端 `setTimeout(notify, 50)` 50ms 魔数：三路保险（runtime.sendMessage / alarms tripwire / storage flag + onChanged），SW 已 alive 时 offscreen 落 flag 也立即处理。
+- **`chrome.runtime.getContexts` 返空 console.debug breadcrumb**：未来 contextTypes typo（如 `OFFSCREEN_DOCUMENTS` 多 S）chrome 不报错只返空数组，log 提示 caller 验拼写。
+- **`setBadgeBackgroundColor` 同色 skip**（`src/utils/badge.ts`）：抽 `setBadgeColorOnce` 缓存 module-level `lastBadgeColor`，chrome 130+ per-session warn 收敛。
+- **3 个 E2E harness 仅 release build 排除**（`vite.config.ts` + `scripts/release.mjs`）：新增 `MOO_RELEASE_BUILD=1` 闸，release.mjs 跑 build 时透传 — 生产 zip 不带 `dialog-harness.html` / `panel-harness.html` / `body-viewer-harness.html`；非 release build 默认仍带（不破 e2e 流程）。
+- **v-for `:key="i"` 改稳定 key**：SubmitDialog `pickedElements` 用 `el.selector` / EnvironmentWebhook headers 用 `entry[0]` header name — 防 splice 后 i 漂移让 input 复用串数据。
+- **shadow alias 桥补 9 个未桥 token**（`src/content/styles.ts`）：`--c-success-halo` / `--c-warn-halo` / `--c-focus-ring` / `--c-info-fg` / `--c-info-soft` / `--c-row-hover` / `--c-brand-fg` / `--c-border-soft` / `--c-scrim` — 防新写 shadow CSS 顺手用短名拿到 undefined。
+- **死资产 `src/assets/banner2.png` 删除**（1.36MB，全仓 0 引用）。
+- **`submitToZentao` orchestrator 编排层 10 个新单测**（`tests/zentaoSubmitOrchestrator.test.ts`）：cookie session 网络错 vs 认证错分类 + submitBug 三路径 + orphan hint 拼装 + 字段优先级 — 补 v0.4.4「编排层不裸奔」规则真空。
+- **`release.mjs` 加 `check:bundle-size` 拦截**：发版前 build 后跑 bundle 大小校验，避免 --skip-build 用旧 dev 产物 / 改大依赖未推先发。
+
+### 🟢 小修
+
+- 文档 `ONBOARDING.md` / `docs/COVERAGE_MATRIX.md` 测试数字过期（v0.4.5 时的 366+90 / 356+100）→ 改成「最新数字看 `HANDOFF.md`」一行，不再每次回填。
+- `useRecorder` timer module 单例加注释明示「故意 module 单例无 onBeforeUnmount」（content world 生命周期 = window 生命周期）。
+- `release.mjs` 末尾加旧 zip 清理 hint（不自动跑 — 删文件难撤销）。
+
+### 元教训
+
+- `/full-team-review` 7-8 波后 ROI 仍不为零 — 这次找出 3 严重 + 10 中等 + 5 小（无真 P0 bug，但都是「当前未炸的隐患明确」）。
+- **shape 校验加固 + try/catch listener** 是 content world 同源 / 演化 drift 的标准防线 — 不挡同源恶意脚本（同源能干更糟），挡意外传 null/undefined 整崩 listener。
+- **状态机 invariant 必须有强制写入点** — 直写 `state = ...` 哪怕「我知道这条迁移合法」也会让 future-self 漏改新状态边。
+- **debounce 多 listener 合并入口** — chrome quota 不是显式 API 但 onAdded/onRemoved/storage 三层叠加 fire 时 register/unregister 撞墙。
+- **release build 隔离测试 harness** — vite 多 entry 默认全打包，CWS 评审会问，env flag 闸住成本最低。
+- 635 单测（+22）/ vue-tsc 0 报错 / e2e 132 全过 / build 双模式（默认 + MOO_RELEASE_BUILD=1）都 OK。
+
 ## v0.7.8
 
 2026-05-27 发版。无 BREAKING — **🔴 focus 战争完整修**（同事 dogfood 真撞 3 次）+ 缩略图按钮视觉 + zip 解压目录免版本号 + keydown 不冒泡 page。

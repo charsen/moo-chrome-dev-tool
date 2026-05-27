@@ -66,7 +66,12 @@ export async function rehydrateRecordingFromOffscreen(): Promise<void> {
     const getCtx = (chrome.runtime as unknown as { getContexts?: (opts: { contextTypes: string[] }) => Promise<unknown[]> }).getContexts
     if (typeof getCtx !== 'function') return
     const contexts = await getCtx({ contextTypes: ['OFFSCREEN_DOCUMENT'] })
-    if (!Array.isArray(contexts) || contexts.length === 0) return
+    // v0.7.9 breadcrumb：chrome.runtime.getContexts 对错参（typo 如 'OFFSCREEN_DOCUMENTS'）
+    // 不 throw 而返空数组 — 静默拿不到 offscreen 用户无感。返空时 log 一行帮未来 debug。
+    if (!Array.isArray(contexts) || contexts.length === 0) {
+      console.debug('[Moo] rehydrate: getContexts returned empty — verify contextTypes spelling')
+      return
+    }
     const res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'QUERY_STATE' })
     if (!res || typeof res !== 'object') return
     const { state, meta } = res as { state?: string; meta?: { tabId?: number; startedAt?: number } | null }
@@ -113,6 +118,15 @@ export function installRecordingListeners(): void {
   // v0.4.8 windows.onRemoved 紧急 STOP
   chrome.windows?.onRemoved?.addListener((windowId) => {
     void emergencyStopForWindow(windowId)
+  })
+  // v0.7.9：SW 已 alive 时 offscreen 落 storage flag 也能立即被处理
+  // 不再依赖 SW spin-up 兜底 checkOffscreenAutoStoppedFlag（旧版只在 SW 冷启动跑）。
+  // offscreen → SW 三路保险：① runtime.sendMessage（同步通道）② alarms tripwire ③ storage flag。
+  chrome.storage?.onChanged?.addListener?.((changes, area) => {
+    if (area !== 'local' || !('mooOffscreenAutoStopped' in changes)) return
+    const next = changes.mooOffscreenAutoStopped?.newValue as { at?: number } | undefined
+    if (!next?.at) return  // 被 clear 不处理
+    void checkOffscreenAutoStoppedFlag()
   })
 }
 
@@ -162,12 +176,24 @@ export async function handleOffscreenAutoStopped(): Promise<{ ok: true }> {
 /**
  * 把"录屏已结束"广播给所有 tab 的 content script。
  * - excludeTabId：通常是触发 STOP/CANCEL 的 sender tab
- * - chrome.tabs.sendMessage 对没注入 content script 的 tab（chrome:// / 应用商店等）会 reject，catch 兜住
+ * - v0.7.9：先读 chrome.scripting 当前注册的 matches，只播给真正注入了 content 的 tab。
+ *   旧版 chrome.tabs.query({}) fan-out 给所有 tab，80+ tab 时大量 sendMessage reject
+ *   触发 chrome 130+ per-tab warn。拿不到 matches 时降级回 fan-out 不影响功能。
+ * - 删 void chrome.runtime.lastError — 这是 callback API 残留，promise 版 sendMessage
+ *   reject 已被 catch 吸收，再 read lastError 反而让 chrome runtime 多一次 IPC。
  */
 async function broadcastAutoStopped(reason: string, excludeTabId?: number): Promise<void> {
   let tabs: chrome.tabs.Tab[] = []
   try {
-    tabs = await chrome.tabs.query({})
+    // v0.7.9：scripting API 整体 try/catch — mock 测试 / 极老 chrome 没这个 API 时降级
+    let matches: string[] = []
+    try {
+      const registered = await chrome.scripting.getRegisteredContentScripts()
+      matches = registered.flatMap((s) => s.matches ?? [])
+    } catch { /* scripting 不可用 → 降级 fan-out */ }
+    tabs = matches.length > 0
+      ? await chrome.tabs.query({ url: matches })
+      : await chrome.tabs.query({})
   } catch {
     return
   }
@@ -175,11 +201,7 @@ async function broadcastAutoStopped(reason: string, excludeTabId?: number): Prom
     if (!t.id || t.id === excludeTabId) return
     try {
       await chrome.tabs.sendMessage(t.id, { type: MSG.RECORD_AUTO_STOPPED, reason })
-    } catch {
-      // tab 不接消息（无 content script / 已关）—— 静默
-      // v0.4.5：80+ tabs 时 chrome 会把 reject 同时设到全局 lastError 里，必须显式 read
-      void chrome.runtime.lastError
-    }
+    } catch { /* tab 已关 / 注入 race — promise reject 已被 catch 吸收 */ }
   }))
 }
 

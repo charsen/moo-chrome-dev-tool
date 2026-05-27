@@ -181,21 +181,23 @@ async function handleStart(streamId: string, tabId?: number): Promise<{ ok: bool
   // 用户从 chrome 自身的"停止共享"UI 停了 → onended → 自动停止
   stream.getVideoTracks()[0]?.addEventListener('ended', () => {
     if (state === 'recording') {
-      state = 'stopping'  // 没人 await STOP；onstop 会直接 cleanup
-      try { recorder?.stop() } catch { /* ignore */ }
-      // 通知 background：本次录屏是被外部停止的（没人在 await STOP），
-      // SW 会把消息转发给原录屏 tab 的 content script，让 rec-bar 收回。
-      // catch 防 SW 暂时不可达（offscreen 文档外部 sendMessage 偶发失败）。
-      // v0.4.5：SW 刚回收时这条 message 会丢（chrome 不保证 in-flight 投递）→ 所有 tab 的 rec-bar 不退。
-      // 加 storage flag fallback：SW spin-up 时读 flag 也能感知到 auto-stop（仍要 SW 自己广播）。
-      const notify = () => {
-        try {
-          chrome.runtime.sendMessage({ type: 'OFFSCREEN_AUTO_STOPPED' }).catch(() => {})
-        } catch { /* ignore */ }
+      // v0.7.9：过 transition() 强制 invariant — 非法迁移会被拦下并 log 而非静默错误
+      if (!transition('recording', 'stopping')) {
+        console.warn('[Moo offscreen] track-ended：recording → stopping 拒绝，state=', state)
+        return
       }
-      notify()
-      // 50ms 后重试一次防 SW 此刻正在 spin-up；同时落 storage flag 兜底
-      setTimeout(notify, 50)
+      // 没人 await STOP；onstop 会直接 cleanup
+      try { recorder?.stop() } catch { /* ignore */ }
+      // 通知 background：本次录屏是被外部停止的（没人在 await STOP），SW 会把消息转发给
+      // 原录屏 tab 的 content script，让 rec-bar 收回。
+      // v0.7.9：删 50ms setTimeout retry 魔数 — SW 不可靠场景靠 storage flag + 对端 storage.onChanged
+      // 监听兜底（record.ts installRecordingListeners 已加 listener）。三路保险：
+      //   ① runtime.sendMessage（SW alive 时同步通道）
+      //   ② chrome.alarms tripwire（35s，offscreen 端 setTimeout 也兜底）
+      //   ③ storage.local.set → storage.onChanged 触发 SW 处理
+      try {
+        chrome.runtime.sendMessage({ type: 'OFFSCREEN_AUTO_STOPPED' }).catch(() => {})
+      } catch { /* ignore */ }
       try {
         chrome.storage.local.set({ mooOffscreenAutoStopped: { at: Date.now() } }).catch(() => {})
       } catch { /* ignore */ }
@@ -206,7 +208,12 @@ async function handleStart(streamId: string, tabId?: number): Promise<{ ok: bool
   attachStreamSink(stream)
 
   recorder.start(1000)
-  state = 'recording'
+  // v0.7.9：过 transition() — starting → recording 合法迁移
+  if (!transition('starting', 'recording')) {
+    console.warn('[Moo offscreen] handleStart 末尾 starting → recording 拒绝，state=', state)
+    cleanup('idle')
+    return { ok: false, error: '内部状态错误' }
+  }
 
   // v0.4.8：独立 35s tripwire 兜底 content 端 30s timer（inactive tab 节流可绕导致录到 1-2 分钟）。
   // 35s 留 5s buffer 让 content 端正常 stop 先执行；如果还没停就强制 stop 防长录像爆 IPC。
@@ -214,7 +221,10 @@ async function handleStart(streamId: string, tabId?: number): Promise<{ ok: bool
   setTimeout(() => {
     if (state === 'recording') {
       console.log('[Moo offscreen] 35s tripwire fired — content 端 30s timer 可能被 inactive tab 节流，强制 stop')
-      state = 'stopping'
+      if (!transition('recording', 'stopping')) {
+        console.warn('[Moo offscreen] tripwire transition 拒绝，state=', state)
+        return
+      }
       try { recorder?.stop() } catch { /* ignore */ }
       // v0.4.9：tripwire 必须通知 SW → broadcast → 所有 tab rec-bar 退（之前漏了，
       // inactive tab 用户回来看 rec-bar 还亮但已停录，再点 STOP 拿「没有正在进行的录制」错）
@@ -236,7 +246,11 @@ function handleStop(): Promise<StopResult> {
     // 这里 STOP 调用方需要立刻得到回应，不能 hang 等 starting 完成。
     if (state === 'starting') {
       // 标记 stopping，让 handleStart 看到 state !== 'starting' 后清场
-      state = 'stopping'
+      // v0.7.9：starting → stopping 合法迁移（见 stateMachine.ts ALLOWED 表）
+      if (!transition('starting', 'stopping')) {
+        resolve({ ok: false, error: `state machine 拒绝 ${state} → stopping` })
+        return
+      }
       resolve({ ok: false, error: '录制还在启动中就被停止，没拿到画面' })
       // cleanup 由 handleStart 的 if (state !== 'starting') 分支负责
       return
@@ -252,7 +266,12 @@ function handleStop(): Promise<StopResult> {
     }
     // 把 resolver 挂上后 stop()，onstop 走 stopping 分支 resolve。
     stopResolver = resolve
-    state = 'stopping'
+    // v0.7.9：recording → stopping 合法迁移（前面 state !== 'recording' 已被守卫）
+    if (!transition('recording', 'stopping')) {
+      stopResolver = null
+      resolve({ ok: false, error: `state machine 拒绝 ${state} → stopping` })
+      return
+    }
     try {
       recorder.stop()
     } catch (e) {
@@ -267,12 +286,20 @@ function handleCancel() {
   // CANCEL 在任意态都能调；区分 starting / recording 处理。
   if (state === 'starting') {
     // 让 handleStart 的 if (state !== 'starting') 分支 cleanup
-    state = 'idle'
+    // v0.7.9：starting → idle 合法迁移（CANCEL during starting）
+    if (!transition('starting', 'idle')) {
+      console.warn('[Moo offscreen] CANCEL during starting：迁移拒绝，state=', state)
+    }
     return
   }
   if (state === 'recording' && recorder && recorder.state !== 'inactive') {
     // 走 stopping 让 onstop 进 cleanup，不 resolve（CANCEL 无 caller 等结果）
-    state = 'stopping'
+    // v0.7.9：recording → stopping 合法迁移
+    if (!transition('recording', 'stopping')) {
+      console.warn('[Moo offscreen] CANCEL during recording：迁移拒绝，state=', state)
+      cleanup('idle')
+      return
+    }
     stopResolver = null
     try { recorder.stop() } catch {
       cleanup('idle')
@@ -290,6 +317,9 @@ function cleanup(next: State) {
   }
   recorder = null
   chunks = []
+  // v0.7.9：cleanup 是「资源释放收尾」语义，故意绕过 transition() invariant。
+  // 任意态 → idle 在错误路径上必须能走通（即便 state 之前已被破坏），不能因 invariant
+  // 拒绝就让 recorder/stream 永远不释放。这是唯一允许的 state 直写点。
   state = next
   if (next === 'idle') recordingMeta = null
   // 移除可能存在的 video sink

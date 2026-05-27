@@ -395,7 +395,9 @@ if (!skipBuild) {
     rmSync(distDir, { recursive: true, force: true })
   }
   console.log('运行 vite build…')
-  execSync('pnpm build', { cwd: root, stdio: 'inherit' })
+  // v0.7.9：MOO_RELEASE_BUILD=1 让 vite.config 排除 3 个 E2E harness entry，
+  // 生产 zip 不带 panel-harness / body-viewer-harness / dialog-harness（CWS 评审无噪音）
+  execSync('pnpm build', { cwd: root, stdio: 'inherit', env: { ...process.env, MOO_RELEASE_BUILD: '1' } })
 } else {
   console.log('--skip-build：跳过 vite build，直接打包现有 dist/')
   if (!existsSync(distDir)) {
@@ -418,6 +420,16 @@ const missing = required.filter((f) => !existsSync(resolve(distDir, f)))
 if (missing.length > 0) {
   console.error('build 产物缺以下必需文件，中止发版：')
   for (const f of missing) console.error(`  - dist/${f}`)
+  process.exit(1)
+}
+
+// v0.7.9：bundle 大小拦截 — CI 已跑，但 release 流程也跑一次防 CI 没扫到的本地发版
+// （比如 --skip-build 用了上次 dev 产物 / 改了某个大依赖未推先发）。
+console.log('检查 bundle 大小…')
+try {
+  execSync('pnpm check:bundle-size', { cwd: root, stdio: 'inherit' })
+} catch {
+  console.error('bundle 超限，中止发版（请精简产物或调整阈值后再试）')
   process.exit(1)
 }
 
@@ -681,4 +693,8 @@ function printNextSteps() {
   console.log('  git push origin master')
   console.log('')
   console.log('完事别忘了去 gitee「私人令牌」页重置 GITEE_TOKEN。')
+  // v0.7.9 hint：release/ 本地累积（每次发版 +1 个 zip + sha256）。建议保留最近 3 版手动清旧的：
+  //   ls -t release/moo-chrome-dev-tool-*.zip | tail -n +7 | xargs rm
+  //   ls -t release/moo-chrome-dev-tool-*.zip.sha256* | tail -n +7 | xargs rm
+  // 不自动跑 — 删文件难撤销，让用户判断保留几版
 }

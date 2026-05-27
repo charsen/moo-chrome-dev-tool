@@ -231,7 +231,9 @@
                 <span class="req-hint" v-if="!pickedElements.length">点击"选元素"，在页面上指定 bug 涉及的具体 DOM</span>
               </div>
               <div v-if="pickedElements.length" class="req-list">
-                <div v-for="(el, i) in pickedElements" :key="i" class="req-item el-item">
+                <!-- v0.7.9：selector 全局唯一，作 key 比 index 稳；splice 删后 Vue 不会
+                     把后续 item DOM 拿去复用（旧版 :key="i" 会引发 input/MooCloseBtn 复用串数据） -->
+                <div v-for="(el, i) in pickedElements" :key="el.selector" class="req-item el-item">
                   <span class="method" :title="'tag: ' + el.tag">{{ el.tag }}</span>
                   <span class="url" :title="el.selector">{{ el.selector }}</span>
                   <MooCloseBtn aria-label="移除此元素" @click="pickedElements.splice(i, 1)" />

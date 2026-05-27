@@ -23,15 +23,26 @@ let captureEnabled = true
  * 必填字段都是基本类型；可选字段（error）不校验。攻击者要伪造的话必须把所有
  * 必填字段都写对，本质上等同于"故意上报一条假请求"——这种程度的攻击在
  * 同源脚本上下文里已无防御意义（同源脚本本身能干更糟的事）。
+ *
+ * v0.7.9 加固：headers / body 字段也校 shape — main-world 自己 bug 或同源脚本
+ * 把 requestHeaders 传 null，下游 redactHeaders 调 Object.entries(null) 会
+ * 抛 TypeError，污染 chrome://extensions 错误页。校 shape 不是防同源攻击，
+ * 是防意外 null/undefined 串到 redact 层。
  */
-function isValidRequestPayload(p: unknown): p is CapturedRequest {
+export function isValidRequestPayload(p: unknown): p is CapturedRequest {
   if (!p || typeof p !== 'object') return false
   const r = p as Record<string, unknown>
-  return typeof r.url === 'string'
-    && typeof r.method === 'string'
-    && typeof r.status === 'number'
-    && typeof r.duration === 'number'
-    && typeof r.startedAt === 'string'
+  if (typeof r.url !== 'string') return false
+  if (typeof r.method !== 'string') return false
+  if (typeof r.status !== 'number') return false
+  if (typeof r.duration !== 'number') return false
+  if (typeof r.startedAt !== 'string') return false
+  // headers 必须是非 null 对象；body 必须是 string 或 null
+  if (typeof r.requestHeaders !== 'object' || r.requestHeaders === null) return false
+  if (typeof r.responseHeaders !== 'object' || r.responseHeaders === null) return false
+  if (r.requestBody !== null && typeof r.requestBody !== 'string') return false
+  if (r.responseBody !== null && typeof r.responseBody !== 'string') return false
+  return true
 }
 
 function push(r: CapturedRequest) {
@@ -68,7 +79,11 @@ function start(initialCfg: { capture?: CaptureConfig; redact?: RedactConfig } = 
     // v0.4.8：用户在 Settings 关了 capture.requests → 不入 buffer
     if (!captureEnabled) return
     // 永远经过 redact：默认 DEFAULT_REDACT，刷新项目配置后用用户自定义的覆盖
-    push(redactRequest(data.payload, currentRedact))
+    // v0.7.9：包 try/catch — redact 内部对意外 shape 失败时不应让 listener throw
+    // 污染 chrome://extensions 错误页（main-world / 同源脚本演化都可能触发）
+    try {
+      push(redactRequest(data.payload, currentRedact))
+    } catch { /* silent — 单条 telemetry 丢比 listener 死强 */ }
   })
 }
 

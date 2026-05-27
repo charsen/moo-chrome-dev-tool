@@ -14,6 +14,11 @@ const BADGE_COLOR = '#dc2626'
 // v0.6.1：升级提示用 amber-600，区分 failure red — banner 已经够醒目，badge 仅辅助
 const UPGRADE_BADGE_COLOR = '#d97706'
 
+// v0.7.9：缓存上次设置的颜色 — chrome 130+ 同色重设会 per-session warn。
+// SW spin-up 时 module 重载会重置缓存，spin-up 后第一次 set 仍调 API（chrome 内部
+// 也是 spin-up 时 reset 颜色，所以这里跟 SW 生命周期对齐刚好）。
+let lastBadgeColor: string | undefined
+
 /**
  * 把 history 折算成 badge 文本并写到扩展图标。
  * - 失败 = entry.result.ok === false（含网络错 + 4xx/5xx）
@@ -24,12 +29,19 @@ const UPGRADE_BADGE_COLOR = '#d97706'
  * 让 badge 「!」固定显示直到启用或 dismiss。修复 v0.6.0 mv3-pro review 找出的 SW spin-up
  * refreshBadge 把 '!' 立即覆盖回空的 bug（onInstalled 设 '!' 仅 30s 寿命）。
  */
+async function setBadgeColorOnce(color: string): Promise<void> {
+  // v0.7.9：同色 skip，避免 chrome 130+ per-session warn 噪音
+  if (lastBadgeColor === color) return
+  await chrome.action.setBadgeBackgroundColor({ color })
+  lastBadgeColor = color
+}
+
 export async function updateActionBadge(history: BugHistoryEntry[]): Promise<void> {
   // 优先 check 升级 flag — 用户未启用 host_permission 时 host 受限，failure 计数本就不可靠
   try {
     const { [UPGRADE_FLAG_KEY]: needsUpgrade } = await chrome.storage.local.get(UPGRADE_FLAG_KEY)
     if (needsUpgrade) {
-      await chrome.action.setBadgeBackgroundColor({ color: UPGRADE_BADGE_COLOR })
+      await setBadgeColorOnce(UPGRADE_BADGE_COLOR)
       await chrome.action.setBadgeText({ text: '!' })
       return
     }
@@ -45,7 +57,7 @@ export async function updateActionBadge(history: BugHistoryEntry[]): Promise<voi
   }
   const text = n === 0 ? '' : n > 99 ? '99+' : String(n)
   try {
-    await chrome.action.setBadgeBackgroundColor({ color: BADGE_COLOR })
+    await setBadgeColorOnce(BADGE_COLOR)
     await chrome.action.setBadgeText({ text })
   } catch {
     // 极少数 Chrome 版本 / 非 standalone 上下文可能没 chrome.action——静默

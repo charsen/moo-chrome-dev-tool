@@ -224,16 +224,26 @@ async function backfillExistingTabs(
 let syncDebounceTimer: ReturnType<typeof setTimeout> | undefined
 
 /**
+ * v0.7.9：所有 sync 触发点共用同款 200ms debounce。
+ * - config 变化：用户在 Environment textarea 键入高频触发
+ * - permissions.onAdded/onRemoved：用户在 popup 快速 toggle host_permission 时
+ *   chrome 会同时 fire 多个 listener（dynamicScripts + background/index.ts 的
+ *   onHostPermissionAdded），200ms 内可能叠 3-4 次 unregister+register 撞
+ *   chrome.scripting quota。debounce 让所有触发点合并成一次 sync。
+ */
+export function scheduleSync(): void {
+  clearTimeout(syncDebounceTimer)
+  syncDebounceTimer = setTimeout(() => void syncContentScripts(), 200)
+}
+
+/**
  * SW 启动一次性调：注册 config 变化 / 权限变化 listener 自动重 sync。
  * onInstalled / onStartup / spin-up IIFE 各自单独调 syncContentScripts() 兜底首跑。
  */
 export function installDynamicScriptsListeners(): void {
-  // config 改 → 200ms debounce（用户在 Environment textarea 键入 matchPatterns 高频触发）
-  onConfigChanged(() => {
-    clearTimeout(syncDebounceTimer)
-    syncDebounceTimer = setTimeout(() => void syncContentScripts(), 200)
-  })
-  // 用户给权限 / 撤权 → 立即 sync（无权限的 origin chrome 会自动拒，无需 caller check）
-  chrome.permissions?.onAdded?.addListener?.(() => void syncContentScripts())
-  chrome.permissions?.onRemoved?.addListener?.(() => void syncContentScripts())
+  // config 改 → 200ms debounce
+  onConfigChanged(() => scheduleSync())
+  // v0.7.9：权限变化也走 debounce — 快速 toggle 时多个 listener 叠加触发，避免 quota 风暴
+  chrome.permissions?.onAdded?.addListener?.(() => scheduleSync())
+  chrome.permissions?.onRemoved?.addListener?.(() => scheduleSync())
 }

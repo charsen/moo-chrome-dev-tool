@@ -66,7 +66,9 @@
         <label>请求头</label>
       </div>
       <div class="kv-list">
-        <div v-for="(entry, i) in Object.entries(s.headers)" :key="i" class="kv-row">
+        <!-- v0.7.9：header name 是 dict 内唯一 key，比 index 稳；删 header 后 i 漂移
+             会让 input 复用串数据（旧 row 的 value 出现在新 row）-->
+        <div v-for="(entry, i) in Object.entries(s.headers)" :key="entry[0]" class="kv-row">
           <input
             :value="entry[0]"
             @change="onHeaderKeyChange(s, i, ($event.target as HTMLInputElement).value)"

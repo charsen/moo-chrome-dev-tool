@@ -1,6 +1,6 @@
 # Welcome to Moo Chrome Dev Tool
 
-> ⚠️ **「How We Use Claude」段是 v0.1.x 时代 30 天使用快照**（彼时 playwright 用得少 / 测试数 136+13）。当前 v0.4.x **双 MCP 必须都用且分断面**（见 `docs/MCP_TESTING.md`），测试数 366 单测 + 90 e2e。下面统计仅作历史 reference。
+> ⚠️ **「How We Use Claude」段是 v0.1.x 时代 30 天使用快照**（彼时 playwright 用得少 / 测试数 136+13）。当前 **双 MCP 必须都用且分断面**（见 `docs/MCP_TESTING.md`）。**最新测试数字看 `HANDOFF.md`**（本文写过的具体数字会随版本漂移，不再每次回填）。下面统计仅作历史 reference。
 
 ## How We Use Claude
 
@@ -61,10 +61,10 @@ pnpm mock     # 另起一个终端，假后端跑在 http://localhost:8787/bugs
 跑通后顺手做一遍：
 
 ```bash
-pnpm test          # 366 个 vitest 单测（v0.4.5 数），应该全绿
+pnpm test          # vitest 单测（具体数字看 HANDOFF.md），应该全绿
 pnpm type-check    # 干净
 pnpm build         # 干净
-pnpm test:e2e      # 90 个 Playwright E2E（首次需 pnpm exec playwright install chromium）
+pnpm test:e2e      # Playwright E2E（首次需 pnpm exec playwright install chromium）
 ```
 
 然后读 `HANDOFF.md`——里面有当前最该干的事、3 个老坑、若干新坑。挑一条上手。

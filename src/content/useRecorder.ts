@@ -30,6 +30,10 @@ export function useRecorder(opts: { maxSeconds?: number } = {}) {
 
   const maxSec = opts.maxSeconds ?? MAX_SECONDS
 
+  // v0.7.9 注释明示：timer 是 composable 内闭包变量，但 useRecorder 在 content world 只被 ContentApp
+  // 调一次（module 单例语义）。stop() / cancel() / externallyStopped() 都走 cleanup() 清 timer，
+  // window 卸载即整体 GC。故意不挂 onBeforeUnmount（content world 没明确 unmount hook，且 watcher
+  // 上层 ContentApp 已能保证终止路径）。
   let timer: number | null = null
 
   async function start(): Promise<RecordingResult | null> {
