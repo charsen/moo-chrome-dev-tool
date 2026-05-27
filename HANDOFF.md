@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.8.1 已发**（2026-05-27）。**🔴 dogfood hotfix** — v0.8.0 发布后用户立刻撞 P0：popup 检查更新 chip 在 Gitee API 限流时谎报「已是最新」，用户没法 detect 真新版。修：`runVersionCheck` 改三态返值（newer/latest/fail），UI 加红色「⚠ 检查失败 · 点击查看」+ 点击跳 Gitee releases。+7 单测。详情见 CHANGELOG v0.8.1 段。
+**v0.8.1 已发**（2026-05-27）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.1/moo-chrome-dev-tool-0.8.1.zip)（sha256 `da0932ea86859450eb4de0d19567026a0e66deb70ae3fd61193e69263359ca9f`）。**🔴 dogfood hotfix** — v0.8.0 发布后用户立刻撞 P0：popup 检查更新 chip 在 Gitee API 限流时谎报「已是最新」，用户没法 detect 真新版。修：`runVersionCheck` 改三态返值（newer/latest/fail），UI 加红色「⚠ 检查失败 · 点击查看」+ 点击跳 Gitee releases。+7 单测。详情见 CHANGELOG v0.8.1 段。
 
 **v0.8.0 已发**（2026-05-27）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.0/moo-chrome-dev-tool-0.8.0.zip)（sha256 `7a084c63093f5fad4ece334dc04fbe2c8f02017d65ae9b75c4f25d301345c681`）。无 BREAKING — `/full-team-review` 修 **3 🔴 + 10 🟡 + 5 🟢**（无现网 bug，全是「未炸但明确」的隐患）。+22 单测，行为兼容。详情见 CHANGELOG v0.8.0 段。
 
