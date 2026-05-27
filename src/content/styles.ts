@@ -1196,16 +1196,19 @@ export const SHADOW_CSS = `
   opacity: 1;
 }
 .moo-thumb-action {
-  /* 缩略图 hover 浮卡：盖在任意截图上要可读，必须半透白底（不能跟主世界 bg） */
-  background: rgba(255, 255, 255, .96);
-  border: 1px solid rgba(15, 23, 42, .1);
-  color: var(--c-text);
+  /* 缩略图 hover 浮卡：盖在任意截图上要可读。
+     v0.7.8 同事反馈「模糊看不清」— 改完全不透明白底 + 加大字号 12 + 加粗 600
+     + 强阴影增立体感，截图任何背景下都清晰 */
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, .15);
+  color: #0f172a;
   font-family: inherit;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
   border-radius: var(--r-md);
   cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
   transition: background .12s, transform .12s;
 }
 /* hover 把半透白加深到全白，跟正常按钮的「bg-soft」语义不同：这里是浮在截图上的玻璃卡 */
