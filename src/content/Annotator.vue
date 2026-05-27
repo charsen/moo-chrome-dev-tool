@@ -247,7 +247,8 @@ onMounted(async () => {
     emit('cancel', 'error')  // v0.7.6：明示是 error 不是用户主动 cancel，ContentApp 显示 toast 告知
   }
   img.src = props.image
-  window.addEventListener('keydown', onKey)
+  // v0.7.8 capture phase — 先于 page document 自己的 bubble listener 拿到 + stop
+  window.addEventListener('keydown', onKey, true)
 })
 
 // 跟踪活跃的 pointer capture，用户在拖拽中 Esc / 关闭 Annotator 时能释放
@@ -264,7 +265,7 @@ function detachPointer() {
 }
 
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKey)
+  window.removeEventListener('keydown', onKey, true)
   detachPointer()
   // 卸载前如果还有 pending nudge action，立刻 commit；timer 也清
   if (nudgeCommitTimer) { clearTimeout(nudgeCommitTimer); nudgeCommitTimer = undefined }
@@ -285,6 +286,9 @@ function onKey(e: KeyboardEvent) {
   // cancel-guard 打开时把所有键盘交给 trap 处理：避免按 Esc 同时被 trap 关 guard +
   // 又被这里 cancel() 走"退出 Annotator"分支造成行为冲突
   if (cancelGuard.value) return
+  // v0.7.8：Annotator overlay 全屏接管 keyboard — 防 page 自己 keydown listener
+  // 重复响应（如 ⌘Z 撤销 / 数字键工具切 / ⌘C ⌘V 等）造成 page 副作用
+  e.stopImmediatePropagation()
   const mod = e.metaKey || e.ctrlKey
   // 数字键 1-6 切换工具（无修饰键，且不在输入框里）
   const mapped = TOOL_KEY_MAP[e.key]
@@ -874,7 +878,7 @@ function cancel() {
 
 function doCancel() {
   cancelGuard.value = false
-  window.removeEventListener('keydown', onKey)
+  window.removeEventListener('keydown', onKey, true)
   // 拖拽中按 Esc → cancel 时如果 pointer capture 还在身上，必须释放
   detachPointer()
   emit('cancel')
@@ -886,7 +890,7 @@ function dismissCancelGuard() {
 
 function finish() {
   if (editing.value) commitText()
-  window.removeEventListener('keydown', onKey)
+  window.removeEventListener('keydown', onKey, true)
   const out = document.createElement('canvas')
   out.width = canvasW.value
   out.height = canvasH.value

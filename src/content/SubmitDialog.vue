@@ -820,7 +820,10 @@ function onKeydown(e: KeyboardEvent) {
   if (picking.value) return // 选元素状态由 ElementPicker 自己接管
   if (successInfo.value) return // 成功视图期间快捷键全部禁用，等待自动关闭
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    // v0.7.8：preventDefault + stopImmediatePropagation 防冒泡到 page 触发
+    // 富文本编辑器 ⌘Enter（换行 / 提交表单 / ...）双副作用
     e.preventDefault()
+    e.stopImmediatePropagation()
     void onSubmit()
   }
 }
