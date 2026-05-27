@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.8.0 已发**（2026-05-27）。无 BREAKING — `/full-team-review` 修 **3 🔴 + 10 🟡 + 5 🟢**（无现网 bug，全是「未炸但明确」的隐患）。+22 单测，行为兼容。详情见 CHANGELOG v0.8.0 段。
+**v0.8.0 已发**（2026-05-27）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.0/moo-chrome-dev-tool-0.8.0.zip)（sha256 `7a084c63093f5fad4ece334dc04fbe2c8f02017d65ae9b75c4f25d301345c681`）。无 BREAKING — `/full-team-review` 修 **3 🔴 + 10 🟡 + 5 🟢**（无现网 bug，全是「未炸但明确」的隐患）。+22 单测，行为兼容。详情见 CHANGELOG v0.8.0 段。
 
 **v0.7.8 已发**（2026-05-27）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.8/moo-chrome-dev-tool-0.7.8.zip)（sha256 `c040e661a7b97c1381351a7958a9917fee8f1cc0a9eae72ee37e42b7389af953`）。无 BREAKING — **🔴 focus 战争完整闭环**（dogfood 撞 3 次累积修）：page modal / 富文本编辑器 focus 状态触发截图 → SubmitDialog 输入不了字 / Annotator 字符泄漏 / 点击位置不自动 focus。修法：`utils/stealPageFocus.ts` 三个 helper（mount blur + 反复偷 + 持久 guard listener），ContentApp 永久 mount 时 install 全局 `guardFocusForHost` 让 page modal trap 永远收不到 focus event 不抢回。+ keydown 不冒泡 page（⌘Z/⌘Enter 防双触发）+ 缩略图按钮视觉清晰 + zip 解压目录免版本号（覆盖即重载）。
 
