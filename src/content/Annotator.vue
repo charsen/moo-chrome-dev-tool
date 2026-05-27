@@ -385,10 +385,15 @@ function onDown(e: PointerEvent) {
   if (mode.value === 'text') {
     beginAction()
     editing.value = { type: 'text', x: p.x, y: p.y, text: '' }
-    // v0.7.7 P0：text mode 创建 input 前再偷一次 focus — 防用户在 Annotator 期间
-    // 又点过 page 抢回 focus 后才点 canvas（已知 mounted 偷过一次还不够）
+    // v0.7.7 P0：text mode 创建 input 前再偷一次 focus
+    // v0.7.8：双 focus 保险 — nextTick（Vue 渲染完）+ raF（防 page modal trap setTimeout
+    // 抢回时序）+ ContentApp 全局 guardFocusForHost listener 持续拦 page focus event
+    // = 用户「点击位置 → 立即输入」无需再点 input
     stealPageFocus()
-    nextTick(() => textInputEl.value?.focus())
+    nextTick(() => {
+      textInputEl.value?.focus()
+      requestAnimationFrame(() => textInputEl.value?.focus())
+    })
     return
   }
   if (mode.value === 'pointer') {
