@@ -23,7 +23,7 @@
 //   建议：remote 用 SSH（`git remote set-url origin git@gitee.com:OWNER/REPO.git`）+ token 仅作 API 用。
 
 import { execSync } from 'node:child_process'
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, rmSync, openAsBlob, readdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, rmSync, openAsBlob, readdirSync, cpSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
@@ -342,7 +342,10 @@ if (dryRun) {
     console.log(`  pnpm build      # 即 vite build`)
   }
   console.log('  冒烟检查 dist/ 必需文件齐（manifest / service-worker-loader / popup / devtools / panel / offscreen）')
-  console.log(`  zip -r -X -q release/${zipName} ./    # cwd=dist/`)
+  console.log(`  cp -r dist release/moo-chrome-dev-tool/`)
+  console.log(`  zip -r -X -q release/${zipName} moo-chrome-dev-tool    # cwd=release/`)
+  console.log(`  rm -rf release/moo-chrome-dev-tool/`)
+  console.log(`  # 解压后得到 moo-chrome-dev-tool/ 目录（无版本号），方便覆盖已装 unpacked 目录 + chrome ↻ 重载`)
   console.log(`  sha256 算法 = node:crypto createHash('sha256')，写两份：`)
   console.log(`    release/${zipName}.sha256       # 兼容旧存档`)
   console.log(`    release/${zipName}.sha256.txt   # 上传给 Gitee`)
@@ -456,7 +459,17 @@ mkdirSync(releaseDir, { recursive: true })
 if (existsSync(zipPath)) rmSync(zipPath)
 
 console.log(`打包 → release/${zipName}`)
-execSync(`zip -r -X -q "${zipPath}" .`, { cwd: distDir })
+// v0.7.8 同事反馈：zip 名带版本号（方便分辨下载哪版），但 zip 内文件**不带版本号
+// 顶层目录** — macOS Archive Utility 解 zip 时若 zip 没顶层目录会自动套个以 zip
+// 名命名的容器（含版本号），用户已装的 unpacked 目录名固定 → 没法直接覆盖。
+// 改：先把 dist 复制到 release/moo-chrome-dev-tool/（无版本号），再 zip 这个目录。
+// 解压后得到 `moo-chrome-dev-tool/`，用户解压覆盖原 unpacked 目录后 chrome ↻ 即可。
+const stageDirName = 'moo-chrome-dev-tool'
+const stageDir = resolve(releaseDir, stageDirName)
+if (existsSync(stageDir)) rmSync(stageDir, { recursive: true, force: true })
+cpSync(distDir, stageDir, { recursive: true })
+execSync(`zip -r -X -q "${zipPath}" "${stageDirName}"`, { cwd: releaseDir })
+rmSync(stageDir, { recursive: true, force: true })
 
 const stat = statSync(zipPath)
 const hash = createHash('sha256').update(readFileSync(zipPath)).digest('hex')
