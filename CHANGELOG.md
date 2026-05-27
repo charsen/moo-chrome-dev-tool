@@ -2,6 +2,53 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.7.8
+
+2026-05-27 发版。无 BREAKING — **🔴 focus 战争完整修**（同事 dogfood 真撞 3 次）+ 缩略图按钮视觉 + zip 解压目录免版本号 + keydown 不冒泡 page。
+
+### 🔴 P0 focus 战争完整闭环（dogfood 撞 3 次累积修）
+
+**症状**：用户在 page modal（element-ui dialog / 富文本编辑器）focus 状态触发 Moo 截图 →
+1. SubmitDialog 弹但**点不进标题/描述 input**（v0.7.7 第 1 次撞）
+2. Annotator 文字工具点画布 → 输入字符**泄漏到 page 富文本编辑器**（v0.7.7 第 2 次撞）
+3. Annotator 文字工具点击位置后**还要再点 input** 才能输入（v0.7.8 同事要求）
+
+根因：chrome closed shadow root 内 `input.focus()` 在 page modal trap 持续抢回焦点（setTimeout 抢）时序下输给 page → 焦点切到 SubmitDialog/Annotator input 后立刻被抢回 → 用户键盘 event 仍发到 page input。
+
+完整修复链：
+- `src/utils/stealPageFocus.ts` 新 utils：
+  - `stealPageFocus()` — mount 立即偷一次 page focus（blur activeElement）
+  - `stealPageFocusRepeatedly(onSettled)` — 50/100/200/400ms 反复偷跟 trap 拼速度
+  - **`guardFocusForHost(hostId)` — 持久 listener**：page document focusin/focusout capture-phase 监听，焦点切到 Moo host 时 `stopImmediatePropagation` 让 page modal trap **永远收不到 event 不抢回**
+- `ContentApp.vue` 永久 mount 时安装 `guardFocusForHost` 全局覆盖所有 Moo overlay（Annotator / SubmitDialog / FloatingBall）— 不需各组件单独 install
+- Annotator text mode 点击位置后 nextTick + requestAnimationFrame 双 focus 保险 — 用户点画布**立即可输入**无需再点 input
+- SubmitDialog mount 时 `stealPageFocusRepeatedly` 抢回主导 + 全局 guard 持续防 trap
+
+### P1 keydown 不冒泡 page（主动 grep 同款）
+
+Annotator `⌘Z` 撤销 / 数字键工具切 / `⌘C` `⌘V` 等 + SubmitDialog `⌘Enter` 提交，原本只 `preventDefault` 没 `stopImmediatePropagation` → event 冒泡到 page → page 富文本编辑器 `⌘Z` 也响应（双撤销）/ `⌘Enter` 触发 page 表单提交。
+
+修：Annotator `onKey` 进入处理逻辑前一律 `stopImmediatePropagation` + window listener 改 capture phase 先于 page document bubble 拿到。SubmitDialog `onKeydown` 同款。
+
+### UX 改进
+
+- **「重新标注 / 重新截图」按钮**模糊看不清 → 字号 11→12 + font-weight 500→600 + 完全不透明白底 #fff + box-shadow 立体感（同事反馈）
+- **release zip 解压目录免版本号**：zip 名仍 `moo-chrome-dev-tool-X.Y.Z.zip`（分辨下哪版），解压得 `moo-chrome-dev-tool/`（**不带版本号**）→ 用户解压**覆盖原 unpacked 目录** + chrome ↻ 即可，从 4 步降到 2 步（不用「移除旧 + 加载新目录」）
+- Annotator text mode 自动 focus input — 同事「能否点击位置后直接输入不用再点 input」
+
+### 工程
+
+- 抽 `src/utils/stealPageFocus.ts` 三个 helper（stealPageFocus / stealPageFocusRepeatedly / guardFocusForHost）共享给 Annotator + SubmitDialog + ContentApp
+- chrome-devtools MCP 实地 dogfood 反复验证 — Moo overlay 与 page modal focus 战争收口
+- 613 单测 / type-check / build 全过
+
+### Memory 沉淀
+
+- `feedback_focus_steal_extension_overlay.md`：扩展 overlay 必偷宿主页焦点 + 持久 guard
+- `feedback_hotfix_wait_user_verify.md`：hotfix 修完 commit + build dist 等用户验证再 release，不再「修完立刻发」失控
+
+---
+
 ## v0.7.7
 
 2026-05-26 发版。**🔴 dogfood hotfix** — v0.7.6 发布 5 分钟内用户撞 P0：Annotator 文字工具输入泄漏到宿主页 input。

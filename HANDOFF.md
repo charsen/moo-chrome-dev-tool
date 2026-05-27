@@ -4,6 +4,8 @@
 
 ## 一句话现状
 
+**v0.7.8 已发**（2026-05-27）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.8/moo-chrome-dev-tool-0.7.8.zip)（sha256 待填）。无 BREAKING — **🔴 focus 战争完整闭环**（dogfood 撞 3 次累积修）：page modal / 富文本编辑器 focus 状态触发截图 → SubmitDialog 输入不了字 / Annotator 字符泄漏 / 点击位置不自动 focus。修法：`utils/stealPageFocus.ts` 三个 helper（mount blur + 反复偷 + 持久 guard listener），ContentApp 永久 mount 时 install 全局 `guardFocusForHost` 让 page modal trap 永远收不到 focus event 不抢回。+ keydown 不冒泡 page（⌘Z/⌘Enter 防双触发）+ 缩略图按钮视觉清晰 + zip 解压目录免版本号（覆盖即重载）。
+
 **v0.7.7 已发**（2026-05-26）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.7/moo-chrome-dev-tool-0.7.7.zip)（sha256 `2e9bec98edf839a49337003c26f13ce147a207228c9ca71914a52a846e7d38e1`）。**🔴 dogfood hotfix** — v0.7.6 发布 5 分钟撞 P0：Annotator 文字工具输入泄漏到宿主页 input（page input focus 状态截图时根因），Annotator 加 `stealPageFocus()` mount 时偷走宿主页焦点 + text mode 进入时再偷。
 
 **v0.7.6 已发**（2026-05-26）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.7.6/moo-chrome-dev-tool-0.7.6.zip)（sha256 `8fc004235fb07d3f575c7d29e3a1e93eaeda112ddc38cb479c6cc81e7ca9118f`）。无 BREAKING — **2 P0 + 6 P1 + 9 P2**（chrome-devtools MCP 实地真机抓 + 8 agent 17 审）。**🔴 旗舰 P0 修**：配项目后已开 tab 立即出悬浮球（v0.7.x dynamic register 漏 chrome 不向已 navigated tab 回填注入，2 步闭环修 = SW 端 backfill executeScript + content 端孤儿 host 清理）。+ 升级闭合「✓ 已升级到 vX.Y.Z」toast 反馈 + 业务深扫 4 P1（历史重提丢禅道字段 / kind 切换 fetchStatus 404 / 多 server 错查 / 附件孤儿文案）+ 11 审 storage.session/race/quota 等。613 单测 / 132 e2e × 6 跑 = 792 case 0 fail 0 flake。
