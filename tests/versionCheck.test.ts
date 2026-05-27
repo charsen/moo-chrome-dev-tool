@@ -132,6 +132,54 @@ describe('runVersionCheck', () => {
     await runVersionCheck()
     expect(storage[VERSION_CHECK_FLAG_KEY]).toBeUndefined()
   })
+
+  // v0.8.1 hotfix：三态返值（newer / latest / fail）— 修「fetch fail 时 UI 谎报已是最新」
+  describe('v0.8.1 三态返值', () => {
+    it('远端有新版 → 返 "newer"', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+        tag_name: 'v0.7.0'
+      }), { status: 200 })))
+      expect(await runVersionCheck()).toBe('newer')
+    })
+
+    it('远端 = 本地 → 返 "latest"', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+        tag_name: 'v0.6.2'
+      }), { status: 200 })))
+      expect(await runVersionCheck()).toBe('latest')
+    })
+
+    it('远端版本更老 → 返 "latest"（开发版本 > tag 也算最新）', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+        tag_name: 'v0.5.0'
+      }), { status: 200 })))
+      expect(await runVersionCheck()).toBe('latest')
+    })
+
+    it('Gitee API 限流 403 → 返 "fail"（不再谎报 latest）', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () =>
+        new Response('403 Forbidden (Rate Limit Exceeded)', { status: 403 })
+      ))
+      expect(await runVersionCheck()).toBe('fail')
+    })
+
+    it('fetch throw → 返 "fail"', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('net') }))
+      expect(await runVersionCheck()).toBe('fail')
+    })
+
+    it('返 JSON 无 tag_name → 返 "fail"', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({}), { status: 200 })))
+      expect(await runVersionCheck()).toBe('fail')
+    })
+
+    it('返非 SemVer tag（如 "preview"）→ 返 "fail"（不让 isNewer 误判 latest）', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+        tag_name: 'preview'
+      }), { status: 200 })))
+      expect(await runVersionCheck()).toBe('fail')
+    })
+  })
 })
 
 describe('writeUpgradeIntent + checkUpgradeFinished (v0.7.6 升级闭合)', () => {

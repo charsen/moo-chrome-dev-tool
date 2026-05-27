@@ -2,6 +2,21 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.8.1
+
+2026-05-27 发版。**🔴 dogfood hotfix** — v0.8.0 发布后用户立刻撞 P0：popup 检查更新 chip 谎报「已是最新」（实际新版已在 Gitee）。根因 Gitee API 限流 403 → fetch null → `runVersionCheck` void 返回 + UI 用 `!hasUpdate()` 判定「已是最新」 = 谎报。
+
+### 修法
+
+- **`runVersionCheck()` 改三态返值**（`'newer' | 'latest' | 'fail'`）— fetch null / 403 / 非 SemVer tag 都返 `'fail'`，不再 void
+- **`useVersionCheck` composable 新增 `checkFailed` ref** — UI 区分 latest（绿 ✓ 2.5s）vs fail（红 ⚠ 4s）
+- **popup chip + options「检查更新」按钮加 fail 状态**：「⚠ 检查失败 · 点击查看」红色 + 点击跳 Gitee releases 页让用户手动核对
+- **+7 fuzz 单测覆盖三态**（newer / latest / 限流 403 / fetch throw / 无 tag_name / 非 SemVer tag）
+
+### Why 这条 dogfood 价值高
+
+`/full-team-review` 7-8 波都没扫到这个 — 因为它跟 Gitee API 限流耦合，单测环境模拟不到「fetch 失败但 storage 不变」组合。dogfood 真撞才暴露 UX 谎报语义。下次 review 提示：**fetch 失败链路必须区分 retry vs latest 语义**。
+
 ## v0.8.0
 
 2026-05-27 发版。无 BREAKING — **`/full-team-review` 3 expert agent 全仓审计 → 3 🔴 + 10 🟡 + 5 🟢 全清**。13 业务 + 3 工程文件改动，业务行为完全兼容 + 22 新单测（fuzz payload 校验 / submit orchestrator 编排链）+ 死资产 1.36MB 清理。

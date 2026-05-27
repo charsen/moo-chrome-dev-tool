@@ -7,16 +7,24 @@
       </div>
       <!-- v0.7.5：版本号 chip → 手动检查更新（不等 24h alarm）；有新版 onChanged 自动让 banner 弹起来；
            没新版「✓ 已是最新」高亮 2.5s 再回。runVersionCheck < 500ms 太快用户看不见 spinner，
-           最小 600ms 显示让用户感知「真查过了」。 -->
+           最小 600ms 显示让用户感知「真查过了」。
+           v0.8.1 hotfix：fail 单独显示「检查失败」+ 点 chip 跳 Gitee releases 手动核对 —
+           之前 fail 谎报「已是最新」让用户没法 detect 真新版（dogfood 撞）。-->
       <button
         type="button"
-        :class="['moo-chip', 'moo-chip--btn', { 'moo-chip--success': versionCheckJustDone }]"
+        :class="['moo-chip', 'moo-chip--btn', {
+          'moo-chip--success': versionCheckJustDone,
+          'moo-chip--danger': versionCheckFailed
+        }]"
         :disabled="versionChecking"
-        :title="versionCheckedAt ? `点击检查更新（上次 ${versionCheckedAt} 查）` : '点击检查更新'"
-        @click="manualVersionCheck"
+        :title="versionCheckFailed
+          ? '检查失败（Gitee API 限流 / 网络错）— 点击跳 Gitee releases 手动核对'
+          : versionCheckedAt ? `点击检查更新（上次 ${versionCheckedAt} 查）` : '点击检查更新'"
+        @click="versionCheckFailed ? openReleasesPage() : manualVersionCheck()"
       >
         <template v-if="versionChecking">⟳ 检查中…</template>
         <template v-else-if="versionCheckJustDone">✓ 已是最新</template>
+        <template v-else-if="versionCheckFailed">⚠ 检查失败 · 点击查看</template>
         <template v-else>v{{ version }}</template>
       </button>
     </header>
@@ -354,12 +362,18 @@ const {
   checking: versionChecking,
   lastChecked: versionCheckedAt,
   checkJustDone: versionCheckJustDone,
+  checkFailed: versionCheckFailed,
   runCheck: manualVersionCheck,
   reloadExtension
 } = useVersionCheck({
   hasUpdate: () => !!updateInfo.value,
   expectedVersion: () => updateInfo.value?.latest ?? null
 })
+
+// v0.8.1：chip fail 状态点击 fallback — 直接打开 Gitee releases 页让用户手动核对
+function openReleasesPage() {
+  chrome.tabs.create({ url: 'https://gitee.com/charsen/moo-chrome-dev-tool/releases' })
+}
 
 async function dismissUpgrade() {
   needsHostPermUpgrade.value = false
@@ -1141,6 +1155,13 @@ onBeforeUnmount(() => {
   background: var(--moo-c-success-soft);
   color: var(--moo-c-success-fg);
   transition: background-color var(--moo-motion-fast), color var(--moo-motion-fast);
+}
+/* v0.8.1：fail 状态 — 醒目让用户知道不是「已是最新」而是「真的没拿到 remote」 */
+.moo-chip--btn.moo-chip--danger {
+  background: var(--moo-c-danger-soft);
+  color: var(--moo-c-danger-fg);
+  transition: background-color var(--moo-motion-fast), color var(--moo-motion-fast);
+  cursor: pointer;
 }
 
 .foot { margin-top: 12px; text-align: center; }

@@ -9,12 +9,15 @@ import { MSG } from '@/types/messages'
  * 录屏防丢 / cleanup），now ~5 行调用。
  *
  * 调用方各自管 updateInfo（popup 走 Promise.all 并行 IO 性能优化不抽；工作台
- * 单独 loadUpdateFlag 简洁），传 hasUpdate getter 让 composable 决定是否
- * 高亮「✓ 已是最新」。
+ * 单独 loadUpdateFlag 简洁）。
+ *
+ * v0.8.1 hotfix：接收 runVersionCheck 真三态（newer/latest/fail），不再用
+ * `!hasUpdate()` 判定「已是最新」 — 旧逻辑在 Gitee API 限流 / 网络错时把 fail
+ * 当 latest 谎报，用户没法 detect 真新版（dogfood v0.8.0 发布后立刻撞）。新增
+ * `checkFailed` ref 让 UI 显示「检查失败，稍后重试」+ 手动 fallback 链接。
  */
 export interface UseVersionCheckOptions {
-  /** 当前是否有可见更新 — 决定是否在没新版时高亮「✓ 已是最新」反馈（有新版时
-   *  让 banner 主导，chip / button 不抢戏） */
+  /** v0.8.1 起仅供未来使用 — latest/fail 由 runVersionCheck 真返值决定，不再依赖此 getter */
   hasUpdate: () => boolean
   /** v0.7.6：调用方提供「期望升到的版本号」让 SW onInstalled 能对比验证升级真完
    *  成（用户没真解压 zip 时不会弹「已升级」toast）。一般 = updateInfo.latest。 */
@@ -25,29 +28,40 @@ export function useVersionCheck(opts: UseVersionCheckOptions) {
   const checking = ref(false)
   const lastChecked = ref('')
   const checkJustDone = ref(false)
+  // v0.8.1 hotfix：fetch fail（API 限流 / 网络错 / SemVer parse 失败）单独显示
+  const checkFailed = ref(false)
   let doneTimer: number | undefined
 
   async function runCheck() {
     if (checking.value) return
     checking.value = true
     checkJustDone.value = false
+    checkFailed.value = false
     if (doneTimer) { clearTimeout(doneTimer); doneTimer = undefined }
     const start = Date.now()
     try {
-      await runVersionCheck()
+      const result = await runVersionCheck()
       // 最小 600ms spinner（fetch Gitee API < 500ms 一闪而过用户看不见）
       const elapsed = Date.now() - start
       if (elapsed < 600) await new Promise(r => setTimeout(r, 600 - elapsed))
       const now = new Date()
       lastChecked.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-      // 仅当真没新版才高亮 — 有新版会触发 onChanged → banner 弹起来抢戏
-      if (!opts.hasUpdate()) {
+      // v0.8.1：按 runVersionCheck 真返值决定 UI — 不再用 `!hasUpdate()` 谎报
+      if (result === 'latest') {
         checkJustDone.value = true
         doneTimer = window.setTimeout(() => {
           checkJustDone.value = false
           doneTimer = undefined
         }, 2500)
+      } else if (result === 'fail') {
+        checkFailed.value = true
+        // fail 显示 4s（比 latest 2.5s 久）— 给用户时间看 fallback 链接 + 复制 URL
+        doneTimer = window.setTimeout(() => {
+          checkFailed.value = false
+          doneTimer = undefined
+        }, 4000)
       }
+      // 'newer' → storage.onChanged 触发 banner 抢戏，chip 不抢
     } finally {
       checking.value = false
     }
@@ -74,5 +88,5 @@ export function useVersionCheck(opts: UseVersionCheckOptions) {
     if (doneTimer) { clearTimeout(doneTimer); doneTimer = undefined }
   })
 
-  return { checking, lastChecked, checkJustDone, runCheck, reloadExtension }
+  return { checking, lastChecked, checkJustDone, checkFailed, runCheck, reloadExtension }
 }

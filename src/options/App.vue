@@ -24,9 +24,16 @@
                 ③ 重新加载
               </button>
             </template>
-            <button v-else type="button" :class="['update-check', { 'is-done': checkJustDone }]" :disabled="checking" @click="checkNow">
+            <button v-else type="button"
+              :class="['update-check', { 'is-done': checkJustDone, 'is-failed': checkFailed }]"
+              :disabled="checking"
+              :title="checkFailed
+                ? '检查失败（Gitee API 限流 / 网络错）— 点击跳 Gitee releases 手动核对'
+                : ''"
+              @click="checkFailed ? openReleasesPage() : checkNow()">
               <template v-if="checking">⟳ 检查中…</template>
               <template v-else-if="checkJustDone">✓ 已是最新（{{ lastChecked }}）</template>
+              <template v-else-if="checkFailed">⚠ 检查失败 · 点击查看</template>
               <template v-else-if="lastChecked">⟳ 检查更新（上次 {{ lastChecked }}）</template>
               <template v-else>⟳ 检查更新</template>
             </button>
@@ -109,12 +116,18 @@ const {
   checking,
   lastChecked,
   checkJustDone,
+  checkFailed,
   runCheck: checkNow,
   reloadExtension
 } = useVersionCheck({
   hasUpdate: () => !!updateInfo.value,
   expectedVersion: () => updateInfo.value?.latest ?? null
 })
+
+// v0.8.1：chip fail 状态点击 fallback — 直接打开 Gitee releases 页让用户手动核对
+function openReleasesPage() {
+  chrome.tabs.create({ url: 'https://gitee.com/charsen/moo-chrome-dev-tool/releases' })
+}
 
 function loadUpdateFlag() {
   void chrome.storage.local.get(VERSION_CHECK_FLAG_KEY).then(r => {
@@ -255,6 +268,12 @@ function onTabKeydown(e: KeyboardEvent) {
 .update-check:disabled { opacity: .6; cursor: not-allowed; }
 .update-check.is-done {
   color: var(--moo-c-success-fg);
+  text-decoration: none;
+  font-weight: 500;
+}
+/* v0.8.1：fail 状态 — 红色让用户知道不是「已是最新」而是「真没拿到 remote」 */
+.update-check.is-failed {
+  color: var(--moo-c-danger-fg);
   text-decoration: none;
   font-weight: 500;
 }

@@ -137,29 +137,45 @@ export async function checkUpgradeFinished(): Promise<void> {
  * v0.7.5：inflight guard — 防 popup + 工作台 + SW alarm 三方同时跑造成
  * fetch 与 storage.set/remove 交叉 race（A 写 set，B 后回来 isNewer=false
  * 把 set 抹掉 → banner 闪一下消失）。重入合并到同一 promise。
+ *
+ * v0.8.1 P0 hotfix：返三态让 UI 区分 fail vs 真的已是最新。
+ *   - 'newer'  → remote 比本地新，已写 flag，UI 弹 update-banner
+ *   - 'latest' → remote = 本地，已清 flag，UI 高亮「✓ 已是最新」
+ *   - 'fail'   → fetch null（API 限流 / 网络错 / 仓库私有 / SemVer parse 失败），
+ *                flag 状态不变，UI 显示「检查失败，稍后重试」而非谎报「已是最新」
+ *
+ * 之前 void 返回 + UI 用 `!hasUpdate()` 判定「已是最新」是 bug：fetch 失败时 flag
+ * 不变，老 flag 不存在的话 hasUpdate=false 直接 UI 暗示「已最新」 = 谎报。
  */
-let inflightCheck: Promise<void> | null = null
-export function runVersionCheck(): Promise<void> {
+let inflightCheck: Promise<VersionCheckResult> | null = null
+export type VersionCheckResult = 'newer' | 'latest' | 'fail'
+
+export function runVersionCheck(): Promise<VersionCheckResult> {
   if (inflightCheck) return inflightCheck
-  inflightCheck = (async () => {
+  inflightCheck = (async (): Promise<VersionCheckResult> => {
     try {
       const current = chrome.runtime?.getManifest?.()?.version ?? '0.0.0'
       const latest = await fetchLatestVersion()
-      if (!latest) return
+      if (!latest) return 'fail'
+      // SemVer parse 失败也算 fail — isNewer 对非 X.Y.Z 数字段返 false 会误判成 latest
+      const tagClean = latest.tag.replace(/^v/, '')
+      if (!/^\d+\.\d+\.\d+$/.test(tagClean) || !/^\d+\.\d+\.\d+$/.test(current)) return 'fail'
       if (isNewer(latest.tag, current)) {
         const info: LatestVersionInfo = {
-          latest: latest.tag.replace(/^v/, ''),
+          latest: tagClean,
           current,
           url: latest.url,
           checkedAt: Date.now()
         }
         await chrome.storage.local.set({ [VERSION_CHECK_FLAG_KEY]: info })
-      } else {
-        // 当前已是最新 → 清 flag（防老版本升上来 flag 残留）
-        await chrome.storage.local.remove(VERSION_CHECK_FLAG_KEY)
+        return 'newer'
       }
+      // 当前 = 远端（或当前更新，比如开发版本 > tag） → 清 flag（防老版本升上来 flag 残留）
+      await chrome.storage.local.remove(VERSION_CHECK_FLAG_KEY)
+      return 'latest'
     } catch (e) {
       console.warn('[Moo] versionCheck failed:', (e as Error).message)
+      return 'fail'
     } finally {
       inflightCheck = null
     }
