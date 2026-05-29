@@ -239,7 +239,9 @@ function onTabKeydown(e: KeyboardEvent) {
   border-radius: var(--moo-r-sm);
   border: 1px solid var(--moo-c-warn-soft);
 }
-.update-link:hover { background: var(--moo-c-warn-fg); color: #fff; }
+/* hover 背景翻到 --moo-c-warn-fg：dark 下该 token 是浅黄(#fcd34d)，原 #fff 白字几乎不可读。
+   改 var(--moo-c-bg)（跟 BodyViewer 同款）— 浅色主题=白底深字范式翻转，两主题都达 AA。 */
+.update-link:hover { background: var(--moo-c-warn-fg); color: var(--moo-c-bg); }
 .update-reload {
   margin-left: 6px;
   background: var(--moo-c-brand);

@@ -547,8 +547,12 @@ const reversedErrors = computed(() => props.errors.slice().reverse())
 // 改前是「filtered 内全部默认勾选」，同事反馈这让人疑惑「14/14 偷偷默认全选」
 let prevRequestIds = new Set<string>()
 let isFirstRequestWatch = true
+// 源用 .slice() 而非 () => props.requests：上游 useRequests 的 push() 是原地 mutate
+// 同一数组引用，外层 computed 只追踪 ref.value 重赋值不追踪 in-place push，浅 watch
+// 永不触发 →「dialog 开着期间新请求自动勾」失效。slice() 每次返回新引用 + 迭代数组
+// 订阅 length/index，push/shift（含 buffer 满时 push+shift 同 tick）都能触发回调。
 watch(
-  () => props.requests,
+  () => props.requests.slice(),
   (arr) => {
     if (isFirstRequestWatch) {
       // 首次：只勾最新一条（props.requests 末尾是最新）
@@ -570,10 +574,11 @@ watch(
 )
 
 // 错误同款策略：首次只勾最新一条 + 后续 dialog 期间新出错自动勾
+// 同 requests：源用 .slice() 让 in-place push 能触发（见上方 requests watch 注释）
 let prevErrorIds = new Set<string>()
 let isFirstErrorWatch = true
 watch(
-  () => props.errors,
+  () => props.errors.slice(),
   (arr) => {
     if (isFirstErrorWatch) {
       const latestErr = arr[arr.length - 1]
