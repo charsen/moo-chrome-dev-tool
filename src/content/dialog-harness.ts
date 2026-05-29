@@ -14,8 +14,10 @@
 //
 // 跟 panel-harness 同样的姿势：mock chrome.* API + shadow root 内挂载 + 不动业务代码。
 
-import { createApp, defineComponent, h, ref } from 'vue'
+import { computed, createApp, defineComponent, h, ref } from 'vue'
 import { HOST_ID, SHADOW_CSS } from './styles'
+import type { CapturedRequest } from '@/types/requests'
+import type { ConsoleError } from '@/types/errors'
 
 // ------------------- mock chrome.runtime.sendMessage --------------------------------
 // SubmitDialog onSubmit 走 safeSendMessage(MSG.SUBMIT_BUG) —— 真 SW 在 harness 这种
@@ -144,7 +146,7 @@ async function bootstrap(): Promise<void> {
     // 注入 mock requests，方便测试展开 row / 复制按钮 / 收起全部
     // ?requests=N → 生成 N 条 mock 请求，requestBody 是一段长文本（用于断言复制原文）
     const reqCount = Number(params.get('requests') ?? '0') || 0
-    const mockRequests = Array.from({ length: reqCount }, (_, i) => {
+    function makeMockRequest(i: number): CapturedRequest {
       const longBody = `LONG_BODY_${i}_` + 'x'.repeat(2000)  // 2000+ 字符，超过 previewBody 1500 截断阈值
       const respBody = JSON.stringify({ id: i, payload: 'response-' + i, fill: 'y'.repeat(2000) })
       return {
@@ -162,8 +164,39 @@ async function bootstrap(): Promise<void> {
         startTime: performance.now() - (i * 100),
         duration: 50 + i * 5,
         startedAt: new Date().toISOString()
+      } as CapturedRequest
+    }
+
+    // ⚠ 回归锁关键：requests / errors 用 ref + computed(() => ref.value)，**完全复刻**
+    // useRequests.ts 的数据流（模块 ref → push() 原地 mutate → computed(() => ref.value)
+    // 每次返回同一数组 proxy 引用）。push 钩子必须 in-place `.push()`，**不能重赋值**
+    // —— 重赋值会让浅 watch 也触发，掩盖被测 bug（修复前 `() => props.requests` 就假绿了）。
+    const reqRef = ref<CapturedRequest[]>(
+      Array.from({ length: reqCount }, (_, i) => makeMockRequest(i))
+    )
+    const errRef = ref<ConsoleError[]>([])
+    const reqProp = computed(() => reqRef.value)   // 同 useRequests: 同一 proxy 引用
+    const errProp = computed(() => errRef.value)
+    let pushSeq = reqCount
+    let errSeq = 0
+    // 测试侧通过这俩钩子在 dialog 挂载后动态 push（in-place）新请求 / 新错误，
+    // 验证「dialog 开着期间新进来自动勾选」。返回新条目 id 供断言。
+    ;(window as unknown as { __mooHarnessPushRequest: () => string }).__mooHarnessPushRequest = () => {
+      const r = makeMockRequest(pushSeq++)
+      reqRef.value.push(r)  // in-place，不重赋值
+      return r.id
+    }
+    ;(window as unknown as { __mooHarnessPushError: () => string }).__mooHarnessPushError = () => {
+      const e: ConsoleError = {
+        id: `err-${errSeq++}`,
+        level: 'error',
+        message: `harness runtime error ${errSeq}`,
+        startedAt: new Date().toISOString(),
+        startTime: performance.now()
       }
-    })
+      errRef.value.push(e)  // in-place，不重赋值
+      return e.id
+    }
     const project = {
       id: 'p1',
       name: '示例项目',
@@ -193,8 +226,8 @@ async function bootstrap(): Promise<void> {
             project,
             image: '',
             video: null,
-            requests: mockRequests,
-            errors: [],
+            requests: reqProp.value,
+            errors: errProp.value,
             onCancel: () => logEmit('cancel'),
             onSubmitted: (ok: boolean, message: string) => logEmit('submitted', ok, message),
             onReannotate: () => logEmit('reannotate'),
