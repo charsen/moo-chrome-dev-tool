@@ -98,26 +98,17 @@ export async function handleZentaoListUsers(payload: ZentaoCredsReq): Promise<Ze
 export async function handleZentaoListModules(payload: ZentaoCredsReq): Promise<ZentaoListModulesRes> {
   const projectId = payload.projectId
   if (!projectId) return { ok: false, error: t('zentao.modules.no-project-id') }
-  // v0.5.3 #128：handler 不走 withZentaoSession（直接调 zentaoLogin），需单独 host permission check
-  if (!await hasHostPermission()) {
-    return { ok: false, error: t('host-permission.required') }
-  }
-  const loginRes = await zentaoLogin(payload.baseUrl, payload.account, payload.password)
-  if (!loginRes.ok) return { ok: false, error: loginRes.error }
-  // 跟其他 zentao handler 不同 — ZENTAO_LIST_MODULES 需要 projectId（不只 makeZentaoEnv default 0）
-  // 先 discoverProduct 拿 productId，再 listModules
-  const env: ZentaoEnv = {
-    baseUrl: payload.baseUrl,
-    account: payload.account,
-    password: payload.password,
-    projectId,
-    moduleId: 0
-  }
-  const prod = await zentaoDiscoverProduct(env)
-  if (!prod.ok) return { ok: false, error: prod.error }
-  const modules = await zentaoListModules(env, prod.data)
-  if (!modules.ok) return { ok: false, error: modules.error }
-  return { ok: true, modules: modules.data }
+  // v0.8.2：复用 withZentaoSession（hostPerm + login + env 收口语义完全一致）。
+  // 唯一差异是本 handler 需要真 projectId（makeZentaoEnv 默认 0）—— 在 callback 内覆盖。
+  // 顺序与旧版逐字一致：hostPerm → login → env(projectId) → discoverProduct → listModules。
+  return withZentaoSession(payload, async (env) => {
+    env.projectId = projectId
+    const prod = await zentaoDiscoverProduct(env)
+    if (!prod.ok) return { ok: false, error: prod.error }
+    const modules = await zentaoListModules(env, prod.data)
+    if (!modules.ok) return { ok: false, error: modules.error }
+    return { ok: true, modules: modules.data }
+  })
 }
 
 export async function handleZentaoPingCookie(payload: ZentaoPingCookieReq): Promise<ZentaoPingCookieRes> {

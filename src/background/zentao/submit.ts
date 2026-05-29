@@ -24,6 +24,8 @@ import type { SubmitBugReq, SubmitBugRes } from '@/types/messages'
 import { toCurl, toCurlScript } from '@/utils/curlGenerator'
 import { redactBody } from '@/utils/redact'
 import { parseUserAgent } from '@/utils/ua'
+import { escapeHtml } from '@/utils/jsonHighlight'
+import { formatBytes } from '@/utils/formatBytes'
 import {
   submitBug as zentaoClientSubmit,
   uploadEditorFile,
@@ -179,7 +181,7 @@ export function buildZentaoStepsHtml(
     parts.push(
       `<p>${labelForKind('recording')} `
       + `<a href="${recording.url}" target="_blank">下载 ${escapeHtml(recording.displayName)}</a> `
-      + `（${formatBytes(recording.bytes)}）</p>`
+      + `（${formatBytes(recording.bytes, 2)}）</p>`
     )
   }
 
@@ -210,7 +212,7 @@ export function buildZentaoStepsHtml(
     for (const f of downloadLinks) {
       parts.push(
         `<li><a href="${f.url}" target="_blank">${escapeHtml(f.displayName)}</a> `
-        + `— ${labelForKind(f.kind)}（${formatBytes(f.bytes)}）</li>`
+        + `— ${labelForKind(f.kind)}（${formatBytes(f.bytes, 2)}）</li>`
       )
     }
     parts.push('</ul>')
@@ -238,7 +240,7 @@ export function buildZentaoStepsHtml(
   parts.push(`<li><b>时间</b>：${escapeHtml(req.timestamp)}</li>`)
   if (req.video) {
     const secs = Math.round(req.video.duration / 1000)
-    parts.push(`<li><b>录像时长</b>：${secs}s（${formatBytes(req.video.bytes)}）</li>`)
+    parts.push(`<li><b>录像时长</b>：${secs}s（${formatBytes(req.video.bytes, 2)}）</li>`)
   }
   if (req.requests?.length) {
     parts.push(`<li><b>抓到请求</b>：${req.requests.length} 条</li>`)
@@ -294,7 +296,7 @@ function buildRequestCurlBlock(r: CapturedRequest, project: Project): string {
 function buildResponseBlock(r: CapturedRequest, project: Project): string {
   if (!r.responseBody && !r.responseSizeBytes) return ''
   const ct = (headerCI(r.responseHeaders, 'content-type').split(';')[0] ?? '').trim()
-  const sizeStr = formatBytes(r.responseSizeBytes || (r.responseBody?.length ?? 0))
+  const sizeStr = formatBytes(r.responseSizeBytes || (r.responseBody?.length ?? 0), 2)
   const isBinary = /^(image|video|audio)\//.test(ct) || ct === 'application/octet-stream'
 
   const ok = r.status >= 200 && r.status < 300
@@ -359,12 +361,6 @@ function labelForKind(kind: UploadedFile['kind']): string {
     case 'errors': return 'console.error / unhandledrejection raw'
     case 'context': return 'URL / UA / 视口 / 时间等元信息'
   }
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  return `${(n / 1024 / 1024).toFixed(2)} MB`
 }
 
 /**
@@ -462,12 +458,4 @@ function dataUrlToBlobLocal(url: string): Blob {
   return _dataUrlToBlob(url)
 }
 
-/** HTML 转义：steps 字段会被禅道渲染，用户输入的 < > & 等不能直接拼进去 */
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
+// escapeHtml 已抽到 @/utils/jsonHighlight（与 BodyViewer / stackFormat 共用同一份）。

@@ -113,8 +113,19 @@ function trimBase(baseUrl: string): string {
 
 function buildHeaders(extra: Record<string, string> = {}): Headers {
   // X-Requested-With 是禅道返 JSON 的开关：不加则一律回 84KB HTML 登录壳。
-  const h = new Headers({ 'X-Requested-With': 'XMLHttpRequest', ...extra })
-  return h
+  return new Headers({ 'X-Requested-With': 'XMLHttpRequest', ...extra })
+}
+
+/**
+ * v2 GET 请求统一构造：Token-only header + credentials:'omit'（v2 是 Token 协议，cookie 无效，
+ * 见 fetchV1WithCookieFallback 注释）。多个 v2 endpoint（listProjects/listUsers/getBug/
+ * discoverProduct/getUser）此前各自重复这同一段 fetch 构造。
+ *
+ * ⚠️ 只收口「怎么发」，**不收 401 / isV2AuthExpired / schema 解析 / v1 fallback** —— 那些因
+ * endpoint 而异、且双轨硬规则要求显式可读，必须留在各自函数里。见 [[feedback_zentao_v2_dual_track_rule]]。
+ */
+function fetchV2(url: string, token: string): Promise<Response> {
+  return fetch(url, { credentials: 'omit', headers: buildHeaders({ 'Token': token }) })
 }
 
 /**
@@ -368,10 +379,7 @@ export async function ping(env: ZentaoEnv): Promise<ZentaoResult<ZentaoProfile>>
       return { _retry: true as const }
     }
     const url = `${trimBase(env.baseUrl)}/api.php/v2/users/${cached.id}`
-    const res = await fetch(url, {
-      credentials: 'omit',
-      headers: buildHeaders({ 'Token': token })
-    })
+    const res = await fetchV2(url, token)
     if (res.status === 401) return { _retry: true as const }
     if (!res.ok) {
       // v0.6.3 同款扫描：403 友好文案（ping v2 路径，token 有效但实例拒绝详情读）
@@ -425,10 +433,7 @@ export async function listProjects(env: ZentaoEnv, limit = 50): Promise<ZentaoRe
   return withAuth(env, async (token) => {
     // ── 路径 1：v2 ──
     const v2Url = `${trimBase(env.baseUrl)}/api.php/v2/projects?browseType=all&recPerPage=${limit}&pageID=1`
-    const v2Res = await fetch(v2Url, {
-      credentials: 'omit',
-      headers: buildHeaders({ 'Token': token })
-    })
+    const v2Res = await fetchV2(v2Url, token)
     if (v2Res.status === 401) return { _retry: true as const }
     if (v2Res.ok) {
       const body = await readJson(v2Res) as { projects?: ZentaoProjectSummary[]; status?: string; result?: boolean; message?: string } | null
@@ -462,10 +467,7 @@ export async function listProjects(env: ZentaoEnv, limit = 50): Promise<ZentaoRe
 export async function listUsers(env: ZentaoEnv, limit = 200): Promise<ZentaoResult<ZentaoUserSummary[]>> {
   return withAuth(env, async (token) => {
     const v2Url = `${trimBase(env.baseUrl)}/api.php/v2/users?recPerPage=${limit}&pageID=1`
-    const v2Res = await fetch(v2Url, {
-      credentials: 'omit',
-      headers: buildHeaders({ 'Token': token })
-    })
+    const v2Res = await fetchV2(v2Url, token)
     if (v2Res.status === 401) return { _retry: true as const }
     if (v2Res.ok) {
       const body = await readJson(v2Res) as { users?: ZentaoUserSummary[]; status?: string; result?: boolean; message?: string } | null
@@ -536,10 +538,7 @@ function shapeBugDetail(bug: BugRawFields): ZentaoBugDetail {
 export async function getBug(env: ZentaoEnv, bugId: number): Promise<ZentaoResult<ZentaoBugDetail>> {
   return withAuth(env, async (token) => {
     const v2Url = `${trimBase(env.baseUrl)}/api.php/v2/bugs/${bugId}`
-    const v2Res = await fetch(v2Url, {
-      credentials: 'omit',
-      headers: buildHeaders({ 'Token': token })
-    })
+    const v2Res = await fetchV2(v2Url, token)
     if (v2Res.status === 401) return { _retry: true as const }
     if (v2Res.status === 404) return { ok: false as const, error: 'bug 不存在或已彻底删除' }
     if (v2Res.ok) {
@@ -619,10 +618,7 @@ export async function discoverProduct(env: ZentaoEnv): Promise<ZentaoResult<numb
   return withAuth(env, async (token) => {
     // ── 路径 1：v2 项目详情 ──
     const v2Url = `${trimBase(env.baseUrl)}/api.php/v2/projects/${env.projectId}`
-    const v2Res = await fetch(v2Url, {
-      credentials: 'omit',
-      headers: buildHeaders({ 'Token': token })
-    })
+    const v2Res = await fetchV2(v2Url, token)
     if (v2Res.status === 401) return { _retry: true as const }
     if (v2Res.status === 404) return { ok: false as const, error: `项目 ${env.projectId} 不存在` }
 

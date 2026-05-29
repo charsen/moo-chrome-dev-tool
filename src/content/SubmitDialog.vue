@@ -67,7 +67,7 @@
           <div class="req-panel">
             <video class="moo-video-preview" :src="videoBlobUrl" controls preload="metadata" />
             <div class="req-controls" style="border-top: 1px solid var(--c-divider); border-bottom: 0;">
-              <span class="req-hint">已录制 {{ fmtDuration(video.duration) }} · {{ fmtBytes(video.bytes) }}</span>
+              <span class="req-hint">已录制 {{ fmtDuration(video.duration) }} · {{ formatBytes(video.bytes) }}</span>
             </div>
           </div>
         </div>
@@ -158,7 +158,7 @@
                     </div>
                     <div class="req-detail-row" v-if="r.responseBody">
                       <div class="req-detail-label-row">
-                        <span class="req-detail-label">Response Body <em>({{ fmtBytes(r.responseSizeBytes) }})</em></span>
+                        <span class="req-detail-label">Response Body <em>({{ formatBytes(r.responseSizeBytes) }})</em></span>
                         <button
                           type="button"
                           class="req-copy-btn"
@@ -299,6 +299,7 @@ import { ZENTAO_TYPE_OPTIONS } from '@/utils/zentaoOptions'
 const ZENTAO_MAX_ATTACHMENT_MB = 49
 
 import { formatSubmitResult } from '@/utils/submitMessage'
+import { formatBytes } from '@/utils/formatBytes'
 import { safeSendMessage } from '@/utils/messaging'
 import { redactUrl } from '@/utils/redact'
 import { stealPageFocusRepeatedly } from '@/utils/stealPageFocus'
@@ -516,11 +517,6 @@ function onElementPicked(el: PickedElement) {
   picking.value = false
 }
 
-function fmtBytes(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  return `${(n / 1024 / 1024).toFixed(1)} MB`
-}
 function fmtDuration(s: number): string {
   const m = Math.floor(s / 60), ss = s % 60
   return `${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`

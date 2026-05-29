@@ -70,13 +70,31 @@ export function useZentaoEnvironment(params: UseZentaoEnvironmentParams) {
     return { baseUrl: z.baseUrl, account: z.account, password: z.password }
   }
 
-  async function testConnection(): Promise<void> {
+  // testConnection / loadProjects 共享同一段生命周期样板：credsPayload 守卫 → busy/pending
+  // 置位 → try/catch(网络错)/finally(清 busy)。把这段逐字相同的收口抽出来，ok/err 处理
+  // 留在 body 内联（safeSendMessage 泛型返值在 if (res?.ok) 处自然收窄，不丢类型安全）。
+  async function runZentaoAction(
+    busyKind: 'test' | 'list',
+    pendingText: string,
+    body: (creds: ZentaoCredsReq) => Promise<void>
+  ): Promise<void> {
     const creds = credsPayload()
     if (!creds) return
-    busy.value = 'test'
-    status.value = '测试中…'
+    busy.value = busyKind
+    status.value = pendingText
     statusKind.value = ''
     try {
+      await body(creds)
+    } catch (e) {
+      status.value = `✗ ${(e as Error).message}`
+      statusKind.value = 'err'
+    } finally {
+      busy.value = ''
+    }
+  }
+
+  function testConnection(): Promise<void> {
+    return runZentaoAction('test', '测试中…', async (creds) => {
       const res = await safeSendMessage<ZentaoTestConnectionRes>({
         type: MSG.ZENTAO_TEST_CONNECTION,
         source: 'devtools',
@@ -89,21 +107,11 @@ export function useZentaoEnvironment(params: UseZentaoEnvironmentParams) {
         status.value = `✗ ${res?.error ?? '未知错误'}`
         statusKind.value = 'err'
       }
-    } catch (e) {
-      status.value = `✗ ${(e as Error).message}`
-      statusKind.value = 'err'
-    } finally {
-      busy.value = ''
-    }
+    })
   }
 
-  async function loadProjects(): Promise<void> {
-    const creds = credsPayload()
-    if (!creds) return
-    busy.value = 'list'
-    status.value = '拉项目列表中…'
-    statusKind.value = ''
-    try {
+  function loadProjects(): Promise<void> {
+    return runZentaoAction('list', '拉项目列表中…', async (creds) => {
       const res = await safeSendMessage<ZentaoListProjectsRes>({
         type: MSG.ZENTAO_LIST_PROJECTS,
         source: 'devtools',
@@ -117,12 +125,7 @@ export function useZentaoEnvironment(params: UseZentaoEnvironmentParams) {
         status.value = `✗ ${res?.error ?? '未知错误'}`
         statusKind.value = 'err'
       }
-    } catch (e) {
-      status.value = `✗ ${(e as Error).message}`
-      statusKind.value = 'err'
-    } finally {
-      busy.value = ''
-    }
+    })
   }
 
   return {
