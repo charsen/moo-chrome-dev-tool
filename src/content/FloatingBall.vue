@@ -89,6 +89,9 @@ type PendingAction = 'capture' | 'record' | null
 const POS_KEY = 'moo-ball-pos'
 const pos = ref({ x: window.innerWidth - 200, y: window.innerHeight - 70 })
 const dragging = ref(false)
+// endDrag 里把 dragging 复位的 0ms timer 句柄 —— 纳入 onBeforeUnmount 清理，
+// 否则卸载时 onBeforeUnmount 调 endDrag(false) 反而 schedule 一个 post-unmount timer。
+let dragResetTimer: number | undefined
 const rowEl = ref<HTMLDivElement>()
 /** drag 时 setPointerCapture 用的 pointerId，记下来好在 endDrag 里 release */
 let activePointerId: number | null = null
@@ -217,6 +220,8 @@ onBeforeUnmount(() => {
   // 组件被卸载时如果 drag 还在进行（罕见：state 切到 capturing 那一刻用户正在拖球），
   // 也走 endDrag 把 listener 摘干净，避免悬挂监听
   endDrag(false)
+  // endDrag 会 schedule 一个 0ms 的 dragging 复位 timer —— 卸载场景下清掉，避免 post-unmount write
+  if (dragResetTimer) { clearTimeout(dragResetTimer); dragResetTimer = undefined }
 })
 
 /** drag 是否正在进行（防 onDown 重入 + 多渠道 cleanup 走同一次 endDrag 兜底） */
@@ -308,7 +313,8 @@ function endDrag(save: boolean = false): void {
   // blur 兜底路径（save=false）也要记，避免 alt-tab 抢救后浏览器仍 emit 一个合成 click。
   if (moved) dragEndedAt = Date.now()
   // dragging 在 next tick 才置回 false，让 click handler 看到当前帧仍是 dragging 状态
-  setTimeout(() => { dragging.value = false }, 0)
+  if (dragResetTimer) clearTimeout(dragResetTimer)
+  dragResetTimer = window.setTimeout(() => { dragging.value = false; dragResetTimer = undefined }, 0)
 }
 
 /**

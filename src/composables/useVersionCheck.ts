@@ -31,6 +31,9 @@ export function useVersionCheck(opts: UseVersionCheckOptions) {
   // v0.8.1 hotfix：fetch fail（API 限流 / 网络错 / SemVer parse 失败）单独显示
   const checkFailed = ref(false)
   let doneTimer: number | undefined
+  // 最小 spinner 延时的 timer 句柄 —— 纳入 onBeforeUnmount，避免组件在 ≤600ms 窗口内
+  // 卸载后 promise resolve 续跑 finally / lastChecked 写到已销毁实例（post-unmount write）。
+  let spinnerTimer: number | undefined
 
   async function runCheck() {
     if (checking.value) return
@@ -43,7 +46,13 @@ export function useVersionCheck(opts: UseVersionCheckOptions) {
       const result = await runVersionCheck()
       // 最小 600ms spinner（fetch Gitee API < 500ms 一闪而过用户看不见）
       const elapsed = Date.now() - start
-      if (elapsed < 600) await new Promise(r => setTimeout(r, 600 - elapsed))
+      if (elapsed < 600) {
+        // 存句柄：卸载时 onBeforeUnmount 清掉、promise 不再 resolve，后续 finally / 状态写
+        // 自然不执行（组件已销毁，无副作用）。
+        await new Promise<void>((resolve) => {
+          spinnerTimer = window.setTimeout(() => { spinnerTimer = undefined; resolve() }, 600 - elapsed)
+        })
+      }
       const now = new Date()
       lastChecked.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
       // v0.8.1：按 runVersionCheck 真返值决定 UI — 不再用 `!hasUpdate()` 谎报
@@ -86,6 +95,7 @@ export function useVersionCheck(opts: UseVersionCheckOptions) {
 
   onBeforeUnmount(() => {
     if (doneTimer) { clearTimeout(doneTimer); doneTimer = undefined }
+    if (spinnerTimer) { clearTimeout(spinnerTimer); spinnerTimer = undefined }
   })
 
   return { checking, lastChecked, checkJustDone, checkFailed, runCheck, reloadExtension }
