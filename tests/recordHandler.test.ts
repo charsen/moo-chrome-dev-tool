@@ -148,7 +148,7 @@ const fakeSender = (tabId?: number): chrome.runtime.MessageSender => ({
 describe('handleQueryRecordingState', () => {
   it('初始 state → recording=false', async () => {
     const { handleQueryRecordingState } = await importRecord()
-    const r = handleQueryRecordingState()
+    const r = await handleQueryRecordingState()
     expect(r.recording).toBe(false)
   })
 
@@ -158,7 +158,7 @@ describe('handleQueryRecordingState', () => {
     const t0 = Date.now()
     const res = await handleRecordStart(fakeSender(7))
     expect(res.ok).toBe(true)
-    const q = handleQueryRecordingState()
+    const q = await handleQueryRecordingState()
     expect(q.recording).toBe(true)
     if (q.recording) {
       expect(q.startedAt).toBeGreaterThanOrEqual(t0)
@@ -229,7 +229,7 @@ describe('handleRecordCancel', () => {
     expect(broadcastTabs).toContain(9)
     expect(state.alarmsCleared).toContain('mooOffscreenTripwire')
     // state 已清
-    expect(handleQueryRecordingState().recording).toBe(false)
+    expect((await handleQueryRecordingState()).recording).toBe(false)
   })
 })
 
@@ -241,7 +241,7 @@ describe('handleRecordStop', () => {
     const stopRes = await handleRecordStop(fakeSender(7))
     expect(stopRes.ok).toBe(true)
     if (stopRes.ok) expect(stopRes.dataUrl).toContain('data:video')
-    expect(handleQueryRecordingState().recording).toBe(false)
+    expect((await handleQueryRecordingState()).recording).toBe(false)
   })
 })
 
@@ -253,7 +253,7 @@ describe('handleOffscreenAutoStopped', () => {
     state.sentToTabs.length = 0
     const r = await handleOffscreenAutoStopped()
     expect(r.ok).toBe(true)
-    expect(handleQueryRecordingState().recording).toBe(false)
+    expect((await handleQueryRecordingState()).recording).toBe(false)
     // tab 7 没被 exclude（chrome-ui 触发的，没有 sender tab 概念）
     const broadcastTabs = state.sentToTabs.filter(s => {
       const msg = s.msg as { type?: string }
@@ -276,7 +276,7 @@ describe('rehydrateRecordingFromOffscreen', () => {
     state.contexts = []
     const { rehydrateRecordingFromOffscreen, handleQueryRecordingState } = await importRecord()
     await rehydrateRecordingFromOffscreen()
-    expect(handleQueryRecordingState().recording).toBe(false)
+    expect((await handleQueryRecordingState()).recording).toBe(false)
   })
 
   it('offscreen 在录中 → 回填 state', async () => {
@@ -284,7 +284,7 @@ describe('rehydrateRecordingFromOffscreen', () => {
     state.offscreenState = { state: 'recording', meta: { tabId: 42, startedAt: 1700000000000 } }
     const { rehydrateRecordingFromOffscreen, handleQueryRecordingState } = await importRecord()
     await rehydrateRecordingFromOffscreen()
-    const q = handleQueryRecordingState()
+    const q = await handleQueryRecordingState()
     expect(q.recording).toBe(true)
     if (q.recording) expect(q.startedAt).toBe(1700000000000)
   })
@@ -294,7 +294,7 @@ describe('rehydrateRecordingFromOffscreen', () => {
     state.offscreenState = { state: 'idle', meta: null }
     const { rehydrateRecordingFromOffscreen, handleQueryRecordingState } = await importRecord()
     await rehydrateRecordingFromOffscreen()
-    expect(handleQueryRecordingState().recording).toBe(false)
+    expect((await handleQueryRecordingState()).recording).toBe(false)
   })
 })
 
@@ -302,7 +302,7 @@ describe('checkOffscreenAutoStoppedFlag', () => {
   it('storage 无 flag → noop', async () => {
     const { checkOffscreenAutoStoppedFlag, handleQueryRecordingState } = await importRecord()
     await checkOffscreenAutoStoppedFlag()
-    expect(handleQueryRecordingState().recording).toBe(false)
+    expect((await handleQueryRecordingState()).recording).toBe(false)
   })
 
   it('flag > 5min → 清除不广播', async () => {
@@ -320,7 +320,7 @@ describe('checkOffscreenAutoStoppedFlag', () => {
     await handleRecordStart(fakeSender(7))
     state.sentToTabs.length = 0
     await checkOffscreenAutoStoppedFlag()
-    expect(handleQueryRecordingState().recording).toBe(false)
+    expect((await handleQueryRecordingState()).recording).toBe(false)
     expect(state.sentToTabs.length).toBeGreaterThan(0)
     expect(state.storageData.mooOffscreenAutoStopped).toBeUndefined()
   })

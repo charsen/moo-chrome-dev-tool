@@ -60,8 +60,32 @@ export async function emergencyStopForWindow(windowId: number): Promise<void> {
   } catch { /* SW 可能已被销毁 */ }
 }
 
+/** v0.8.2：spin-up 的 rehydrate 是 fire-and-forget，会跟入站 message handler 竞争读
+ *  currentRecording。把它的 promise 缓存成模块级共享态，让需要可靠读 currentRecording
+ *  的 handler（QUERY_RECORDING_STATE）在读之前 await 一次，避免 boot 未完成就误报
+ *  recording:false 把录制中的 rec-bar 错误退掉（场景 D）。
+ *
+ *  注意：这里只缓存「最近一次 rehydrate」的 promise。spin-up 只会调一次
+ *  rehydrateRecordingFromOffscreen()，所以正常路径下 await 的就是 boot 这次；
+ *  rehydrate 内部全包了 try/catch，必定 resolve，不会卡死 await 方。 */
+let bootRehydratePromise: Promise<void> | null = null
+
+/** 给读 currentRecording 前需要确保 boot rehydrate 已完成的 handler 用。
+ *  未触发过 rehydrate（如单测直接调 handler）时立即 resolve，不引入等待。 */
+export async function awaitBootRehydrate(): Promise<void> {
+  if (bootRehydratePromise) await bootRehydratePromise
+}
+
 /** v0.4.4：SW spin-up 时调 — 从 offscreen 恢复 currentRecording */
 export async function rehydrateRecordingFromOffscreen(): Promise<void> {
+  // 缓存本次 promise 供 awaitBootRehydrate() 同步竞争的 handler 等待。
+  // 自指赋值：内部 await 自己这条 promise 会死锁，所以把真正的活儿放进 _doRehydrate。
+  const p = _doRehydrate()
+  bootRehydratePromise = p
+  return p
+}
+
+async function _doRehydrate(): Promise<void> {
   try {
     const getCtx = (chrome.runtime as unknown as { getContexts?: (opts: { contextTypes: string[] }) => Promise<unknown[]> }).getContexts
     if (typeof getCtx !== 'function') return
@@ -154,8 +178,13 @@ export async function handleRecordCancel(sender: chrome.runtime.MessageSender): 
   return { ok: true }
 }
 
-export function handleQueryRecordingState(): QueryRecordingStateRes {
-  // content script 挂载（任意 tab）查全局录屏状态；命中就回 startedAt
+export async function handleQueryRecordingState(): Promise<QueryRecordingStateRes> {
+  // content script 挂载（任意 tab）查全局录屏状态；命中就回 startedAt。
+  // v0.8.2：QUERY_RECORDING_STATE 可能正好把 SW 从回收态唤醒，此时 spin-up 的
+  // rehydrateRecordingFromOffscreen 还在飞行中 —— 不等它就读 currentRecording 会拿到
+  // 尚未恢复的 null，误报 recording:false 让录制中的 rec-bar 被错误退掉（场景 D）。
+  // 先 await 一次 boot rehydrate（已完成 / 未触发都立即返回），再读才稳。
+  await awaitBootRehydrate()
   return currentRecording
     ? { recording: true, startedAt: currentRecording.startedAt }
     : { recording: false }

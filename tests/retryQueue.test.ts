@@ -206,6 +206,23 @@ describe('retryQueue', () => {
     expect(list[list.length - 1]?.bodyString).toBe('{"i":"new"}')
   })
 
+  it('pushItem：enqueuedAt 撞现存最大值时顶到 +1 保持唯一（防删单条误删两条）', async () => {
+    // 现存一条 enqueuedAt 远在未来，强制让新条（真实 Date.now < future）触发单调 bump。
+    const future = Date.now() + 1_000_000
+    storage.data.mooRetryQueue = [
+      { kind: 'webhook', enqueuedAt: future, attempts: 0, endpoint: 'http://x', method: 'POST', headers: {}, bodyString: '{"old":1}' }
+    ]
+    const queued = await enqueueRetry('http://x', 'POST', {}, '{"new":1}')
+    expect(queued).toBe(true)
+    const list = storage.data.mooRetryQueue as Array<{ enqueuedAt: number; bodyString: string }>
+    expect(list).toHaveLength(2)
+    const fresh = list[list.length - 1]!
+    expect(fresh.bodyString).toBe('{"new":1}')
+    // 新条被顶到 future+1，跟现存条 enqueuedAt 不再相同
+    expect(fresh.enqueuedAt).toBe(future + 1)
+    expect(new Set(list.map((q) => q.enqueuedAt)).size).toBe(2)
+  })
+
   it('enqueueRetry：storage.set 抛 QUOTA 错走降级，不崩溃，返 false', async () => {
     storage.failSetNext = 1
     const queued = await enqueueRetry('http://x', 'POST', {}, '{}')

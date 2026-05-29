@@ -227,6 +227,14 @@ async function pushItem(item: QueuedItem): Promise<boolean> {
     // 让用户的新失败仍能进队。get 异常时给个空数组兜，不让 enqueue 整体失败。
     let list: QueuedItem[] = []
     try { list = await readQueue() } catch { list = [] }
+    // v0.8.2：enqueuedAt 是这套重试队列的事实唯一标识 —— removeQueueItem(enqueuedAt)
+    // 与 Settings 列表 :key 都按它。同一毫秒内连续入队两条会撞 enqueuedAt → 删单条
+    // 误删两条 + 列表 DOM key 复用错乱。读现存队列后把新条顶到「现存最大 + 1」保证
+    // 严格单调唯一（毫秒精度够时不动；时钟回拨 / 同 ms 批量入队时兜底）。
+    if (list.length) {
+      const maxAt = list.reduce((m, q) => (q.enqueuedAt > m ? q.enqueuedAt : m), 0)
+      if (item.enqueuedAt <= maxAt) item.enqueuedAt = maxAt + 1
+    }
     list.push(item)
     while (list.length > RETRY_MAX_QUEUE_LEN) list.shift()
     await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: list })

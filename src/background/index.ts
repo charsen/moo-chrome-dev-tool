@@ -153,6 +153,14 @@ chrome.storage.session?.setAccessLevel?.({
 // SW 每次 spin-up（不止 onStartup）都立刻 flush 一次：MV3 SW 空闲 ~30s 被回收，
 // 中途任何消息/alarm 唤醒都走这条路径。之前只 onStartup 主动 flush，意味着
 // 用户在浏览器中途的失败 submit 要干等 alarm 周期（5min）才会重试。
+// v0.8.2：rehydrate 必须在模块「同步求值期」就启动，不能埋进下面 IIFE 的
+// `await getQueueLength()` 之后 —— SW 被 QUERY_RECORDING_STATE 唤醒时，message dispatch
+// 紧跟模块求值完成后触发，此刻 IIFE 还卡在 getQueueLength、旧位置的 rehydrate 尚未执行，
+// bootRehydratePromise 仍为 null，handleQueryRecordingState 的 awaitBootRehydrate() 会
+// 退化成 no-op、读到未恢复的 null 误报 recording:false（场景 D race）。提前同步启动让
+// bootRehydratePromise 在任何 handler 跑之前就 set 好，await 才真正等得到。
+void rehydrateRecordingFromOffscreen()
+
 ;(async () => {
   try {
     const n = await getQueueLength()
@@ -166,8 +174,6 @@ chrome.storage.session?.setAccessLevel?.({
   // SW 每次 spin-up 都同步一次 badge：onStartup 只触发于浏览器启动，
   // SW 30s 闲置回收后再次唤醒时 onStartup 不会再触发，badge 状态会过期
   void refreshBadge()
-  // v0.4.4：从 offscreen 恢复录屏状态（SW 内存丢但 offscreen 还在录的边缘场景）
-  void rehydrateRecordingFromOffscreen()
   // v0.4.5：offscreen track-ended 时如果 SW 刚回收，sendMessage 会丢。spin-up 时读 storage flag 兜底
   void checkOffscreenAutoStoppedFlag()
   // v0.7.0：SW spin-up 兜底 sync content scripts（onInstalled 不会再 fire 但 SW 30s 回收后唤醒需要确认）
@@ -282,7 +288,9 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
           break
         }
         case MSG.QUERY_RECORDING_STATE: {
-          sendResponse(handleQueryRecordingState())
+          // v0.8.2：handler 改 async（内部先 await boot rehydrate 再读 currentRecording）。
+          // 分发已在 async IIFE + `return true` 内，await 不影响 channel 保活。
+          sendResponse(await handleQueryRecordingState())
           break
         }
         case MSG.OFFSCREEN_AUTO_STOPPED: {
