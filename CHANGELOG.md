@@ -2,6 +2,33 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.8.2
+
+2026-05-29 发版。无 BREAKING，行为兼容。源起 `/full-team-review` 全仓 4 断面审计 → 全清修复。**用户明示放行跳 dogfood + RELEASE_TEST_CHECKLIST（本人确认「现在就发」）。**
+
+### 🔴 严重（2）
+
+- **SubmitDialog requests / errors 浅 watch 改 `.slice()` 源**：上游 in-place `push()` 不触发浅 watch，导致 dialog 开着期间新进来的请求 / 错误不自动勾选。改 watch 一个 `.slice()` 出来的快照源，让新增项能被勾上。
+- **options 暗色 hover 白字 `#fff` → `var(--moo-c-bg)`**：暗色主题下 hover 行文字用硬编码 `#fff` 在浅底上不可读，改走 token。
+
+### 🟡 中等（2）
+
+- **SW rehydrate race 修**：`QUERY_RECORDING_STATE` 唤醒 SW 时若 rehydrate 还没启动会误报 `recording: false`。把 rehydrate 提到模块同步求值期触发 + handler 读状态前 `await boot`，杜绝竞态误报。
+- **retry 队列 `enqueuedAt` 单调唯一**：同毫秒入队两条会撞 key，删单条误删两条 + Settings 列表 `:key` 撞。改为单调递增唯一值。
+
+### 🟢 小修（1）
+
+- **FloatingBall + useVersionCheck 裸 `setTimeout` 纳入 `onBeforeUnmount`**：组件卸载后定时器回调还会 write，纳入清理防 post-unmount write。
+
+### 🧹 重构去重（行为不变）
+
+- `escapeHtml` 复用 `jsonHighlight`；`formatBytes` 抽 util；`client.ts` v2 GET 抽 `fetchV2`（401 / schema 不识别 / v1 fallback 仍显式守双轨，遵 🟣 规则）；`listModules` 复用 `withZentaoSession`；`useZentaoEnvironment` 抽 `runZentaoAction`。
+
+### 测试
+
+- +4 dialog-auto-select e2e（已证明能抓回归）+1 `enqueuedAt` 单测。
+- **643 单测 + 136 e2e + vue-tsc 0 错**全绿；chrome-devtools 真扩展验证：扩展加载 0 错 + 真 SW 响应正常。
+
 ## v0.8.1
 
 2026-05-27 发版。**🔴 dogfood hotfix** — v0.8.0 发布后用户立刻撞 P0：popup 检查更新 chip 谎报「已是最新」（实际新版已在 Gitee）。根因 Gitee API 限流 403 → fetch null → `runVersionCheck` void 返回 + UI 用 `!hasUpdate()` 判定「已是最新」 = 谎报。
