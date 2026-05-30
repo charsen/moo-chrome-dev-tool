@@ -135,7 +135,9 @@ async function bootstrap(): Promise<void> {
           h(Annotator, {
             image: tinyPng,
             onCancel: () => logEmit('cancel'),
-            onConfirm: (image: string) => logEmit('confirm', image.length)
+            // Annotator emit 的是 'finish'（不是 'confirm'）——「下一步」走这个事件。
+            // download 测试要断言「点下载不 emit finish/cancel」，必须把 finish 真接上。
+            onFinish: (dataUrl: string) => logEmit('finish', dataUrl.length)
           })
       }
     })

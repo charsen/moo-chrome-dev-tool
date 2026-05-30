@@ -89,6 +89,7 @@
           <button class="danger" @click="clearAll" :disabled="!items.length">清空</button>
           <div class="sep" />
           <button @click="cancel">取消</button>
+          <button @click="download" title="下载标注后的图片到本地">下载</button>
           <button class="primary" @click="finish">下一步</button>
         </div>
       </div>
@@ -113,6 +114,9 @@ const bgEl = ref<HTMLCanvasElement>()
 const drawEl = ref<HTMLCanvasElement>()
 const wrapEl = ref<HTMLDivElement>()
 const textInputEl = ref<HTMLInputElement>()
+// 下载按钮：上一次下载创建的 blob url + 延迟 revoke timer 句柄（onBeforeUnmount 清理，防泄漏）
+let downloadBlobUrl: string | null = null
+let downloadRevokeTimer: number | undefined
 
 const canvasW = ref(0)
 const canvasH = ref(0)
@@ -270,6 +274,9 @@ onBeforeUnmount(() => {
   // 卸载前如果还有 pending nudge action，立刻 commit；timer 也清
   if (nudgeCommitTimer) { clearTimeout(nudgeCommitTimer); nudgeCommitTimer = undefined }
   if (nudgePending) { commitAction(); nudgePending = false }
+  // 下载 blob url + 延迟 revoke timer 清理（防 post-unmount write / blob 泄漏）
+  if (downloadRevokeTimer) { clearTimeout(downloadRevokeTimer); downloadRevokeTimer = undefined }
+  if (downloadBlobUrl) { URL.revokeObjectURL(downloadBlobUrl); downloadBlobUrl = null }
 })
 
 const TOOL_KEY_MAP: Record<string, Mode> = {
@@ -888,15 +895,53 @@ function dismissCancelGuard() {
   cancelGuard.value = false
 }
 
-function finish() {
-  if (editing.value) commitText()
-  window.removeEventListener('keydown', onKey, true)
+// 合成 bg + draw 两层到离屏 canvas。finish（→ SubmitDialog）与 download（→ 存本地）共用。
+function composeCanvas(): HTMLCanvasElement {
   const out = document.createElement('canvas')
   out.width = canvasW.value
   out.height = canvasH.value
   const ctx = out.getContext('2d')!
   ctx.drawImage(bgEl.value!, 0, 0)
   ctx.drawImage(drawEl.value!, 0, 0)
-  emit('finish', out.toDataURL('image/png'))
+  return out
+}
+
+function finish() {
+  if (editing.value) commitText()
+  window.removeEventListener('keydown', onKey, true)
+  emit('finish', composeCanvas().toDataURL('image/png'))
+}
+
+function downloadFilename(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `moo-screenshot-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.png`
+}
+
+// 下载标注后的图片：合成 → blob → <a download> 触发浏览器下载。
+// - 不走 chrome.downloads（免加 "downloads" 权限，守最小权限）
+// - 不 emit finish/cancel：下载后留在标注界面，可继续改 / 再「下一步」提交
+function download() {
+  if (editing.value) commitText()  // 正在编辑的文字先 commit 进画布，确保下载到当前状态
+  composeCanvas().toBlob((blob) => {
+    if (!blob) return
+    // 清掉上一次未 revoke 的 blob url（连续多次下载不泄漏）
+    if (downloadBlobUrl) URL.revokeObjectURL(downloadBlobUrl)
+    if (downloadRevokeTimer) clearTimeout(downloadRevokeTimer)
+    const url = URL.createObjectURL(blob)
+    downloadBlobUrl = url
+    const a = document.createElement('a')
+    a.href = url
+    a.download = downloadFilename()
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    // 延迟 revoke（太早会中断下载）；timer + url 句柄都在 onBeforeUnmount 清理
+    downloadRevokeTimer = window.setTimeout(() => {
+      URL.revokeObjectURL(url)
+      if (downloadBlobUrl === url) downloadBlobUrl = null
+      downloadRevokeTimer = undefined
+    }, 10_000)
+  }, 'image/png')
 }
 </script>
