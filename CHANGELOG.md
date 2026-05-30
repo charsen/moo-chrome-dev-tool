@@ -2,6 +2,23 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.8.3
+
+2026-05-30 发版。无 BREAKING，纯增量。单一 feature：截屏标注器加「下载」按钮。**用户明示放行跳 dogfood + RELEASE_TEST_CHECKLIST（与 v0.8.2 同款决策，本人确认「发版」）—— 非 BREAKING + 全绿，dogfood 未达几天但用户明示放行。**
+
+### ✨ 新功能（1）
+
+- **标注工具栏「下一步」左边加「下载」**：把标注后的图（背景截图 + 标注层合成 PNG）直接下载到浏览器默认下载目录。
+  - 实现：抽 `composeCanvas()`（finish 提交与 download 共用同一份合成逻辑）→ `toBlob` → `<a download="moo-screenshot-时间戳.png">` 触发下载。
+  - **不走 `chrome.downloads`**（免加权限，守最小权限原则）。
+  - 下载后不关标注界面，可继续改 / 再点「下一步」提交禅道。
+  - `setTimeout(revoke)` 句柄 + blobUrl 纳入 `onBeforeUnmount` 清理，防 post-unmount 泄漏。
+
+### 测试
+
+- +3 e2e（`tests-e2e/dialog-annotator-download.spec.ts`）：lab-tester 真机用 Playwright 捕获 download 事件、断言 PNG 真落盘（magic bytes + IHDR 尺寸 = canvas）。
+- **643 单测 + 139 e2e（+3）+ vue-tsc 0 错**全绿。
+
 ## v0.8.2
 
 2026-05-29 发版。无 BREAKING，行为兼容。源起 `/full-team-review` 全仓 4 断面审计 → 全清修复。**用户明示放行跳 dogfood + RELEASE_TEST_CHECKLIST（本人确认「现在就发」）。**
