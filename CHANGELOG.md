@@ -2,6 +2,29 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.8.4
+
+2026-06-01 发版。无 BREAKING，纯增量。一块新功能 + 一轮重构。**本版 dogfood 已验**（用户真机验证后明示「都好了」）—— 三条标准齐：非 BREAKING + 全绿 + dogfood ≥ 几天，正常跳 RELEASE_TEST_CHECKLIST（不同于 v0.8.2/v0.8.3 的「明示放行跳」）。
+
+### ✨ 新功能（1）
+
+- **标注工具栏加「复制」按钮**：工具栏布局「取消 / 复制 / 下载 / 下一步」。「复制」把标注后的图（背景截图 + 标注层合成 PNG）一键复制到剪贴板，可直接粘进 IM / 文档 / 工单（比下载快一步）。
+  - 实现：复用 `composeCanvas()` 合成 → `ClipboardItem(Promise<Blob>)`（包 Promise 才能保住 click 用户手势直到 blob ready，绕过异步丢手势）→ `navigator.clipboard.write`。
+  - **仅安全上下文（HTTPS / localhost）可用，HTTP 页按钮置灰**：浏览器铁律，图片写剪贴板要求 secure context。
+  - **不走 `chrome.downloads`**（守最小权限原则，与「下载」按钮同理）。
+
+### 🧹 重构去重（full-team-review 简化清单，行为不变）
+
+- 删死代码 `parseBugIdFromLoad` + 死参数 `hasUpdate`（含 2 处调用方）。
+- 压平嵌套三元：`historyStatus` XOR 三元 → 命名布尔；`submit` 状态色嵌套三元 → 抽 `httpStatusColor` early-return；`badge` 三元 → if 链。
+- `estimateZentaoSize` 去重（retryQueue 复用 `zentaoAdapter`）；删 `enqueueZentaoRetry` 冗余 `thumbnailize`（上游 router `preprocessZentaoForRetry` 已统一）。
+- 团队主动拒绝了几处「为去重引入抽象层」的伪优化（符合「不要多层」原则）。
+
+### 测试
+
+- +4 copy e2e（`tests-e2e` 标注器复制路径）：lab-tester 真机验证剪贴板真有 PNG（读回 magic bytes）+ download 顺序断言更新。
+- **643 单测 + 143 e2e（+4）+ vue-tsc 0 错**全绿。
+
 ## v0.8.3
 
 2026-05-30 发版。无 BREAKING，纯增量。单一 feature：截屏标注器加「下载」按钮。**用户明示放行跳 dogfood + RELEASE_TEST_CHECKLIST（与 v0.8.2 同款决策，本人确认「发版」）—— 非 BREAKING + 全绿，dogfood 未达几天但用户明示放行。**
