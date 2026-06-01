@@ -536,6 +536,8 @@ export const SHADOW_CSS = `
   font-family: inherit;
 }
 .moo-toolbar button:hover { background: var(--c-bg-soft); }
+.moo-toolbar button:disabled { opacity: .4; cursor: not-allowed; }
+.moo-toolbar button:disabled:hover { background: transparent; }
 .moo-toolbar button.primary {
   background: var(--c-brand);
   color: var(--moo-c-brand-fg);

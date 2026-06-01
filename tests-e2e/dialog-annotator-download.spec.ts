@@ -50,17 +50,17 @@ async function locateDownloadBtn(page: Page) {
   return page.locator('.moo-annotator .actions-right button', { hasText: '下载' })
 }
 
-test('Annotator download · D1 · 工具栏有「下载」按钮，位于「取消」与「下一步」之间', async ({ context, extensionId, sw }) => {
+test('Annotator download · D1 · 工具栏有「下载」按钮，位于「复制」与「下一步」之间', async ({ context, extensionId, sw }) => {
   const page = await openExtensionPage(context, sw, harnessUrl(extensionId))
   await page.waitForSelector('.moo-canvas-draw', { timeout: 5000 })
 
   const download = page.locator('.moo-annotator .actions-right button', { hasText: '下载' })
   await expect(download).toBeVisible()
 
-  // 顺序断言：actions-right 末尾三按钮应为 取消 / 下载 / 下一步
+  // 顺序断言：v0.8.x 加「复制」后，actions-right 末尾四按钮应为 取消 / 复制 / 下载 / 下一步
   const labels = await page.locator('.moo-annotator .actions-right button').allInnerTexts()
-  const tail = labels.slice(-3).map((t) => t.trim())
-  expect(tail).toEqual(['取消', '下载', '下一步'])
+  const tail = labels.slice(-4).map((t) => t.trim())
+  expect(tail).toEqual(['取消', '复制', '下载', '下一步'])
 })
 
 test('Annotator download · D2+D3 · 点击触发下载：文件名匹配 + 是 PNG + 尺寸=canvas(200×200)', async ({ context, extensionId, sw }) => {

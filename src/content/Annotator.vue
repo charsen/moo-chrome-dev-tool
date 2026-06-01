@@ -89,6 +89,11 @@
           <button class="danger" @click="clearAll" :disabled="!items.length">清空</button>
           <div class="sep" />
           <button @click="cancel">取消</button>
+          <button
+            @click="copyImage"
+            :disabled="!canCopyImage"
+            :title="canCopyImage ? '复制标注后的图片到剪贴板（可直接粘进 IM / 文档 / 工单）' : '当前页面非安全上下文（需 HTTPS 或 localhost），浏览器不允许复制图片，请改用下载'"
+          >{{ copyLabel }}</button>
           <button @click="download" title="下载标注后的图片到本地">下载</button>
           <button class="primary" @click="finish">下一步</button>
         </div>
@@ -117,6 +122,18 @@ const textInputEl = ref<HTMLInputElement>()
 // 下载按钮：上一次下载创建的 blob url + 延迟 revoke timer 句柄（onBeforeUnmount 清理，防泄漏）
 let downloadBlobUrl: string | null = null
 let downloadRevokeTimer: number | undefined
+// 复制按钮：图片复制到剪贴板只在安全上下文（HTTPS / localhost）可用 —— HTTP 宿主页
+// navigator.clipboard / ClipboardItem 不存在，按钮置灰。这是浏览器铁律，扩展也绕不过
+// （offscreen 写图片要 document focus + gesture，拿不到）。一次性判定，运行期不变。
+const canCopyImage =
+  typeof navigator !== 'undefined' &&
+  typeof navigator.clipboard?.write === 'function' &&
+  typeof window.ClipboardItem !== 'undefined'
+const copyState = ref<'idle' | 'done' | 'fail'>('idle')
+const copyLabel = computed(() =>
+  copyState.value === 'done' ? '已复制 ✓' : copyState.value === 'fail' ? '复制失败' : '复制'
+)
+let copyHintTimer: number | undefined
 
 const canvasW = ref(0)
 const canvasH = ref(0)
@@ -277,6 +294,8 @@ onBeforeUnmount(() => {
   // 下载 blob url + 延迟 revoke timer 清理（防 post-unmount write / blob 泄漏）
   if (downloadRevokeTimer) { clearTimeout(downloadRevokeTimer); downloadRevokeTimer = undefined }
   if (downloadBlobUrl) { URL.revokeObjectURL(downloadBlobUrl); downloadBlobUrl = null }
+  // 复制反馈 timer 清理
+  if (copyHintTimer) { clearTimeout(copyHintTimer); copyHintTimer = undefined }
 })
 
 const TOOL_KEY_MAP: Record<string, Mode> = {
@@ -943,5 +962,27 @@ function download() {
       downloadRevokeTimer = undefined
     }, 10_000)
   }, 'image/png')
+}
+
+// 复制标注后的图片到剪贴板（直接粘进 IM / 文档 / 工单，比下载快一步）。
+// - 只在安全上下文可用（canCopyImage 已判定，按钮置灰时点不到）
+// - ClipboardItem 传 Promise<Blob>：让浏览器在 click 的 transient activation 内 await
+//   blob 生成（toBlob 异步），避免「先 await toBlob 再 write」丢掉用户手势导致 NotAllowedError
+// - 按钮自身微反馈（已复制 ✓ / 复制失败）1.5s，不 emit finish/cancel，留在标注界面可继续改
+function copyImage() {
+  if (!canCopyImage) return
+  if (editing.value) commitText()  // 正在编辑的文字先 commit 进画布
+  const blobPromise = new Promise<Blob>((resolve, reject) => {
+    composeCanvas().toBlob((b) => b ? resolve(b) : reject(new Error('toBlob 返回 null')), 'image/png')
+  })
+  // 不在 write 前 await，保住 click 手势；ClipboardItem 内部 await blobPromise
+  navigator.clipboard
+    .write([new ClipboardItem({ 'image/png': blobPromise })])
+    .then(() => { copyState.value = 'done' })
+    .catch(() => { copyState.value = 'fail' })
+    .finally(() => {
+      if (copyHintTimer) clearTimeout(copyHintTimer)
+      copyHintTimer = window.setTimeout(() => { copyState.value = 'idle'; copyHintTimer = undefined }, 1500)
+    })
 }
 </script>
