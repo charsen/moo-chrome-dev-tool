@@ -366,7 +366,6 @@ const {
   runCheck: manualVersionCheck,
   reloadExtension
 } = useVersionCheck({
-  hasUpdate: () => !!updateInfo.value,
   expectedVersion: () => updateInfo.value?.latest ?? null
 })
 

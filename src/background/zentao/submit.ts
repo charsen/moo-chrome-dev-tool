@@ -256,6 +256,15 @@ export function buildZentaoStepsHtml(
   return parts.join('\n')
 }
 
+// HTTP 状态码 → 卡片配色。2xx 绿 / 5xx 深红 / 4xx 红 / 其它走 fallback（curl 块与 response
+// 卡片两处默认色不同，故传 fallback）。buildRequestCurlBlock + buildResponseBlock 共用。
+function httpStatusColor(status: number, fallback: string): string {
+  if (status >= 200 && status < 300) return '#16a34a'
+  if (status >= 500) return '#991b1b'
+  if (status >= 400) return '#dc2626'
+  return fallback
+}
+
 /**
  * 单条请求一个 curl 代码块 + response 代码块。
  *
@@ -268,8 +277,7 @@ export function buildZentaoStepsHtml(
  */
 function buildRequestCurlBlock(r: CapturedRequest, project: Project): string {
   const curl = obfuscateUrlsForWaf(toCurl(r, project.redact))
-  const ok = r.status >= 200 && r.status < 300
-  const statusColor = ok ? '#16a34a' : (r.status >= 500 ? '#991b1b' : r.status >= 400 ? '#dc2626' : '#999')
+  const statusColor = httpStatusColor(r.status, '#999')
   const shortUrl = obfuscateUrlsForWaf(r.url.length > 120 ? r.url.slice(0, 117) + '...' : r.url)
   const status = r.status || 'ERR'
   return [
@@ -299,8 +307,7 @@ function buildResponseBlock(r: CapturedRequest, project: Project): string {
   const sizeStr = formatBytes(r.responseSizeBytes || (r.responseBody?.length ?? 0), 2)
   const isBinary = /^(image|video|audio)\//.test(ct) || ct === 'application/octet-stream'
 
-  const ok = r.status >= 200 && r.status < 300
-  const barColor = ok ? '#16a34a' : (r.status >= 500 ? '#991b1b' : r.status >= 400 ? '#dc2626' : '#9ca3af')
+  const barColor = httpStatusColor(r.status, '#9ca3af')
   // 卡片样式：左色条 + 浅灰背景 + 内 padding。禅道实测 background / border-left / padding 保留
   const cardOpen = `<div style="margin:8px 0;background:#f8fafc;border-left:3px solid ${barColor};padding:8px 12px;">`
   const headerLine = `<p style="margin:0 0 4px;font-size:12px;color:#475569;">`

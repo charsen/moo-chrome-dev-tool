@@ -24,9 +24,9 @@
 // ============================================================
 
 import type { SubmitBugReq } from '@/types/messages'
-import { thumbnailize } from '@/utils/image'
 import { loadConfig } from '@/storage/config'
 import { getAdapter } from '@/adapters'
+import { estimateZentaoSize } from '@/adapters/zentaoAdapter'
 import { hasHostPermission } from '@/utils/hostPermission'
 
 const RETRY_QUEUE_KEY = 'mooRetryQueue'
@@ -192,33 +192,18 @@ export async function enqueueRetry(
  * 跟 webhook multipart 不入队保持一致行为：用户得自己去 历史 Tab 手动重提。
  */
 export async function enqueueZentaoRetry(projectId: string, req: SubmitBugReq): Promise<boolean> {
-  // v0.4.8：入队前 thumbnailize image（之前禅道路径直接存 1080p PNG 800KB-1.5MB 长期驻留 storage）。
-  // 跟 webhook 路径（history.ts）保持一致，重试时拿缩略图重提没问题（用户看到的也是缩略图）
-  const reqForQueue: SubmitBugReq = req.image
-    ? { ...req, image: await thumbnailize(req.image) }
-    : req
-  const estimatedSize = estimateZentaoSize(reqForQueue)
+  // image 的 thumbnailize 由上游 router 的 preprocessZentaoForRetry 统一做（结果还喂给
+  // serializeForRetry 的 size 检查）。这里只做队列自己的大小兜底，不重复缩略。
+  const estimatedSize = estimateZentaoSize(req)
   if (estimatedSize > RETRY_MAX_BODY_BYTES) return false
   const item: QueuedZentao = {
     kind: 'zentao',
     enqueuedAt: Date.now(),
     attempts: 0,
     projectId,
-    req: reqForQueue
+    req
   }
   return pushItem(item)
-}
-
-function estimateZentaoSize(req: SubmitBugReq): number {
-  // image / video 是 base64 字符串，length 已经接近字节数（base64 约 4/3 倍原始）
-  let n = (req.image?.length ?? 0)
-    + (req.video?.dataUrl.length ?? 0)
-    + (req.description?.length ?? 0)
-    + (req.title?.length ?? 0)
-  // requests / errors JSON 序列化估算（大致）
-  if (req.requests?.length) n += JSON.stringify(req.requests).length
-  if (req.errors?.length) n += JSON.stringify(req.errors).length
-  return n
 }
 
 async function pushItem(item: QueuedItem): Promise<boolean> {

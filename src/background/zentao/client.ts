@@ -805,13 +805,6 @@ function genUid(): string {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 13)
 }
 
-/** 从 {load:'/bug-view-9999.html'} 或 {load:'/project-bug-26.html'} 提取 bugId */
-function parseBugIdFromLoad(load: unknown): number | undefined {
-  if (typeof load !== 'string') return undefined
-  const m = load.match(/bug-view-(\d+)\.html/)
-  return m ? Number(m[1]) : undefined
-}
-
 /** message 可能是 string 也可能是 {fieldName:['错误1','错误2']} 结构 */
 function formatMessage(message: unknown): string {
   if (typeof message === 'string') return message

@@ -55,7 +55,9 @@ export async function updateActionBadge(history: BugHistoryEntry[]): Promise<voi
     if (e.timestamp < cutoff) continue
     if (!e.result?.ok) n++
   }
-  const text = n === 0 ? '' : n > 99 ? '99+' : String(n)
+  let text = ''
+  if (n > 99) text = '99+'
+  else if (n > 0) text = String(n)
   try {
     await setBadgeColorOnce(BADGE_COLOR)
     await chrome.action.setBadgeText({ text })

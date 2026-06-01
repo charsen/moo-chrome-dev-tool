@@ -17,8 +17,6 @@ import { MSG } from '@/types/messages'
  * `checkFailed` ref 让 UI 显示「检查失败，稍后重试」+ 手动 fallback 链接。
  */
 export interface UseVersionCheckOptions {
-  /** v0.8.1 起仅供未来使用 — latest/fail 由 runVersionCheck 真返值决定，不再依赖此 getter */
-  hasUpdate: () => boolean
   /** v0.7.6：调用方提供「期望升到的版本号」让 SW onInstalled 能对比验证升级真完
    *  成（用户没真解压 zip 时不会弹「已升级」toast）。一般 = updateInfo.latest。 */
   expectedVersion?: () => string | null

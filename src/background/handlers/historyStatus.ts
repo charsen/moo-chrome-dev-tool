@@ -27,7 +27,9 @@ export async function handleRefreshHistoryStatus(): Promise<{ ok: true; updated:
     if (!project) continue
     // v0.7.6 P1-2：entry.serverId 跟 project.kind 不一致时跳过 — 用户 kind 切换后
     // 老 webhook entry 在 zentao 项目下 fetchStatus 会拿 NaN bugId silent fail 404
-    if (entry.serverId === 'zentao' ? project.kind !== 'zentao' : project.kind === 'zentao') continue
+    const entryIsZentao = entry.serverId === 'zentao'
+    const projectIsZentao = project.kind === 'zentao'
+    if (entryIsZentao !== projectIsZentao) continue
     const adapter = getAdapter(project.kind)
     if (!adapter?.fetchStatus) continue
     try {

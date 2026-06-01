@@ -114,7 +114,8 @@ export async function preprocessZentaoForRetry(req: SubmitBugReq): Promise<Submi
   return req.image ? { ...req, image: await thumbnailize(req.image) } : req
 }
 
-function estimateZentaoSize(req: SubmitBugReq): number {
+/** 估算 zentao retry item 序列化后大小（字符数≈字节数）。retryQueue 入队大小兜底也复用此函数。 */
+export function estimateZentaoSize(req: SubmitBugReq): number {
   // image / video 是 base64 字符串，length 已经接近字节数（base64 约 4/3 倍原始）
   let n = (req.image?.length ?? 0)
     + (req.video?.dataUrl.length ?? 0)
