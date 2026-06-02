@@ -2,6 +2,29 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.8.5
+
+2026-06-02 发版。无 BREAKING，行为兼容。单一 **P0 bug 修复**：版本检查在升级后谎报旧版当新版。**这是版本检查显示逻辑 bug，真实场景（用户升到「非被提示版本」）难手动 dogfood，但 7 单测 + e2e 覆盖充分（含核心 bug 场景）。用户已 review + 明示放行。** 跳 RELEASE_TEST_CHECKLIST 决策小记见下。
+
+### 🔴 P0 修复（1）
+
+- **版本检查读 flag 改用 live manifest 重比 — 修「升级后谎报旧版当新版」**
+  - **根因**：版本检查 flag 写入时缓存了当时的 current。`checkUpgradeFinished` 只在 `intent.expected === 当前 manifest` 时清 flag。用户手动覆盖升级到「非被提示版本」时（如提示升 0.8.3、实际升到 0.8.4），实际版本 ≠ 当初被提示版本 → 不清 → **stale flag 残留**。popup / 工作台读 flag 只查 age 不重比 → **谎报「有新版 v旧（当前 v更旧）」，而真实 manifest 已更新**。最近连发 0.8.2/0.8.3/0.8.4 正好高频触发这条。
+  - **修法**：新增 `readValidStoredVersionInfo()` —— 读取时用 **live manifest version 重新比对**「是否仍比本地新」+ 用 live version 覆盖 `current` 字段（即使仍是新版，显示的当前版本也得真实）+ stale 时返 `null` 让调用方顺手清掉残留 flag。options / popup onMounted / popup onChanged 三处内联校验收口到这一个函数（顺带去重）。
+
+### 🧹 杂项
+
+- **gitignore `.ccpanes`**：CC-Panes 多会话编排的本地元数据（含 sqlite 会话历史），不入仓库。
+
+### 测试
+
+- +7 单测（核心 bug 场景 / current 用 live 覆盖 / = 最新 / 过期 / 缺字段 / 非 SemVer）+ 更新 1 处 e2e 断言（C2 banner 当前版改用 live）。
+- **650 单测 + 143 e2e + vue-tsc 0 错** 全绿。
+
+### 发版决策小记（跳 RELEASE_TEST_CHECKLIST 理由）
+
+非 BREAKING + 全绿，但这是**版本检查的显示逻辑 bug**：真实触发场景是「用户手动覆盖升级到非被提示版本」，难以手动 dogfood 复现。改以 7 单测（含核心 bug 场景 + 边界）+ e2e 断言锁死回归覆盖。**用户已 review 并明示放行发版**，故跳 dogfood ≥ 几天那条（与 v0.8.2/v0.8.3 的「明示放行跳」同款决策）。
+
 ## v0.8.4
 
 2026-06-01 发版。无 BREAKING，纯增量。一块新功能 + 一轮重构。**本版 dogfood 已验**（用户真机验证后明示「都好了」）—— 三条标准齐：非 BREAKING + 全绿 + dogfood ≥ 几天，正常跳 RELEASE_TEST_CHECKLIST（不同于 v0.8.2/v0.8.3 的「明示放行跳」）。
