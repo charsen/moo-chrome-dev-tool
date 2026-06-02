@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   isNewer, fetchLatestVersion, runVersionCheck, VERSION_CHECK_FLAG_KEY,
-  writeUpgradeIntent, checkUpgradeFinished, UPGRADE_INTENT_KEY, UPGRADED_TOAST_KEY
+  writeUpgradeIntent, checkUpgradeFinished, UPGRADE_INTENT_KEY, UPGRADED_TOAST_KEY,
+  readValidStoredVersionInfo
 } from '@/utils/versionCheck'
 
 /**
@@ -179,6 +180,69 @@ describe('runVersionCheck', () => {
       }), { status: 200 })))
       expect(await runVersionCheck()).toBe('fail')
     })
+  })
+})
+
+// v0.8.5 P0 hotfix：读 stored flag 必须用 LIVE manifest version 重比 —
+// 修「升级到 0.8.4 后 popup 仍谎报『有新版 0.8.3（当前 0.7.8）』」的 stale flag bug
+describe('readValidStoredVersionInfo (v0.8.5 stale flag 重比)', () => {
+  const DAY = 24 * 60 * 60_000
+  const NOW = 1_700_000_000_000  // 固定基准时间，避免依赖 Date.now()
+
+  function setManifest(version: string) {
+    ;(globalThis as { chrome?: unknown }).chrome = {
+      runtime: { getManifest: () => ({ version }) }
+    }
+  }
+
+  afterEach(() => {
+    delete (globalThis as { chrome?: unknown }).chrome
+  })
+
+  it('核心 bug：flag 缓存 latest=0.8.3，但已升到 0.8.4 → null（不谎报）', () => {
+    setManifest('0.8.4')
+    const flag = { latest: '0.8.3', current: '0.7.8', url: 'https://x/r', checkedAt: NOW }
+    expect(readValidStoredVersionInfo(flag, NOW)).toBeNull()
+  })
+
+  it('remote 仍比 live 新 → 返 info，且 current 用 LIVE manifest 覆盖缓存值', () => {
+    setManifest('0.8.4')
+    const flag = { latest: '0.9.0', current: '0.7.8', url: 'https://x/r', checkedAt: NOW }
+    const r = readValidStoredVersionInfo(flag, NOW)
+    expect(r?.latest).toBe('0.9.0')
+    expect(r?.current).toBe('0.8.4')  // 不是缓存的 0.7.8
+  })
+
+  it('remote = live → null（已是最新）', () => {
+    setManifest('0.8.4')
+    const flag = { latest: '0.8.4', current: '0.7.8', url: 'https://x/r', checkedAt: NOW }
+    expect(readValidStoredVersionInfo(flag, NOW)).toBeNull()
+  })
+
+  it('flag 超过 7 天 → null（过期）', () => {
+    setManifest('0.7.8')
+    const flag = { latest: '0.8.3', current: '0.7.8', url: 'https://x/r', checkedAt: NOW - 8 * DAY }
+    expect(readValidStoredVersionInfo(flag, NOW)).toBeNull()
+  })
+
+  it('flag 7 天内 + remote 更新 → 返 info', () => {
+    setManifest('0.7.8')
+    const flag = { latest: '0.8.3', current: '0.7.8', url: 'https://x/r', checkedAt: NOW - 6 * DAY }
+    expect(readValidStoredVersionInfo(flag, NOW)?.latest).toBe('0.8.3')
+  })
+
+  it('缺 url / latest / 形态错 → null', () => {
+    setManifest('0.7.8')
+    expect(readValidStoredVersionInfo(null, NOW)).toBeNull()
+    expect(readValidStoredVersionInfo('nope', NOW)).toBeNull()
+    expect(readValidStoredVersionInfo({ latest: '0.8.3', checkedAt: NOW }, NOW)).toBeNull()  // 缺 url
+    expect(readValidStoredVersionInfo({ url: 'https://x/r', checkedAt: NOW }, NOW)).toBeNull()  // 缺 latest
+  })
+
+  it('latest 非 SemVer → null（isNewer 对非数字段返 false）', () => {
+    setManifest('0.7.8')
+    const flag = { latest: 'preview', current: '0.7.8', url: 'https://x/r', checkedAt: NOW }
+    expect(readValidStoredVersionInfo(flag, NOW)).toBeNull()
   })
 })
 

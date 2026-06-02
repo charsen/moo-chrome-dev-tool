@@ -212,7 +212,9 @@ test('C2 · popup 跨 SW 同步：SW 写 mooLatestVersionInfo → popup 实时�
   await popup.waitForSelector('.update-banner', { timeout: 5000 })
   await expect(popup.locator('.update-banner')).toBeVisible()
   await expect(popup.locator('.update-banner .update-title')).toContainText('v9.9.9')
-  await expect(popup.locator('.update-banner .update-title')).toContainText('v0.6.3')
+  // v0.8.5：banner 的「当前 v」改用 LIVE manifest version —— fix 后不信 flag 缓存的 current（这里写的 0.6.3）
+  const liveVersion = await sw.evaluate(() => chrome.runtime.getManifest().version)
+  await expect(popup.locator('.update-banner .update-title')).toContainText(`v${liveVersion}`)
 
   // 反向链路：SW 清 flag → popup 也应隐藏 banner
   await sw.evaluate(async () => {

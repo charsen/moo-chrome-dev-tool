@@ -70,6 +70,38 @@ export function isNewer(remote: string, current: string): boolean {
 }
 
 /**
+ * v0.8.5 P0 hotfix：读 stored flag 必须用 LIVE manifest version 重新比对，
+ * 不能信 flag 里缓存的 current。
+ *
+ * Why（真实 bug）：flag 写入时记下当时的 current（如 0.7.8）+ latest（0.8.3）。
+ * 用户手动覆盖目录升级到 0.8.4 后，checkUpgradeFinished 只在
+ * intent.expected === 当前 manifest 时清 flag —— 用户实际升到的版本（0.8.4）
+ * ≠ 当初被提示升的版本（0.8.3）→ 不清 → stale flag 残留。
+ * popup / 工作台读 flag 只查 age 不重比 → 谎报「有新版 v0.8.3（当前 v0.7.8）」，
+ * 而真实 manifest 已是 0.8.4。
+ *
+ * 这里把「是否仍比本地新」的判定从 flag 写入时刻挪到读取时刻：用 live manifest
+ * version 重比，并用 live version 覆盖 current 字段（即使仍是新版，显示的当前版本
+ * 也得是真实的）。
+ *
+ * @returns 形态/时效合法且 remote 仍比 LIVE 本地新 → info（current 用 live 覆盖）；
+ *          否则 null（调用方应顺手清掉 stale flag）。
+ */
+export function readValidStoredVersionInfo(
+  raw: unknown,
+  now: number = Date.now()
+): LatestVersionInfo | null {
+  if (!raw || typeof raw !== 'object') return null
+  const info = raw as LatestVersionInfo
+  const age = now - (info.checkedAt ?? 0)
+  if (!info.latest || !info.url || age >= 7 * 24 * 60 * 60_000) return null
+  const current = chrome.runtime?.getManifest?.()?.version ?? '0.0.0'
+  // 关键：用 LIVE manifest version 重比，不信 flag 缓存的 current
+  if (!isNewer(info.latest, current)) return null
+  return { ...info, current }
+}
+
+/**
  * 拉 Gitee latest release。失败时返 null（网络 / API 限流 / 仓库私有都正常路径，
  * 不该让 SW 卡住或写错误 flag）。
  */

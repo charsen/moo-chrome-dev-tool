@@ -283,7 +283,7 @@ import { listHistory } from '@/storage/history'
 import { relativeTime } from '@/utils/relativeTime'
 import { t } from '@/i18n'
 import { UPGRADE_FLAG_KEY } from '@/utils/upgradeFlag'
-import { VERSION_CHECK_FLAG_KEY, UPGRADED_TOAST_KEY, type LatestVersionInfo, type UpgradedToastInfo } from '@/utils/versionCheck'
+import { VERSION_CHECK_FLAG_KEY, UPGRADED_TOAST_KEY, readValidStoredVersionInfo, type LatestVersionInfo, type UpgradedToastInfo } from '@/utils/versionCheck'
 import { useVersionCheck } from '@/composables/useVersionCheck'
 
 const version = ref(chrome.runtime.getManifest().version)
@@ -577,13 +577,14 @@ onMounted(async () => {
     // v0.6.0：升级 flag 仅当还没授权时显示 banner（已开 host 即使 flag 在也不弹）
     needsHostPermUpgrade.value = !hasHostPerm && !!(upgradeFlagObj as Record<string, unknown>)[UPGRADE_FLAG_KEY]
     // v0.6.2：版本检查 — 仅当 flag 是 LatestVersionInfo 形态 + checkedAt < 7 天
+    // v0.8.5：必须用 LIVE manifest version 重比（防升级后 stale flag 谎报旧版）
     const rawInfo = (updateFlagObj as Record<string, unknown>)[VERSION_CHECK_FLAG_KEY]
-    if (rawInfo && typeof rawInfo === 'object') {
-      const info = rawInfo as LatestVersionInfo
-      const age = Date.now() - (info.checkedAt ?? 0)
-      if (info.latest && info.url && age < 7 * 24 * 60 * 60_000) {
-        updateInfo.value = info
-      }
+    const validInfo = readValidStoredVersionInfo(rawInfo)
+    if (validInfo) {
+      updateInfo.value = validInfo
+    } else if (rawInfo) {
+      // stale flag（已升级 / 过期 / 形态错）→ 顺手清掉防下次再读
+      void chrome.storage.local.remove(VERSION_CHECK_FLAG_KEY).catch(() => {})
     }
     // v0.7.0：dropped match patterns flag — 7 天内的提示
     const rawDropped = (droppedFlagObj as Record<string, unknown>)[DROPPED_FLAG_KEY]
@@ -628,15 +629,8 @@ onMounted(async () => {
     }
     if (VERSION_CHECK_FLAG_KEY in changes) {
       const newVal = changes[VERSION_CHECK_FLAG_KEY]!.newValue
-      if (newVal === undefined) {
-        // SW runVersionCheck 发现已是最新 → 清 flag → 隐藏 banner
-        updateInfo.value = null
-      } else if (newVal && typeof newVal === 'object') {
-        const info = newVal as LatestVersionInfo
-        if (info.latest && info.url) {
-          updateInfo.value = info
-        }
-      }
+      // v0.8.5：同样用 live manifest 重比（null = 清 flag / stale → 隐藏 banner）
+      updateInfo.value = newVal === undefined ? null : readValidStoredVersionInfo(newVal)
     }
     // v0.7.0：SW syncContentScripts 后写 / 清 DROPPED flag → popup 实时显示
     if (DROPPED_FLAG_KEY in changes) {

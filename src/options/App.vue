@@ -97,7 +97,7 @@ import Overview from '@/devtools/tabs/Overview.vue'
 import Environment from '@/devtools/tabs/Environment.vue'
 import History from '@/devtools/tabs/History.vue'
 import Settings from '@/devtools/tabs/Settings.vue'
-import { VERSION_CHECK_FLAG_KEY, type LatestVersionInfo } from '@/utils/versionCheck'
+import { VERSION_CHECK_FLAG_KEY, readValidStoredVersionInfo, type LatestVersionInfo } from '@/utils/versionCheck'
 import { useVersionCheck } from '@/composables/useVersionCheck'
 
 const logoUrl = chrome.runtime.getURL('icons/icon-48.png')
@@ -131,15 +131,13 @@ function openReleasesPage() {
 function loadUpdateFlag() {
   void chrome.storage.local.get(VERSION_CHECK_FLAG_KEY).then(r => {
     const raw = r[VERSION_CHECK_FLAG_KEY]
-    if (raw && typeof raw === 'object') {
-      const info = raw as LatestVersionInfo
-      const age = Date.now() - (info.checkedAt ?? 0)
-      if (info.latest && info.url && age < 7 * 24 * 60 * 60_000) {
-        updateInfo.value = info
-        return
-      }
+    // v0.8.5：用 LIVE manifest version 重比，不信 flag 缓存的 current（防升级后谎报旧版）
+    const info = readValidStoredVersionInfo(raw)
+    updateInfo.value = info
+    if (!info && raw) {
+      // stale flag（已升级 / 过期 / 形态错）→ 顺手清掉防残留
+      void chrome.storage.local.remove(VERSION_CHECK_FLAG_KEY).catch(() => {})
     }
-    updateInfo.value = null
   }).catch(() => { updateInfo.value = null })
 }
 
