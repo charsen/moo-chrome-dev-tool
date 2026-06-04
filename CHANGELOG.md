@@ -2,6 +2,14 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## Unreleased
+
+- **对接 moo-scaffold-cloud(Todos 上报迁云端)**。**纯配置迁移,无代码行为变更** —— 本扩展本就是通用 webhook 上报端,云端 `todos/intake` 按本扩展契约建,因此只需在「环境 / Webhook」里:
+  - `endpoint` 配成 `https://<cloud>/api/v1/todos/intake`;
+  - `token` 用 moo-scaffold-cloud「接入 Token」页生成(勾选 todos 能力);
+  - `status-public` 状态回查天然对齐云端 `/api/v1/todos/{id}/status-public`(`deriveRemoteBase` 去 `/intake` 后缀逻辑不变)。
+  - 本次仅更新了 token 来源提示文案(原指向已退役的 `/scaffold/accounts`)。
+
 ## v0.8.5
 
 2026-06-02 发版。无 BREAKING，行为兼容。单一 **P0 bug 修复**：版本检查在升级后谎报旧版当新版。**这是版本检查显示逻辑 bug，真实场景（用户升到「非被提示版本」）难手动 dogfood，但 7 单测 + e2e 覆盖充分（含核心 bug 场景）。用户已 review + 明示放行。** 跳 RELEASE_TEST_CHECKLIST 决策小记见下。

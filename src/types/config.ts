@@ -101,10 +101,10 @@ export interface Project {
   /** 是否启用（关闭后即使匹配也不显示悬浮球） */
   enabled: boolean
   /**
-   * 上报 token（每个开发者一个）。从 scaffold 的 /scaffold/accounts 页面获取。
+   * 上报 token。从 moo-scaffold-cloud 的「接入 Token」页生成（需勾选 todos 能力）。
    * 通过 payload 模板的 `{{token}}` 占位符写进 POST body 的 token 字段（webhook 风格，
-   * 不进 header / 不进 URL），后端读 body.token 校验。服务端命中后自动用账号 username
-   * 作为提交人。
+   * 不进 header / 不进 URL），后端读 body.token 校验。命中后由云端项目归属提交人。
+   * endpoint 配成云端 `https://<cloud>/api/v1/todos/intake`。
    */
   token?: string
 }

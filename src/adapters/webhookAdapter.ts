@@ -260,7 +260,8 @@ function sanitizeHeaders(h: Record<string, string>): Record<string, string> {
 
 /** 给 router 算 history.remoteBase 用 */
 export function deriveRemoteBase(endpoint: string): string {
-  // 'http://host/scaffold/todos/intake' → 'http://host/scaffold/todos'
+  // 'https://<cloud>/api/v1/todos/intake' → 'https://<cloud>/api/v1/todos'
+  // (status-public 回查 = {remoteBase}/{id}/status-public,与云端 /api/v1 路由对齐)
   return endpoint.replace(/\/intake\/?$/, '')
 }
 

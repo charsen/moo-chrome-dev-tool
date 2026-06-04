@@ -9,7 +9,7 @@
         <input
           v-model="modelValue.token"
           :type="tokenVisible ? 'text' : 'password'"
-          placeholder="从 /scaffold/accounts 获取你的个人 token"
+          placeholder="从 moo-scaffold-cloud「接入 Token」页生成(需 todos 能力)"
           autocomplete="off"
           spellcheck="false"
           class="grow"
