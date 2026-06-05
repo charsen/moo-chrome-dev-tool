@@ -61,8 +61,8 @@
               :class="p.servers.length === 0 ? 'count--zero' : 'count--server'"
               :title="p.servers.length === 0
                 ? '没有上报服务器，悬浮球能匹配但提交会失败'
-                : `上报服务器「${p.servers[0]?.name || '未命名'}」· 共 ${p.servers.length} 个`"
-            >{{ p.servers.length === 0 ? '⚠ 无服务器' : (p.servers[0]?.name || '未命名') }}</span>
+                : `上报服务器「${projectServerLabel(p)}」· 共 ${p.servers.length} 个`"
+            >{{ p.servers.length === 0 ? '⚠ 无服务器' : projectServerLabel(p) }}</span>
           </li>
           <li v-if="!draft.projects.length" class="empty">暂无项目，点击 + 新建</li>
           <li v-else-if="!filteredProjects.length" class="empty">未匹配到项目</li>
@@ -180,6 +180,13 @@ const filteredProjects = computed(() => {
   if (!f) return draft.value.projects
   return draft.value.projects.filter((p) => (p.name || '').toLowerCase().includes(f))
 })
+
+// v0.8.6：webhook 项目侧栏徽标显「default 上报服务器名」。提交实际走 defaultServerId
+// （见 SubmitDialog.vue），所以徽标对齐它而非裸取 servers[0]，多服务器时才不会名不副实。
+function projectServerLabel(p: Project): string {
+  const def = p.servers.find((s) => s.id === p.defaultServerId)
+  return (def ?? p.servers[0])?.name || '未命名'
+}
 
 
 // === 自动保存：draft 任何深层变化触发 800ms 防抖，再提交到 config 并落盘 ===

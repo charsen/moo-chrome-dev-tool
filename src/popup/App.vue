@@ -105,7 +105,7 @@
       <div v-for="p in matched" :key="p.id" class="proj-card">
         <div class="proj-name">{{ p.name }}</div>
         <div class="proj-meta">
-          <span>{{ p.servers.length }} 个上报服务器</span>
+          <span>{{ projMeta(p) }}</span>
         </div>
       </div>
       <p class="hint">
@@ -300,6 +300,17 @@ async function dismissOnboard() {
 }
 const matched = ref<Project[]>([])
 const projects = ref<Project[]>([])
+
+// v0.8.6：matched 卡片副行按 kind 分支显示上报目标。
+// 禅道项目不用 servers（用 projectId）→ 之前裸显「0 个上报服务器」会谎报，按 kind 分流。
+function projMeta(p: Project): string {
+  if (p.kind === 'zentao') {
+    return p.zentao?.projectId ? `禅道单 · 项目 #${p.zentao.projectId}` : '⚠ 禅道未配项目 ID'
+  }
+  if (p.servers.length === 0) return '⚠ 无上报服务器'
+  const def = p.servers.find((s) => s.id === p.defaultServerId)
+  return `上报服务器：${(def ?? p.servers[0])?.name || '未命名'}`
+}
 const currentUrl = ref('')
 const loading = ref(true)
 const recEnabled = ref(false)
