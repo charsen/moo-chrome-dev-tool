@@ -2,13 +2,28 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
-## Unreleased
+## v0.8.6
 
-- **对接 moo-scaffold-cloud(Todos 上报迁云端)**。**纯配置迁移,无代码行为变更** —— 本扩展本就是通用 webhook 上报端,云端 `todos/intake` 按本扩展契约建,因此只需在「环境 / Webhook」里:
-  - `endpoint` 配成 `https://<cloud>/api/v1/todos/intake`;
-  - `token` 用 moo-scaffold-cloud「接入 Token」页生成(勾选 todos 能力);
-  - `status-public` 状态回查天然对齐云端 `/api/v1/todos/{id}/status-public`(`deriveRemoteBase` 去 `/intake` 后缀逻辑不变)。
-  - 本次仅更新了 token 来源提示文案(原指向已退役的 `/scaffold/accounts`)。
+2026-06-05 发版。无 BREAKING —— UI 展示文案对齐 + cloud 上报配置迁移文档。**非 BREAKING + 全绿(650 单测 + e2e 含 7 新 case),但 UI 改动当天提交、未走 dogfood ≥ 几天 —— 用户明示「发个版」放行**(跳 RELEASE_TEST_CHECKLIST 同 v0.8.2/v0.8.3 的明示放行)。
+
+### 🟢 UI 展示对齐(2)
+
+- **项目侧栏徽标显「上报服务器名」**(`Environment.vue`):webhook 项目原显**裸数字(server 个数)** —— 跟禅道项目显「禅道」语义不对称、且裸数字要 hover 才懂。改显 **default 上报服务器的名字**(取 `defaultServerId` 对应的,对齐提交实际目标,多服务器且 default≠第一个时不会名不副实)。0 服务器仍显「⚠ 无服务器」,server 个数挪 hover tooltip,长名 `max-width + ellipsis`,字体 mono→sans。
+- **popup 卡片副行按 kind 分支**(`popup/App.vue`):原对所有 matched 项目裸显「N 个上报服务器」—— **禅道项目 servers 为空 → 谎报「0 个上报服务器」**。改 `projMeta(p)` 按 kind 分流:禅道显「禅道单 · 项目 #ID」/「⚠ 禅道未配项目 ID」;webhook 显「上报服务器:<default 名>」/「⚠ 无上报服务器」。两处共用 `servers.find(s=>s.id===defaultServerId) ?? servers[0]` 取名,空名 fallback「未命名」。
+
+### ☁ cloud 上报对接(纯配置,无代码行为变更)
+
+- **对接 moo-scaffold-cloud(Todos 上报迁云端)** —— 本扩展本就是通用 webhook 上报端,云端 `todos/intake` 按本扩展契约建,只需在「环境 / Webhook」里配 `endpoint`(`https://<cloud>/api/v1/todos/intake`)+ `token`(云端「接入 Token」页生成,勾 todos 能力)。`status-public` 状态回查天然对齐云端 `/api/v1/todos/{id}/status-public`(`deriveRemoteBase` 去 `/intake` 后缀逻辑不变)。本次仅更新 token 来源提示文案(原指向已退役的 `/scaffold/accounts`)。
+
+### 测试
+
+- **+7 e2e**:`popup-proj-meta`(4 case — 禅道 / 禅道无ID / webhook default名 / 0服务器)+ `panel-environment-server-label`(3 case — default名非第一个 / 0服务器 / 空名 fallback)。锁两处展示分支。
+- `panel-harness` 加 `external` seed 模式(不覆盖 mooConfig,让 spec 预置自定义 config 形状)。
+- **650 单测 + e2e 全绿,vue-tsc 0 错**。既有 31 case(popup / panel-environment)无回归。
+
+### 发版决策小记(跳 RELEASE_TEST_CHECKLIST 理由)
+
+非 BREAKING + 全绿。UI 改动当天提交,未走 dogfood ≥ 几天那条 —— 但都是**展示文案对齐(无行为 / 数据 / 权限风险)**,改以 7 e2e 锁两处分支 + 既有 31 case 回归覆盖。**用户明示「发个版」放行**,故跳 dogfood(与 v0.8.2/v0.8.3「明示放行跳」同款决策)。
 
 ## v0.8.5
 
