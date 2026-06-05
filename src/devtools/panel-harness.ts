@@ -204,6 +204,14 @@ async function applySeed(): Promise<void> {
       })
       break
     }
+    case 'external': {
+      // 不写 mooConfig / mooHistory —— 保留调用方用 seedStorage(sw, ...) 预置的真实 storage。
+      // 给「需要自定义 config 形状（多服务器 / zentao / 0 服务器）」的 spec 用，避免被
+      // buildPopulatedConfig 固定结构覆盖。in-memory request/error 仍清空（Overview 用不到）。
+      seedRequests = []
+      seedErrors = []
+      break
+    }
     case 'empty':
     default: {
       seedRequests = []
