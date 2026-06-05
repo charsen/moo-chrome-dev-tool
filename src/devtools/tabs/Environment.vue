@@ -58,9 +58,11 @@
             <span
               v-else
               class="count"
-              :class="{ 'count--zero': p.servers.length === 0 }"
-              :title="p.servers.length === 0 ? '没有上报服务器，悬浮球能匹配但提交会失败' : `${p.servers.length} 个上报服务器`"
-            >{{ p.servers.length === 0 ? '⚠ 无服务器' : p.servers.length }}</span>
+              :class="p.servers.length === 0 ? 'count--zero' : 'count--server'"
+              :title="p.servers.length === 0
+                ? '没有上报服务器，悬浮球能匹配但提交会失败'
+                : `上报服务器「${p.servers[0]?.name || '未命名'}」· 共 ${p.servers.length} 个`"
+            >{{ p.servers.length === 0 ? '⚠ 无服务器' : (p.servers[0]?.name || '未命名') }}</span>
           </li>
           <li v-if="!draft.projects.length" class="empty">暂无项目，点击 + 新建</li>
           <li v-else-if="!filteredProjects.length" class="empty">未匹配到项目</li>
@@ -566,6 +568,17 @@ const { exportConfig, importConfig } = useConfigImportExport({
 /* 0 服务器的项目：用警示色提示用户这条配置不完整，hover 看 title */
 .count--zero,
 .project-item.active .count--zero { color: var(--moo-c-warn-fg); font-family: var(--moo-ff-sans); }
+/* v0.8.6：webhook 项目徽标显示「第一个上报服务器名」（不再裸数字 server 个数）。
+   服务器名可能比单数字长 → flex:none 取自然宽 + max-width 截断，让长名优先 ellipsis
+   而不是把项目名挤没。font 用 sans（名字是文字不是数字）。 */
+.count--server {
+  flex: none;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--moo-ff-sans);
+}
 
 .empty {
   padding: 16px;
