@@ -96,9 +96,18 @@ async function bodyToString(body: BodyInit | null | undefined): Promise<string |
   return '[非字符串体]'
 }
 
+// 幂等安装守卫：backfill 会对「已注入」tab 重复 executeScript 本文件（executeScript 不去重，
+// 去重只对 declarative register 成立）。无守卫则 fetch/XHR/error/history 全被二次 patch →
+// 每个请求/错误重复上报、DevTools/历史出现重复行。用 window flag 拦住重复 patch。
+// reload 安全：MAIN world 是页面世界、扩展 reload 时不重置 —— 老 patch 仍在 postMessage，
+// reload 后新 ISOLATED content listener 照收，故重注入跳过 patch 不丢采集。
+const mooMainWin = window as typeof window & { __mooMainPatched?: boolean }
+const mooAlreadyPatched = mooMainWin.__mooMainPatched === true
+mooMainWin.__mooMainPatched = true
+
 // ---------- fetch ----------
 const origFetch = window.fetch
-window.fetch = async function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+const mooFetch = async function (this: typeof globalThis, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const id = uid()
   const startTime = performance.now()
   const startedAt = new Date().toISOString()
@@ -155,6 +164,7 @@ window.fetch = async function (input: RequestInfo | URL, init?: RequestInit): Pr
     throw err
   }
 }
+if (!mooAlreadyPatched) window.fetch = mooFetch
 
 // ---------- XHR ----------
 type MooXHR = XMLHttpRequest & {
@@ -173,7 +183,7 @@ const OrigOpen = XMLHttpRequest.prototype.open
 const OrigSend = XMLHttpRequest.prototype.send
 const OrigSetHeader = XMLHttpRequest.prototype.setRequestHeader
 
-XMLHttpRequest.prototype.open = function (this: MooXHR, method: string, url: string | URL) {
+const mooOpen = function (this: MooXHR, method: string, url: string | URL) {
   // url 类型签名说是 string | URL，但浏览器实现允许任意类型，会内部 toString。
   // 我们 hook 时若直接 url.toString() 而 url 是 number / null 会扔 TypeError，
   // 污染宿主页 XHR 行为。安全转换：用 String() 包一道，无论入参类型都不抛。
@@ -197,12 +207,12 @@ XMLHttpRequest.prototype.open = function (this: MooXHR, method: string, url: str
   return OrigOpen.apply(this, arguments as any)
 }
 
-XMLHttpRequest.prototype.setRequestHeader = function (this: MooXHR, k: string, v: string) {
+const mooSetHeader = function (this: MooXHR, k: string, v: string) {
   if (this.__moo) this.__moo.reqHeaders[k] = v
   return OrigSetHeader.call(this, k, v)
 }
 
-XMLHttpRequest.prototype.send = function (this: MooXHR, body?: Document | XMLHttpRequestBodyInit | null) {
+const mooSend = function (this: MooXHR, body?: Document | XMLHttpRequestBodyInit | null) {
   if (this.__moo) {
     this.__moo.startTime = performance.now()
     this.__moo.startedAt = new Date().toISOString()
@@ -254,6 +264,11 @@ XMLHttpRequest.prototype.send = function (this: MooXHR, body?: Document | XMLHtt
   }
   // eslint-disable-next-line prefer-rest-params
   return OrigSend.apply(this, arguments as any)
+}
+if (!mooAlreadyPatched) {
+  XMLHttpRequest.prototype.open = mooOpen
+  XMLHttpRequest.prototype.setRequestHeader = mooSetHeader
+  XMLHttpRequest.prototype.send = mooSend
 }
 
 function parseHeaderString(raw: string): Record<string, string> {
@@ -313,18 +328,22 @@ function errFrom(level: ErrPayload['level'], message: string, stack?: string, ex
   }
 }
 
-window.addEventListener('error', (e: ErrorEvent) => {
-  postErr(errFrom('error', e.message || String(e.error), e.error?.stack, {
-    source: e.filename, line: e.lineno, col: e.colno
-  }))
-}, true)
+// 幂等：error / unhandledrejection 监听每次注入会新增不同 fn ref（不去重）→ 重注入双发；
+// 各注入的 recentErrPosts 去重表互不共享救不了。守卫住只在首注入装一次。
+if (!mooAlreadyPatched) {
+  window.addEventListener('error', (e: ErrorEvent) => {
+    postErr(errFrom('error', e.message || String(e.error), e.error?.stack, {
+      source: e.filename, line: e.lineno, col: e.colno
+    }))
+  }, true)
 
-window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
-  const r = e.reason
-  const msg = r instanceof Error ? r.message : String(r)
-  const stack = r instanceof Error ? r.stack : undefined
-  postErr(errFrom('rejection', msg, stack))
-})
+  window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
+    const r = e.reason
+    const msg = r instanceof Error ? r.message : String(r)
+    const stack = r instanceof Error ? r.stack : undefined
+    postErr(errFrom('rejection', msg, stack))
+  })
+}
 
 // 注：曾经 monkey-patch console.error 上报到 SubmitDialog，但 chrome 扩展错误
 // 归因是看"谁 patched 了 console.error"，不是 native 调用栈 —— 即便用 setTimeout(0)
@@ -343,18 +362,21 @@ const TAG_URL = '__moo_url__'
 function postUrl() {
   try { window.postMessage({ __moo: true, tag: TAG_URL }, location.origin) } catch {}
 }
-const _push = history.pushState
-const _replace = history.replaceState
-history.pushState = function (...args: Parameters<typeof history.pushState>) {
-  const r = _push.apply(this, args)
-  postUrl()
-  return r
+// 幂等：history.pushState/replaceState 重注入会二次包裹 → 每次路由切换重复派发 __moo_url__。
+if (!mooAlreadyPatched) {
+  const _push = history.pushState
+  const _replace = history.replaceState
+  history.pushState = function (...args: Parameters<typeof history.pushState>) {
+    const r = _push.apply(this, args)
+    postUrl()
+    return r
+  }
+  history.replaceState = function (...args: Parameters<typeof history.replaceState>) {
+    const r = _replace.apply(this, args)
+    postUrl()
+    return r
+  }
+  window.addEventListener('popstate', postUrl)
+  window.addEventListener('hashchange', postUrl)
 }
-history.replaceState = function (...args: Parameters<typeof history.replaceState>) {
-  const r = _replace.apply(this, args)
-  postUrl()
-  return r
-}
-window.addEventListener('popstate', postUrl)
-window.addEventListener('hashchange', postUrl)
 

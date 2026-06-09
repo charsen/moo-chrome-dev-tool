@@ -189,8 +189,12 @@ export async function syncContentScripts(): Promise<void> {
  *
  * 兼容 manifest match pattern 语法 — chrome.tabs.query 接受 url glob 数组（跟
  * matchPatterns 同款 chrome MV3 spec：`scheme://host/path`）。每个 matched tab 跑
- * 一次 executeScript（target=tabId, files=hashed loader paths），chrome 内部去重
- * 防同一 tab 重复 inject（已注入的 content script 二次 inject chrome 跳过）。
+ * 一次 executeScript（target=tabId, files=hashed loader paths）。
+ *
+ * ⚠️ executeScript **不去重**（去重只对 declarative registerContentScripts 在同一 navigation
+ * 内成立）—— 本函数在 config 变化 / SW spin-up 时会对「已注入」tab 重复 executeScript。重复
+ * 注入的幂等性靠注入端自己兜：MAIN world（main-world.ts）用 window flag 挡重复 patch；ISOLATED
+ * （content/index.ts）用 window 句柄重建前清旧 listener / unmount 旧 app。改这里别再假设 chrome 去重。
  *
  * 失败静默 — content script 已 register，未来导航仍能注入，回填只是 nice-to-have。
  */
