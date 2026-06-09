@@ -121,6 +121,18 @@ async function readQueue(): Promise<QueuedItem[]> {
   return raw.map(normalizeQueueItem).filter((x): x is QueuedItem => x !== null)
 }
 
+// storage 写锁 —— readQueue→改→set 是 read-modify-write，pushItem / removeQueueItem / clearQueue /
+// doFlush 写回若交错会 last-write-wins 丢条（同 history.ts withWriteMutex 思路）。
+// 注意：flushPromise 只挡「并发 flush」，挡不住「flush 网络段进行中、用户提交新失败条入队」——
+// 那条新条会被 doFlush 用旧快照写回覆盖吞掉。所以这里给每个写路径套共享锁，且 doFlush 把慢的
+// 网络段留在锁外、只在锁内做「重读 + reconcile 写回」（见下方）。
+let queueMutex: Promise<unknown> = Promise.resolve()
+function withQueueMutex<T>(fn: () => Promise<T>): Promise<T> {
+  const next = queueMutex.then(fn, fn)
+  queueMutex = next.catch(() => {})
+  return next
+}
+
 /**
  * v0.5.3 IssueAdapter 接入：router 拿 adapter.serializeForRetry 返的 payload 直接入队。
  * payload 自带 kind 字段，retryQueue 透传到 storage，flush 时按 kind 查 adapter 跑 retry。
@@ -207,27 +219,29 @@ export async function enqueueZentaoRetry(projectId: string, req: SubmitBugReq): 
 }
 
 async function pushItem(item: QueuedItem): Promise<boolean> {
-  try {
-    // pushItem 是写路径，storage 读失败也按"无现存队列"处理（兜底 []），
-    // 让用户的新失败仍能进队。get 异常时给个空数组兜，不让 enqueue 整体失败。
-    let list: QueuedItem[] = []
-    try { list = await readQueue() } catch { list = [] }
-    // v0.8.2：enqueuedAt 是这套重试队列的事实唯一标识 —— removeQueueItem(enqueuedAt)
-    // 与 Settings 列表 :key 都按它。同一毫秒内连续入队两条会撞 enqueuedAt → 删单条
-    // 误删两条 + 列表 DOM key 复用错乱。读现存队列后把新条顶到「现存最大 + 1」保证
-    // 严格单调唯一（毫秒精度够时不动；时钟回拨 / 同 ms 批量入队时兜底）。
-    if (list.length) {
-      const maxAt = list.reduce((m, q) => (q.enqueuedAt > m ? q.enqueuedAt : m), 0)
-      if (item.enqueuedAt <= maxAt) item.enqueuedAt = maxAt + 1
+  return withQueueMutex(async () => {
+    try {
+      // pushItem 是写路径，storage 读失败也按"无现存队列"处理（兜底 []），
+      // 让用户的新失败仍能进队。get 异常时给个空数组兜，不让 enqueue 整体失败。
+      let list: QueuedItem[] = []
+      try { list = await readQueue() } catch { list = [] }
+      // v0.8.2：enqueuedAt 是这套重试队列的事实唯一标识 —— removeQueueItem(enqueuedAt)
+      // 与 Settings 列表 :key 都按它。同一毫秒内连续入队两条会撞 enqueuedAt → 删单条
+      // 误删两条 + 列表 DOM key 复用错乱。读现存队列后把新条顶到「现存最大 + 1」保证
+      // 严格单调唯一（毫秒精度够时不动；时钟回拨 / 同 ms 批量入队时兜底）。
+      if (list.length) {
+        const maxAt = list.reduce((m, q) => (q.enqueuedAt > m ? q.enqueuedAt : m), 0)
+        if (item.enqueuedAt <= maxAt) item.enqueuedAt = maxAt + 1
+      }
+      list.push(item)
+      while (list.length > RETRY_MAX_QUEUE_LEN) list.shift()
+      await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: list })
+      return true
+    } catch (e) {
+      console.warn('[Moo] enqueueRetry storage set failed', (e as Error).message)
+      return false
     }
-    list.push(item)
-    while (list.length > RETRY_MAX_QUEUE_LEN) list.shift()
-    await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: list })
-    return true
-  } catch (e) {
-    console.warn('[Moo] enqueueRetry storage set failed', (e as Error).message)
-    return false
-  }
+  })
 }
 
 /**
@@ -313,7 +327,26 @@ async function doFlush(): Promise<number> {
     q.lastError = outcome.error
     remaining.push(q)
   }
-  await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: remaining })
+  // 写回 reconcile（锁内重读）：上面的网络段在锁外跑了几十秒，期间 pushItem 可能已入队新失败条 /
+  // removeQueueItem 可能已删条。直接 set(remaining) 会用 flush 开始时的旧快照覆盖 → 新条被吞 /
+  // 已删条复活。所以只把「本轮快照处理过的条目」按 remaining 结果落地，其余（flush 期间新入队、
+  // 不在快照里的）原样保留；快照里被并发删掉的（current 已无）不复活。
+  await withQueueMutex(async () => {
+    const snapshotIds = new Set(list.map((q) => q.enqueuedAt))
+    const remainingById = new Map(remaining.map((q) => [q.enqueuedAt, q]))
+    const current = await readQueue()
+    const merged: QueuedItem[] = []
+    for (const q of current) {
+      if (!snapshotIds.has(q.enqueuedAt)) {
+        merged.push(q)  // flush 期间新入队，保留
+        continue
+      }
+      const updated = remainingById.get(q.enqueuedAt)
+      if (updated) merged.push(updated)  // 仍需重试：用更新过 attempts/lastError 的版本
+      // else：本轮成功 / drop → 不保留（移除）
+    }
+    await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: merged })
+  })
   return processed
 }
 
@@ -336,22 +369,27 @@ export async function getQueueItems(): Promise<QueuedItem[]> {
  * Date.now() 在 SW 单线程同毫秒并发概率近 0，足够当唯一 id 用。
  */
 export async function removeQueueItem(enqueuedAt: number): Promise<boolean> {
-  try {
-    const list = await readQueue()
-    const next = list.filter((q) => q.enqueuedAt !== enqueuedAt)
-    if (next.length === list.length) return false
-    await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: next })
-    return true
-  } catch {
-    return false
-  }
+  return withQueueMutex(async () => {
+    try {
+      const list = await readQueue()
+      const next = list.filter((q) => q.enqueuedAt !== enqueuedAt)
+      if (next.length === list.length) return false
+      await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: next })
+      return true
+    } catch {
+      return false
+    }
+  })
 }
 
 export async function clearQueue(): Promise<void> {
-  await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: [] })
+  await withQueueMutex(async () => {
+    await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: [] })
+  })
 }
 
-// 测试用：重置 inflight 锁（生产代码不要 import）
+// 测试用：重置 inflight 锁 + 写锁（生产代码不要 import）
 export function __resetForTest(): void {
   flushPromise = null
+  queueMutex = Promise.resolve()
 }
