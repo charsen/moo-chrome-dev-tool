@@ -6,8 +6,9 @@
  * 是纯字符串处理 —— 拆到 utils 里既能直接 import 测，又让 background 文件更专注。
  */
 
-/** remoteId 会被拼到 GET ${remoteBase}/${remoteId}/status-public，
- *  必须限制字符集防恶意服务端注入路径 / query（如 `../../admin?token=`）。
+/** remoteId 会被拼到 POST ${remoteBase}/${remoteId}/status-public 的 URL path（method 见
+ *  webhookAdapter.fetchStatus — token 走 body 不走 query），必须限制字符集防恶意服务端
+ *  注入路径 / query（如 `../../admin?token=`）。
  *  服务端正常会返 ULID / UUID / 数字主键这类标识，全部命中 [A-Za-z0-9_-]。 */
 const REMOTE_ID_PATTERN = /^[A-Za-z0-9_-]+$/
 const REMOTE_ID_MAX = 128
