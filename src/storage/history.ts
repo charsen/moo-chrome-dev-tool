@@ -19,6 +19,9 @@ function normalizeHistoryEntry(raw: unknown): BugHistoryEntry {
   const num = (v: unknown, fb = 0): number => typeof v === 'number' && isFinite(v) ? v : fb
   const bool = (v: unknown, fb = false): boolean => typeof v === 'boolean' ? v : fb
   const arr = <T>(v: unknown): T[] => Array.isArray(v) ? v as T[] : []
+  // 禅道 severity/pri 是 1|2|3|4 枚举：非这四个值（含 undefined / 越界 / 非数字）一律归 undefined
+  const oneToFour = (v: unknown): 1 | 2 | 3 | 4 | undefined =>
+    (v === 1 || v === 2 || v === 3 || v === 4) ? v : undefined
   const result = (e.result && typeof e.result === 'object') ? e.result as Record<string, unknown> : {}
 
   return {
@@ -52,7 +55,18 @@ function normalizeHistoryEntry(raw: unknown): BugHistoryEntry {
     remoteStatusUpdatedAt: typeof e.remoteStatusUpdatedAt === 'string'
       ? e.remoteStatusUpdatedAt
       : undefined,
-    remoteBase: typeof e.remoteBase === 'string' ? e.remoteBase : undefined
+    remoteBase: typeof e.remoteBase === 'string' ? e.remoteBase : undefined,
+    // 禅道快照 5 字段必须在 read 边界保留 —— 漏了的话 listHistory()→read() 每次 map 都把它们
+    // 剥光：History.vue「重提」读到 undefined（丢用户当初选的 类型/严重/优先级/指派人/模块，
+    // 回落默认值），且状态回查 updateHistoryEntry 写回会把磁盘上的也永久抹掉。v0.7.6 P1-1
+    // 当初补了 写(submit)+类型+读(History.vue) 三端，唯独漏了这个 normalizer，等于没修。
+    zentaoType: typeof e.zentaoType === 'string' ? e.zentaoType : undefined,
+    zentaoSeverity: oneToFour(e.zentaoSeverity),
+    zentaoPri: oneToFour(e.zentaoPri),
+    zentaoAssignedTo: typeof e.zentaoAssignedTo === 'string' ? e.zentaoAssignedTo : undefined,
+    zentaoModuleId: typeof e.zentaoModuleId === 'number' && isFinite(e.zentaoModuleId)
+      ? e.zentaoModuleId
+      : undefined
   }
 }
 
