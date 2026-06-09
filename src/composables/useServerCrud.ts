@@ -67,6 +67,9 @@ export function useServerCrud(params: UseServerCrudParams) {
     if (!entry) return
     const [oldKey, val] = entry
     if (oldKey === newKey) return
+    // 撞已存在的键 → 拒绝改名。否则 delete old + 写 newKey 会静默覆盖原 newKey 那条 header
+    // （两条塌成一条 + entries 索引 v-for desync），是真数据丢失。照搬 addHeader 的防撞。
+    if (newKey in s.headers) return
     delete s.headers[oldKey]
     s.headers[newKey] = val
   }

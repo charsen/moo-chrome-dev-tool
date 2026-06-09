@@ -128,6 +128,30 @@ describe('header CRUD', () => {
     expect(srv.headers.Authorization).toBe('Bearer foo')
   })
 
+  // 改名撞已存在键 → 拒绝（防 delete old + 写 newKey 静默覆盖原 newKey 那条 → 两条塌成一条丢数据）
+  it('onHeaderKeyChange 改名撞已存在键 → 拒绝，headers 不变（不塌成一条）', () => {
+    const { crud } = mount(makeProject())
+    const srv = { ...s(), headers: { Authorization: 'tokenA', 'Header-2': 'tokenB' } }
+    // 把第二条 Header-2 改名成已存在的 Authorization → 应被拒
+    const idx = Object.keys(srv.headers).indexOf('Header-2')
+    crud.onHeaderKeyChange(srv, idx, 'Authorization')
+    // Authorization 仍是 tokenA（没被 tokenB 覆盖）
+    expect(srv.headers.Authorization).toBe('tokenA')
+    // Header-2 还在（没被删）
+    expect(srv.headers['Header-2']).toBe('tokenB')
+    expect(Object.keys(srv.headers)).toHaveLength(2)
+  })
+
+  it('onHeaderKeyChange 改成不撞的新键 → 正常生效', () => {
+    const { crud } = mount(makeProject())
+    const srv = { ...s(), headers: { Authorization: 'tokenA', 'Header-2': 'tokenB' } as Record<string, string> }
+    const idx = Object.keys(srv.headers).indexOf('Header-2')
+    crud.onHeaderKeyChange(srv, idx, 'X-New')
+    expect(srv.headers['Header-2']).toBeUndefined()
+    expect(srv.headers['X-New']).toBe('tokenB')
+    expect(srv.headers.Authorization).toBe('tokenA')
+  })
+
   it('onHeaderValChange → 只动 value', () => {
     const { crud } = mount(makeProject())
     const srv = s()
