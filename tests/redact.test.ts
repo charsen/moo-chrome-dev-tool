@@ -133,6 +133,37 @@ describe('redactBody', () => {
     expect(redactBody('{"Password":"secret"}', ['password']))
       .toBe('{"Password":"' + MASK + '"}')
   })
+
+  // 非 JSON 体贪婪 key 漏脱敏修复（正则 /(^|[?&\s])([^=&\s]+)=([^&\s]*)/g）：
+  // key 组改成不含空白 + 前面锚定边界，防贪婪吞前导文本把 key 匹配成「note: my password」
+  // 导致漏脱敏。修前会把整段「note: my password」当 key（≠password）原样发出。
+  it('非 JSON 含前导文本的 key=value → 不被贪婪吞掉，secret 被脱敏', () => {
+    const out = redactBody('note: my password=secret123', ['password'])
+    expect(out).not.toContain('secret123')  // 核心：不能漏发
+    expect(out).toContain('password=' + MASK)
+    expect(out).toContain('note: my ')  // 前导文本保留
+  })
+
+  it('非 JSON urlencoded 多 key → 命中的 mask、未命中的保留', () => {
+    expect(redactBody('user=alice&password=secret&token=abc', ['password', 'token']))
+      .toBe('user=alice&password=' + MASK + '&token=' + MASK)
+  })
+
+  it('非 JSON 多空格分隔的行内多 key → 各自脱敏不串味', () => {
+    const out = redactBody('user=alice   password=secret   token=abc', ['password', 'token'])
+    expect(out).not.toContain('secret')
+    expect(out).not.toContain('abc')
+    expect(out).toContain('password=' + MASK)
+    expect(out).toContain('token=' + MASK)
+    expect(out).toContain('user=alice')  // 未命中保留
+  })
+
+  it('非 JSON 行内（换行/空白边界）多 key 都脱敏', () => {
+    const out = redactBody('header line\npassword=secret\ntoken=abc', ['password', 'token'])
+    expect(out).not.toContain('secret')
+    expect(out).not.toContain('abc')
+    expect(out).toContain('header line')
+  })
 })
 
 describe('redactRequest', () => {

@@ -101,8 +101,11 @@ export function redactBody(body: string | null, keys: string[]): string | null {
     const parsed = JSON.parse(body)
     return JSON.stringify(redactValue(parsed, keys.map((k) => k.toLowerCase())))
   } catch {
-    // 不是 JSON：按 key=value& 形式简单替换
-    return body.replace(/([?&]?)([^=&]+)=([^&]*)/g, (full, sep, k: string, v: string) => {
+    // 不是 JSON：按 key=value 形式简单替换。key 组 [^=&\s]+ 不含空白 + 前面锚定边界
+    // (^|[?&\s])，防贪婪吞前导文本 —— 否则 `note: my password=secret` 的 key 会被匹配成
+    // 「note: my password」(≠password) 导致漏脱敏把 secret 原样发出（multipart / 纯文本体）。
+    // 注：value 不在 key=value 形态的体（如 multipart 把值放下一行）regex 本就救不了，best-effort。
+    return body.replace(/(^|[?&\s])([^=&\s]+)=([^&\s]*)/g, (full, sep: string, k: string) => {
       if (keys.some((kk) => kk.toLowerCase() === k.toLowerCase())) {
         return `${sep}${k}=${MASK}`
       }
