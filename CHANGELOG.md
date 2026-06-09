@@ -2,6 +2,32 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.8.7
+
+2026-06-09 发版。无 BREAKING —— **两轮主动 review 抓出 6 个真 bug 全修**（含 1 个已 ship 的数据丢失回归 + 1 个隐私泄漏）。**非 BREAKING + 全绿（664 单测 + 151 e2e，+9 新 case 全红→绿验证）。改动当天提交未走 dogfood ≥ 几天，但每条都有红→绿单测/e2e 锁回归、注入幂等专门验过 reload 不破 v0.7.6，用户明示放行发版**（跳 RELEASE_TEST_CHECKLIST 同 v0.8.2/v0.8.3）。
+
+### 🔴 P0/P1 修复（2）
+
+- **历史重提丢禅道 5 字段快照**（`storage/history.ts`）：`normalizeHistoryEntry` 漏列 `zentaoType/Severity/Pri/AssignedTo/ModuleId` → `read()` 每次 `map` 把它们剥光。后果：History「重提」永远读到 undefined、禅道侧落项目默认值（**正是 v0.7.6 P1-1 号称修过的 bug——当初补了 写+类型+读 三端、唯独漏了 normalizer，等于没修**）；更糟状态回查 `updateHistoryEntry` 写回把磁盘上的也永久抹掉。修：normalizer 补 5 字段 + severity/pri 1-4 枚举兜底 helper。+5 round-trip 单测（**过公共 API `listHistory()` 不裸读 storage**，正是当初漏测点）。
+- **redactBody 非 JSON 体贪婪 key 漏脱敏**（`utils/redact.ts`，隐私）：fallback 正则 `([^=&]+)=` 的 key 组吞掉 `=` 前的前导文本，`note: my password=secret` 的 key 被匹配成「note: my password」(≠password) → **漏脱敏把 secret 原样发到上报端**（multipart / 纯文本体）。修：正则改 `(^|[?&\s])([^=&\s]+)=` 锚定边界 + key 不含空白。+4 单测。（多行 value 不在 key=value 形态的体 regex 本就救不了，best-effort 不变。）
+
+### 🟠 P2 修复（4）
+
+- **retryQueue 入队/flush 无共享写锁致丢条**（`background/retryQueue.ts`）：`flushPromise` 只挡并发 flush 不挡入队。`doFlush` 网络段（禅道 multipart 可 90s）在飞时用户提交新失败条走 `pushItem`，`doFlush` 末尾用开头的旧快照 `set(remaining)` 覆盖 → **新入队那条被静默吞掉**。修：加 `withQueueMutex` 包 `pushItem/removeQueueItem/clearQueue`；`doFlush` 慢网络段留锁外、写回改「锁内重读 + reconcile merge」（保留 flush 期间新入队条 + 尊重并发删除）。+3 race 单测。
+- **改 header 名撞已有键丢数据**（`composables/useServerCrud.ts`）：`onHeaderKeyChange` 把某 header 改名成已存在的键（如 `Header-2` → 已配的 `Authorization`）会 `delete old` + 覆盖 newKey → 原 header 值被吞、两条塌一条 + entries 索引 v-for desync。修：加 `if (newKey in headers) return` 防撞（照搬 `addHeader`）。+2 单测。
+- **backfill 重注入致请求重复采集**（`injected/main-world.ts` + `content/index.ts` + `background/dynamicScripts.ts`）：`backfillExistingTabs` 对「已注入」tab 会重复 `executeScript`（**executeScript 不去重——去重只对 declarative register 成立**，原注释假设错了）；config 变化 / SW spin-up 都触发。无守卫则 MAIN world 的 fetch/XHR/error/history 被二次 patch → 每请求/错误重复上报、DevTools/历史重复行；ISOLATED 旧 Vue app 只 `remove host` 没 `unmount` → 监听泄漏累积。修：MAIN world 4 处 patch 加 `window flag` 守卫（**reload 安全：MAIN world 是页面世界、扩展 reload 不重置，老 patch 仍 postMessage、reload 后新 ISOLATED listener 照收，故重注入跳过 patch 不丢采集**）；ISOLATED 把 onMessage listener + Vue app 句柄存 window、重建前清旧（reload 时句柄已死走 try/catch 兜底仍重建）；修正 backfill 错注释。+`inject-idempotency` e2e（二次注入后单 fetch 只采集 1 次 + host 不双挂）。
+- **status 回查方法注释 GET→POST**（`utils/remoteHeaders.ts`）：注释说走 GET、实际 `webhookAdapter.fetchStatus` 是 POST（token 走 body）。cloud-todos 迁移后这条错注释会误导云端 status 契约实现。纯注释修。
+
+### 测试
+
+- **+9 新 case**：5 history round-trip（过 `listHistory()`）+ 3 retryQueue race（可控挂起 adapter 模拟）+ 4 redact 漏脱敏 + 2 header 撞键 + 1 注入幂等 e2e。**每条都做了红→绿验证**（临时还原修复 → 对应 case 变红 → 改回变绿，证明真锁回归）。
+- 注入幂等专门跑了现有 4 组 reload/注入/upgrade e2e 确认 **v0.7.6 孤儿 host 重建不回归**。
+- **664 单测 + 151 e2e + vue-tsc 0 错** 全绿。
+
+### 发版决策小记（跳 RELEASE_TEST_CHECKLIST 理由）
+
+非 BREAKING + 全绿。改动当天提交、未走 dogfood ≥ 几天，但 6 条全是 review 抓出的明确 bug（数据丢失 / 隐私 / 重复采集），每条有红→绿单测或 e2e 锁回归，注入幂等这种 delicate 改动专门 e2e 验了 reload 不破 v0.7.6。**用户明示放行**，故跳 dogfood（与 v0.8.2/v0.8.3「明示放行跳」同款决策）。
+
 ## v0.8.6
 
 2026-06-05 发版。无 BREAKING —— UI 展示文案对齐 + cloud 上报配置迁移文档。**非 BREAKING + 全绿(650 单测 + e2e 含 7 新 case),但 UI 改动当天提交、未走 dogfood ≥ 几天 —— 用户明示「发个版」放行**(跳 RELEASE_TEST_CHECKLIST 同 v0.8.2/v0.8.3 的明示放行)。

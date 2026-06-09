@@ -4,6 +4,8 @@
 
 ## 一句话现状
 
+**v0.8.7 已发**（2026-06-09）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.7/moo-chrome-dev-tool-0.8.7.zip)（sha256 `待回填`）。无 BREAKING — **两轮主动 review 抓出 6 个真 bug 全修**：🔴 历史重提丢禅道 5 字段（normalizeHistoryEntry 漏列，v0.7.6 P1-1 修不全 + 状态回查写回抹磁盘）；🔴 redactBody 非 JSON 体贪婪 key 漏脱敏（隐私）；🟠 retryQueue 无共享写锁致 flush 期间入队条被吞；🟠 header 改名撞键丢数据；🟠 backfill 重注入双 patch 致请求重复采集（MAIN world 加 window flag 守卫 + ISOLATED 句柄清旧，reload 不破 v0.7.6）；status 回查 GET→POST 注释。+9 红→绿 case，664 单测 + 151 e2e 全绿。**当天提交未 dogfood，用户明示放行。** 详情见 CHANGELOG v0.8.7 段。
+
 **v0.8.6 已发**（2026-06-05）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.6/moo-chrome-dev-tool-0.8.6.zip)（sha256 `2e3159d539e22df7a9cbd52a292eba590119bbcec3bdd673ddc92449722cb274`）。无 BREAKING — **UI 展示对齐**：① 项目侧栏徽标 webhook 项目改显 **default 上报服务器名**（原裸数字 server 个数），跟「禅道」徽标对称；② popup 卡片副行按 kind 分支，修**禅道项目谎报「0 个上报服务器」**（改显「禅道单 · 项目 #ID」）。两处共用 `default ?? servers[0]` 取名。+ cloud（moo-scaffold-cloud）Todos 上报纯配置迁移文档。+7 e2e 锁两处分支，650 单测全绿。**当天提交未 dogfood，用户明示放行。** 详情见 CHANGELOG v0.8.6 段。
 
 **v0.8.5 已发**（2026-06-02）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.5/moo-chrome-dev-tool-0.8.5.zip)（sha256 `a433179154366cab9b6eb984639f9ab5766776deb72f26390658438ff8114fa3`）。**🔴 P0 修复** — 版本检查升级后谎报旧版当新版：flag 缓存的 current 在用户升到「非被提示版本」后 stale（`checkUpgradeFinished` 只在 expected===manifest 时清），popup/工作台读 flag 只查 age 不重比 → 谎报「有新版 v旧」。修法：新增 `readValidStoredVersionInfo()` 读取时用 **live manifest 重比** + 覆盖 current + stale 返 null 清 flag，3 处内联校验收口去重。**单测+e2e 充分覆盖（含核心 bug 场景），真实场景难手测，用户明示放行。** +7 单测 + 1 e2e 断言更新。详情见 CHANGELOG v0.8.5 段。
