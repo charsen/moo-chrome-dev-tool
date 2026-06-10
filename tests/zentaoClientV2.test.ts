@@ -3,8 +3,10 @@ import {
   login,
   getBug,
   discoverProduct,
+  submitBug,
   _clearZentaoCaches,
-  type ZentaoEnv
+  type ZentaoEnv,
+  type ZentaoSubmitFields
 } from '@/background/zentao/client'
 
 /**
@@ -821,5 +823,97 @@ describe('v0.6.2 dogfood — v1 endpoint 403 cookie cascade', () => {
       expect(r.error).toContain('禅道服务器拒绝')
       expect(r.error).toContain('bug 详情')
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// submitBug · interpretV2BugResponse id 宽容解析（第四轮 fix 3 回归）
+//
+// Bug 场景：v2 建单响应 status==='success' 时曾严格要求 `typeof body.id === 'number'`，
+// 字符串 id 的禅道实例（login/ping 已实测存在数字字段返字符串）会「单已建成却判失败」
+// → 不命中 isPermanentFailure → retryQueue 重发至多 5 次 = 最多 6 张重复单。
+// 修后：id 宽容 number|string（Number() 收敛，>0 才出 bugId/viewUrl）；
+// id 解析不出也按 { ok:true, data:{} } 收（bugId/viewUrl 缺省，SubmitSuccess 已 optional）。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('submitBug — v2 响应 id 宽容解析（第四轮 fix 3）', () => {
+  const fields: ZentaoSubmitFields = {
+    title: '测试标题',
+    steps: '<p>步骤</p>',
+    severity: 3,
+    pri: 3,
+    type: 'codeerror'
+  }
+
+  /** login + discoverProduct 固定路由，POST /v2/bugs 的响应由各用例注入 */
+  function stubFetchWithBugRes(bugRes: () => Response) {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/projects/26')) {
+        return mockJsonRes({ status: 'success', project: { id: 26, products: [{ id: 21 }] } })
+      }
+      if (url.includes('/api.php/v2/bugs')) {
+        return bugRes()
+      }
+      return mockJsonRes({})
+    }))
+  }
+
+  it('id 是 number（基准不回归）→ ok + bugId + viewUrl', async () => {
+    stubFetchWithBugRes(() => mockJsonRes({ status: 'success', id: 9343 }))
+    const r = await submitBug(env, fields)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data.bugId).toBe(9343)
+      expect(r.data.viewUrl).toContain('bug-view-9343')
+    }
+  })
+
+  it('id 是字符串 "9343" → ok + bugId 9343 + viewUrl 含 bug-view-9343', async () => {
+    stubFetchWithBugRes(() => mockJsonRes({ status: 'success', id: '9343' }))
+    const r = await submitBug(env, fields)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data.bugId).toBe(9343)
+      expect(r.data.viewUrl).toContain('bug-view-9343')
+    }
+  })
+
+  it('status=success 但无 id → 仍 ok（单已建成，判失败会让 retryQueue 重发出重复单）+ bugId 缺省', async () => {
+    stubFetchWithBugRes(() => mockJsonRes({ status: 'success' }))
+    const r = await submitBug(env, fields)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data.bugId).toBeUndefined()
+      expect(r.data.viewUrl).toBeUndefined()
+    }
+  })
+
+  it('status=success + id:0 → ok + bugId 缺省（0 不是合法 bug id）', async () => {
+    stubFetchWithBugRes(() => mockJsonRes({ status: 'success', id: 0 }))
+    const r = await submitBug(env, fields)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data.bugId).toBeUndefined()
+      expect(r.data.viewUrl).toBeUndefined()
+    }
+  })
+
+  it('status=success + id:"abc" → ok + bugId 缺省（NaN 收敛不出 viewUrl）', async () => {
+    stubFetchWithBugRes(() => mockJsonRes({ status: 'success', id: 'abc' }))
+    const r = await submitBug(env, fields)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data.bugId).toBeUndefined()
+      expect(r.data.viewUrl).toBeUndefined()
+    }
+  })
+
+  it('失败 shape（status 非 success + message）→ 仍 error（不回归）', async () => {
+    stubFetchWithBugRes(() => mockJsonRes({ status: 'fail', message: '标题不能为空' }))
+    const r = await submitBug(env, fields)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('标题不能为空')
   })
 })

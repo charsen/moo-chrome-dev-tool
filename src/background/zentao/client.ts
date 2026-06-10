@@ -667,9 +667,10 @@ export async function discoverProduct(env: ZentaoEnv): Promise<ZentaoResult<numb
 // ─────────────────────────────── submitBug ────────────────────────────
 
 export interface SubmitSuccess {
-  bugId: number
-  /** 完整的 bug 查看 URL，给 SubmitDialog 显示「禅道里看」链接用 */
-  viewUrl: string
+  /** 缺省 = 实例返了 success 但 id 解析不出（非标 schema）——单已建成，只是拿不到编号 */
+  bugId?: number
+  /** 完整的 bug 查看 URL，给 SubmitDialog 显示「禅道里看」链接用（bugId 缺省时同缺省） */
+  viewUrl?: string
 }
 
 /**
@@ -757,13 +758,21 @@ export async function submitBug(
 
 async function interpretV2BugResponse(env: ZentaoEnv, res: Response): Promise<ZentaoResult<SubmitSuccess> | { _retry: true }> {
   if (res.status === 401) return { _retry: true }
-  const body = await readJson(res) as { status?: string; id?: number; message?: unknown; error?: unknown; reason?: string; result?: boolean } | null
+  const body = await readJson(res) as { status?: string; id?: number | string; message?: unknown; error?: unknown; reason?: string; result?: boolean } | null
   if (isV2AuthExpired(body)) return { _retry: true }
-  if (body?.status === 'success' && typeof body.id === 'number') {
-    return {
-      ok: true,
-      data: { bugId: body.id, viewUrl: `${trimBase(env.baseUrl)}/bug-view-${body.id}.html` }
+  if (body?.status === 'success') {
+    // id 宽容解析 number|string —— login/ping 同款（v0.4.x 实测有实例把数字字段返成字符串），
+    // 唯独这里曾严格 number：字符串 id 的实例会「单已建成却判失败」→ 不命中 isPermanentFailure
+    // → retryQueue 重发至多 5 次 = 最多 6 张重复单 + 6 套孤儿附件。POST 创建类接口判错重发
+    // 比查询类后果重一个量级，所以 status=success 但 id 解析不出也必须按成功收（bugId 缺省）。
+    const idNum = typeof body.id === 'number' ? body.id : Number(body.id)
+    if (Number.isFinite(idNum) && idNum > 0) {
+      return {
+        ok: true,
+        data: { bugId: idNum, viewUrl: `${trimBase(env.baseUrl)}/bug-view-${idNum}.html` }
+      }
     }
+    return { ok: true, data: {} }
   }
   const errMsg = body?.reason
     || formatMessage(body?.error)
