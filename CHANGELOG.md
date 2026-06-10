@@ -2,6 +2,41 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.8.8
+
+2026-06-10 发版。无 BREAKING —— **三轮主动 review 累计 9 个真 bug 全修**（录屏数据丢失 ×3 / 重试与历史一致性 ×2 / UI 卡死与泄漏 ×2 / 禅道重复单 ×1 / 配置回滚 ×1）。**+29 新 case 全红→绿验证，697 单测 + 152 e2e + vue-tsc 全绿。改动未走 dogfood ≥ 几天，用户明示放行**（同 v0.8.7 决策模式）。
+
+### 🔴 录屏数据丢失三连修（`record.ts` / `useRecorder.ts` / `offscreen/index.ts`）
+
+- **双 START 销毁进行中录屏**：录制中再按 ⌥⇧R / 另一 tab 点录制 → 第二个 START 被 offscreen 状态机拒 → 旧码对任何拒绝一律 `closeOffscreenDocument()` 把正在录的文档销毁。修：入口守卫（`awaitBootRehydrate` 后查 currentRecording）+ 关前 `QUERY_STATE` 非 idle 不关（双闸）。
+- **30s 自动停必丢录像**：计时 interval 在 `elapsed>=maxSec` 后**每个 250ms tick 都发一次 STOP**，首发在 offscreen 编码期间（秒级）不返回 → 二发被拒的 error 响应抢先把录制 Promise resolve 成 null（视频丢），SW 端还会关掉编码中的文档。修：`stopping` 重入闸 + stop 入口立即 `clearInterval`；cancel 同闸。
+- **tripwire 残留 timer 掐死下一段录屏**：35s `setTimeout` 不存句柄、cleanup 不清 —— track-ended 自停（SW 不关文档）后 35s 内重录复用文档，旧 timer 到点见 `state==='recording'` 就强停新录屏（此刻 stopResolver=null，blob 直接丢弃）。修：模块句柄 + cleanup `clearTimeout`。
+
+### 🟠 重试 / 历史一致性（`retryQueue.ts` 等 9 文件）
+
+- **重试成功后历史永远显示「失败」**：doFlush 成功只移队列，不翻 history、不回填 remoteId、不刷 badge —— 禅道重试已真建单，用户看历史还是失败 → 手动重提 = 远端重复单。修：queue item 加 `historyId`（normalizer 同步读回）、adapter 回带 remoteId、成功时 `markHistoryEntryRetrySuccess` + 刷 badge。
+- **「立即重试」谎报「都还在失败（后端没起/URL 写错）」**：90s cooldown 在 doFlush 前武装且**空队列也武装**（SW spin-up 的空 flush 把用户随后的手动重试静默挡掉），UI 拿到裸 0 无法区分「真试了全失败」vs「被跳过」。修：`markFlushStart` 移到非空队列后；flush 返回 `{processed, dropped, deferred, skipped: 'cooldown'|'no-permission'|null}` 三态；Settings toast 按三态出文案 + total 前置快照（防「刚丢了最后一条却说队列没内容」）。
+
+### 🟠 UI 卡死 / 泄漏（`ContentApp.vue` / `History.vue`）
+
+- **提交弹窗开着时任意保存配置 → 表单全丢 + 该 tab 卡死**：`refreshProject` 被 onConfigChanged（含 Environment 800ms 防抖自动保存）/SPA 路由无条件触发，改写 project 让 SubmitDialog 的 `v-if` 瞬间卸载、state 卡 `submitting` 无人复位（悬浮球 hidden + 快捷键被拦，只能刷新页面）。修：非 idle 期间推迟刷新，`watch(state)` 回 idle 补刷。
+- **History tab 双订阅泄漏**：KeepAlive 首挂 `mounted`+`activated` 双触发，`dispose` 在 `await reload()` 之后才赋值 → 第二次调用穿过 `!dispose` 守卫，注册两个 `onHistoryChanged`、第一个永不退订（每次 history 变化双 reload + 禅道远端回查双发）。修：删 onMounted（两宿主都 KeepAlive）+ in-flight 闸。
+
+### 🟠 禅道 / 配置
+
+- **v2 建单响应 id 返字符串 → 「单已建成却判失败」→ 重试最多造 6 张重复单**（`client.ts`）：同文件 login/ping 早就宽容 number|string（v0.4.x 实例实测），唯独建单严格 number。修：三处对齐宽容解析；`status==='success'` 但 id 解析不出**也按成功收**（bugId 缺省 —— POST 创建类判错重发比查询类后果重一个量级）。`SubmitSuccess.bugId/viewUrl` 转 optional（全部消费方本就兜空）。
+- **用户清空脱敏 keys 被迁移静默打回默认**（`config.ts`）：`isV01DefaultSubset` 把空数组判成 v0.1 老用户 → 每次 loadConfig 合回 12 个默认 key 并落盘，显式清空永远复活。修：空数组判 false（缺字段老数据在 normalize 兜非空默认，走到迁移的 `[]` 只可能来自用户主动删除）。
+
+### 测试
+
+- **+29 新 case 全部红→绿验证**（临时还原修复→对应 case 实红→改回→绿）：录屏家族 9（双 START 4 / stop 重入 4 / tripwire 1 组 3）+ 重试回填 9 + flush 三态 5 + History 订阅 e2e 1 + ContentApp（以现有 dialog/content e2e 全绿兜底，harness 不挂 ContentApp 无法直测，如实记录）+ zentao id 6 + redact 迁移 2。
+- offscreen tripwire 新建 node 级全流程 harness（stub chrome/MediaRecorder 驱动真实 onMessage 流程）。
+- **697 单测 + 152 e2e + vue-tsc 0 错** 全绿。
+
+### 发版决策小记（跳 RELEASE_TEST_CHECKLIST 理由）
+
+非 BREAKING + 全绿 + 用户明示「测试验证后 commit push，publish」。9 条全是 review 抓出的明确 bug（其中 5 条数据丢失/重复单级别），每条红→绿锁回归。已知留一项 Playwright 驱不动的手测点：真 Chrome 里 track-ended 后 35s 内重录的 blob 完整性（单测已覆盖逻辑层，e2e 覆盖注入/录制控制链），dogfood 中验证。
+
 ## v0.8.7
 
 2026-06-09 发版。无 BREAKING —— **两轮主动 review 抓出 6 个真 bug 全修**（含 1 个已 ship 的数据丢失回归 + 1 个隐私泄漏）。**非 BREAKING + 全绿（664 单测 + 151 e2e，+9 新 case 全红→绿验证）。改动当天提交未走 dogfood ≥ 几天，但每条都有红→绿单测/e2e 锁回归、注入幂等专门验过 reload 不破 v0.7.6，用户明示放行发版**（跳 RELEASE_TEST_CHECKLIST 同 v0.8.2/v0.8.3）。

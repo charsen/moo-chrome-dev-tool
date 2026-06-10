@@ -4,6 +4,8 @@
 
 ## 一句话现状
 
+**v0.8.8 已发**（2026-06-10）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.8/moo-chrome-dev-tool-0.8.8.zip)（sha256 `待回填`）。无 BREAKING — **三轮主动 review 累计 9 个真 bug 全修**：🔴 录屏数据丢失三连（双 START 销毁文档 / 30s 自动停 interval 重复发 STOP 丢视频 / tripwire 残留 timer 掐死重录）；🟠 重试成功不回填 history+badge（看着失败手动重提 = 重复单）+ flush 三态结果（cooldown/无权限跳过不再谎报「都还在失败」）；🟠 提交弹窗开着时保存配置致表单丢+tab 卡死（refreshProject 非 idle 推迟）+ History 双订阅泄漏；🟠 禅道 v2 建单 id 字符串判失败致重复单（宽容解析 + success 必按成功收）+ 用户清空脱敏 keys 被迁移打回。+29 红→绿 case，697 单测 + 152 e2e 全绿。**用户明示放行。** 详情见 CHANGELOG v0.8.8 段。
+
 **v0.8.7 已发**（2026-06-09）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.7/moo-chrome-dev-tool-0.8.7.zip)（sha256 `be4fd72dcad3a65bfb23cbc8c8117221e4eb6941b1890f2f7a07a1d1c03fe0dd`）。无 BREAKING — **两轮主动 review 抓出 6 个真 bug 全修**：🔴 历史重提丢禅道 5 字段（normalizeHistoryEntry 漏列，v0.7.6 P1-1 修不全 + 状态回查写回抹磁盘）；🔴 redactBody 非 JSON 体贪婪 key 漏脱敏（隐私）；🟠 retryQueue 无共享写锁致 flush 期间入队条被吞；🟠 header 改名撞键丢数据；🟠 backfill 重注入双 patch 致请求重复采集（MAIN world 加 window flag 守卫 + ISOLATED 句柄清旧，reload 不破 v0.7.6）；status 回查 GET→POST 注释。+9 红→绿 case，664 单测 + 151 e2e 全绿。**当天提交未 dogfood，用户明示放行。** 详情见 CHANGELOG v0.8.7 段。
 
 **v0.8.6 已发**（2026-06-05）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.6/moo-chrome-dev-tool-0.8.6.zip)（sha256 `2e3159d539e22df7a9cbd52a292eba590119bbcec3bdd673ddc92449722cb274`）。无 BREAKING — **UI 展示对齐**：① 项目侧栏徽标 webhook 项目改显 **default 上报服务器名**（原裸数字 server 个数），跟「禅道」徽标对称；② popup 卡片副行按 kind 分支，修**禅道项目谎报「0 个上报服务器」**（改显「禅道单 · 项目 #ID」）。两处共用 `default ?? servers[0]` 取名。+ cloud（moo-scaffold-cloud）Todos 上报纯配置迁移文档。+7 e2e 锁两处分支，650 单测全绿。**当天提交未 dogfood，用户明示放行。** 详情见 CHANGELOG v0.8.6 段。
