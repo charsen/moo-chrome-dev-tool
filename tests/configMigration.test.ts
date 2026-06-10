@@ -242,6 +242,52 @@ describe('mergeRedactDefaults · v0.4.8+ 老用户 redact 默认值合并', () =
     expect(cfg.projects[0]!.redact.bodyKeys).toEqual(['custom-secret-field'])
   })
 
+  // ── v0.8.8 Fix B：用户在 Settings 主动删光 redact keys → migration 不得复活默认 ──
+  // 回归背景：isV01DefaultSubset 旧版对空数组 return true，把 [] 当 v0.1 老用户处理，
+  // 12 个默认 key 全量合回 + loadConfig 落盘 —— 用户显式清空（如调试想看原始 body）
+  // 每次 loadConfig 都被打回默认，与迁移声明的「只补不删、不动用户自定义」直接矛盾。
+  function projectWithRedact(redact: { headerKeys: string[]; bodyKeys: string[] }) {
+    return {
+      id: 'p1', name: 'x', matchPatterns: [],
+      kind: 'webhook', servers: [], defaultServerId: '',
+      capture: { requests: true, consoleErrors: true, storageKeys: [], requestBufferSize: 50 },
+      redact: { ...redact, maskPasswordInputs: true },
+      enabled: true
+    }
+  }
+
+  it('v0.8.8 round-trip：bodyKeys=[] + headerKeys=[] → loadConfig 后仍是 []，且不触发 changed 写盘', async () => {
+    storage.data.mooConfig = {
+      projects: [projectWithRedact({ headerKeys: [], bodyKeys: [] })],
+      globalEnabled: true
+    }
+    const rawBefore = JSON.stringify(storage.data.mooConfig)
+    const { loadConfig } = await import('@/storage/config')
+    const cfg = await loadConfig()
+    expect(cfg.projects[0]!.redact.bodyKeys).toEqual([])
+    expect(cfg.projects[0]!.redact.headerKeys).toEqual([])
+    // changed=false → 不该有 fire-and-forget saveConfig 写盘；等一个宏任务让 void 链落地再比对
+    await new Promise((r) => setTimeout(r, 0))
+    expect(JSON.stringify(storage.data.mooConfig)).toBe(rawBefore)
+  })
+
+  it('v0.8.8 两侧独立判定：bodyKeys=[]（用户清空）+ headerKeys=v0.1 默认（老用户）→ header 合并、body 保持 []', async () => {
+    storage.data.mooConfig = {
+      projects: [projectWithRedact({
+        headerKeys: ['authorization', 'cookie', 'x-auth-token'],
+        bodyKeys: []
+      })],
+      globalEnabled: true
+    }
+    const { loadConfig } = await import('@/storage/config')
+    const cfg = await loadConfig()
+    // 老用户侧照常合并（v0.4.8 新加的 header 默认进来）
+    expect(cfg.projects[0]!.redact.headerKeys).toContain('x-api-key')
+    expect(cfg.projects[0]!.redact.headerKeys).toContain('authorization')
+    // 清空侧不复活
+    expect(cfg.projects[0]!.redact.bodyKeys).toEqual([])
+  })
+
   it('用户 bodyKeys 包含 v0.1 默认 + 一两个自定义 → 不算 v0.1 superset，不动', async () => {
     storage.data.mooConfig = {
       projects: [{

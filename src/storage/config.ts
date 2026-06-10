@@ -58,7 +58,11 @@ const warnedMissingVideo = new Set<string>()
 const V01_HEADER_DEFAULTS = ['authorization', 'cookie', 'x-auth-token']
 const V01_BODY_DEFAULTS = ['password', 'token']
 function isV01DefaultSubset(arr: string[], v01Defaults: string[]): boolean {
-  if (arr.length === 0) return true
+  // 空数组 ≠ 老用户：缺字段的老数据在 normalizeProject 兜的是非空 DEFAULT_REDACT，
+  // 能走到这里的 [] 只可能是用户在 Settings 主动删光（如调试想看原始 body）。
+  // 之前判 true 会把 12 个默认 key 全量合回 + loadConfig 落盘 —— 用户的显式清空
+  // 永远复活，与本迁移声明的「只补不删、不动用户自定义」直接矛盾。
+  if (arr.length === 0) return false
   if (arr.length > v01Defaults.length) return false
   const lc = new Set(arr.map(s => s.toLowerCase()))
   return v01Defaults.every(d => lc.has(d))
