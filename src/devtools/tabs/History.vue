@@ -94,7 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, ref, watch } from 'vue'
 import { clearHistory, listHistory, onHistoryChanged, removeHistory } from '@/storage/history'
 import { loadConfig } from '@/storage/config'
 import { MSG, type SubmitBugReq, type SubmitBugRes } from '@/types/messages'
@@ -173,22 +173,31 @@ async function reload() {
   }
 }
 
+// in-flight 守卫：subscribeChanges 的 dispose 赋值在 await reload() 之后 —— 没这个 flag 的话
+// KeepAlive 首挂 mounted + activated 双触发（或 reload 飞行中 deactivate→activate 往返）时
+// 第二次调用会穿过 `!dispose` 守卫 → 注册两个 onHistoryChanged，dispose 被覆盖、第一个永远
+// 退订不掉（每次 history 变化双 reload + zentao 远端回查双发）。
+let subscribing = false
 async function subscribeChanges(): Promise<void> {
-  await reload()
-  dispose = onHistoryChanged(() => reload())
-  // v0.3：进 Tab 时如果有 zentao kind 项目的 history，自动同步一次状态。
-  // webhook 路径仍要用户点「同步远端状态」（避免对未配的后端做无意义 ping）。
-  const hasZentao = projects.value.some(p => p.kind === 'zentao' && list.value.some(e => e.projectId === p.id && e.remoteId))
-  if (hasZentao) void syncRemoteStatus()
+  if (subscribing || dispose) return
+  subscribing = true
+  try {
+    await reload()
+    dispose = onHistoryChanged(() => reload())
+    // v0.3：进 Tab 时如果有 zentao kind 项目的 history，自动同步一次状态。
+    // webhook 路径仍要用户点「同步远端状态」（避免对未配的后端做无意义 ping）。
+    const hasZentao = projects.value.some(p => p.kind === 'zentao' && list.value.some(e => e.projectId === p.id && e.remoteId))
+    if (hasZentao) void syncRemoteStatus()
+  } finally {
+    subscribing = false
+  }
 }
 
-onMounted(subscribeChanges)
-
+// 不要再加 onMounted(subscribeChanges)：两个宿主（Panel.vue + options/App.vue）都用 KeepAlive
+// 包本组件，首挂时 activated 必触发 —— onMounted + onActivated 双跑正是双订阅泄漏的根源。
 // v0.5.1：KeepAlive 下切走 tab 时取消 onHistoryChanged 订阅（之前不暂停 → 别窗口提交一条 bug
 // 触发不可见 list reload + Vue diff 30 条 base64 缩略图行，白烧 CPU）
-onActivated(async () => {
-  if (!dispose) await subscribeChanges()
-})
+onActivated(() => { void subscribeChanges() })
 onDeactivated(() => {
   if (dispose) { dispose(); dispose = null }
 })

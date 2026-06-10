@@ -125,7 +125,25 @@ const errApi = useErrors()
 const capturedRequests = computed(() => reqApi.requests.value)
 const capturedErrors = computed(() => errApi.errors.value)
 
+// 流程进行中（截图/标注/提交/录屏）推迟 refreshProject —— 否则任意配置保存
+// (onConfigChanged，含 Environment 800ms 防抖自动保存) / SPA 路由信号都会无条件改写
+// project/matches：多匹配下用户已选的 project 被清空 → SubmitDialog 的
+// v-if="state==='submitting' && project" 瞬间卸载（已填表单全丢），state 卡在
+// 'submitting' 无人复位，悬浮球 :hidden + 页内快捷键又都被 state!=='idle' 拦 → 整个 tab
+// 的 Moo 卡死只能刷新。录屏中同理（停录后 dialog 永不出现，视频静默丢弃）。
+let projectRefreshDeferred = false
+watch(state, (s) => {
+  if (s === 'idle' && projectRefreshDeferred) {
+    projectRefreshDeferred = false
+    void refreshProject()
+  }
+})
+
 async function refreshProject() {
+  if (state.value !== 'idle') {
+    projectRefreshDeferred = true
+    return
+  }
   // SW 暂时不可达时静默 fallback —— 悬浮球消失比抛错让 Vue 卡死要好；下次 SPA 路由变更会再试。
   // 注：曾尝试 try/catch 保留旧 matches 防"切 tab 闪一下消失"，但 SW 偶发不可达
   // 概率本身极低（offscreen / alarm 都能保活），那个修法的副作用反而引发回归
