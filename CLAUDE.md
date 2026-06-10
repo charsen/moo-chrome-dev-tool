@@ -178,6 +178,8 @@ return { ok: false, error: 'v2/v1 xxx 响应都不识别' }
 | 修 bug | **顺手扫同类**（类似函数 / 类似 UI / 类似 message handler） — 这是 v0.4.4 大复盘的核心 lesson |
 | 加新 endpoint / message type | 加单测（fuzz 表 + 正常路径），不要让编排层裸奔（v0.4.4 submit.ts 复盘） |
 | 改文档里的快捷键描述 | manifest.json `commands` 是 ground truth，grep 全仓库不一致就改干净（v0.3.1 漏修 5 处的教训） |
+| 改 `normalize*` / 反序列化 / read 边界归一化（`storage/*.ts`、`types/config.ts`）| **对照写入端字段逐个核对：每个写进去的字段 normalizer 都要读回**，漏列 = read 时静默剥光（v0.8.7 history 复盘：写+类型+读三端补了、唯独 normalizer 漏 5 字段 = 等于没修）。单测走公共 read API round-trip，别裸读 storage |
+| 改 `dynamicScripts.ts` / 注入入口（`injected/main-world.ts`、`content/index.ts`）| **注入端必须幂等** —— `executeScript` 不去重，backfill 在 config 变化 / SW spin-up 会对已注入 tab 重复注入（v0.8.7 复盘，见 HANDOFF「动态注入链路复盘速记」）。加 e2e 验「二次注入不双采集 + reload 不破孤儿 host 重建」 |
 | 重构 / 删 unused export | 跑 type-check + 全单测 + grep 引用确认无遗漏 |
 
 **触发原则**：
@@ -196,6 +198,8 @@ return { ok: false, error: 'v2/v1 xxx 响应都不识别' }
 | 修文档误导 / 过期措辞 | `git grep` 同款字符串全仓，挨个清干净（不只你看到的那处） |
 | 加 v2 endpoint 调用 | 双轨化（v2 + v1 fallback），见 🟣 段 — 不允许 hard 切 |
 | 改 manifest.json 权限 | 最小化原则，能 optional 不 mandatory；同步检查 SW 路径是否真用了 |
+| 改 `normalize*` / read 边界归一化 | 对照写入端字段表，**每个写入字段都要读回**；漏列 = read 时静默剥光、且写回会把磁盘也抹掉（v0.8.7 history） |
+| 加 / 改 注入（`executeScript` / `registerContentScripts` / backfill）| 注入端加幂等守卫（**executeScript 不去重**，只 declarative register 在同一 navigation 内去重）；MAIN world 用 window flag、ISOLATED 句柄清旧（v0.8.7） |
 
 **铁律**：**「我刚改对一个 X，至少 grep 同类 X」远比「让用户跑 `/full-team-review` 找出来」高效**。前者是接任务时主动；后者是发版前救火。两者结合才稳 —— 但救火数应该越来越少。
 
@@ -203,3 +207,4 @@ return { ok: false, error: 'v2/v1 xxx 响应都不识别' }
 - v0.4.4 大复盘：onMessage sender 漏了 content/ContentApp（v0.4.5 补）；dark token 漏了 Environment（v0.4.5 补）；setTimeout 漏了 BodyViewer（v0.4.5 补）；check-version-consistency 正则 hardcode `v0.\d+\.\d+`（v0.4.5 改通用）
 - v0.3.1 复盘：⌘⇧B 文档误导 5 处复发（v0.4.4 全清）
 - v0.4.0 复盘：禅道 v2 hard 切让同事 dogfood 炸 3 次 → v2 双轨化硬规则（见 🟣 段）
+- v0.8.7 复盘（两轮主动 review 6 bug）：① `normalizeHistoryEntry` 漏列禅道 5 字段（v0.7.6「修过」实际没修干净，write/type/read 补了 normalizer 漏）→ normalize 同款扫描规则；② backfill 对已注入 tab 重复 `executeScript` 致重复采集（executeScript 不去重）→ 注入幂等规则；③ `redactBody` 贪婪 key 吞前导文本漏脱敏（非 JSON 体）；④ retryQueue 入队/flush 无共享锁吞条；⑤ `onHeaderKeyChange` 撞键丢 header
