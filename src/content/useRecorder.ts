@@ -102,9 +102,17 @@ export function useRecorder(opts: { maxSeconds?: number } = {}) {
   }
 
   let pendingResolve: ((r: RecordingResult | null) => void) | null = null
+  // stop 重入闸：elapsed>=maxSec 后计时 interval 每 250ms tick 都会调 stop()，而首发
+  // RECORD_STOP 在 offscreen 编码 30s 视频期间（秒级）不返回 —— 没闸的话二发 STOP 被
+  // offscreen 状态机拒 → 其 error 响应抢先 resolve(null) 丢掉视频，且 SW 端 stop 路径
+  // 还会 closeOffscreenDocument 把正在编码的文档销毁 = 30s 自动停必丢整段录像。
+  let stopping = false
 
   async function stop() {
-    if (!recording.value) return
+    if (!recording.value || stopping) return
+    stopping = true
+    // 入口立即停计时 interval，杜绝后续 tick 再触发（cleanup 在响应回来才跑，太晚）
+    if (timer) { clearInterval(timer); timer = null }
     const finalElapsed = elapsed.value
     // sendMessage 异常（service worker 重启等）也必须 resolve，避免 start() 返回的 Promise 永远悬挂
     try {
@@ -125,11 +133,13 @@ export function useRecorder(opts: { maxSeconds?: number } = {}) {
       pendingResolve?.(null)
     } finally {
       pendingResolve = null
+      stopping = false
     }
   }
 
   async function cancel() {
-    if (!recording.value) return
+    // stop 在飞（已发 RECORD_STOP 等编码）时再 CANCEL 会让 offscreen 丢弃编码中的数据
+    if (!recording.value || stopping) return
     // CANCEL 发不出去就算了：按取消语义 resolve null 并清状态即可
     await safeSendMessage({ type: MSG.RECORD_CANCEL, source: 'content' }, { fallback: undefined })
     pendingResolve?.(null)

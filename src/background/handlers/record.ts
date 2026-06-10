@@ -268,6 +268,15 @@ async function closeOffscreenDocument(): Promise<void> {
 async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?: string }> {
   if (!tabId) return { ok: false, error: t('record.start.no-tab') }
 
+  // 双 START 守卫：已有录制在跑时直接拒。没这道闸，第二次 ⌥⇧R / 另一 tab 点录制会
+  // 走到下面 START 被 offscreen 状态机拒 → 旧代码 closeOffscreenDocument() 把正在录的
+  // offscreen 文档销毁 = 整段录屏丢失。先 await boot rehydrate：SW 刚被快捷键唤醒时
+  // currentRecording 可能还没从 offscreen QUERY_STATE 恢复回来，不等就查会漏判。
+  await awaitBootRehydrate()
+  if (currentRecording) {
+    return { ok: false, error: t('record.start.already-recording') }
+  }
+
   // tabCapture 是 optional_permission，用户需要先在 popup 主动启用
   const hasPerm = await chrome.permissions.contains({ permissions: ['tabCapture'] })
   if (!hasPerm) {
@@ -298,6 +307,14 @@ async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?:
   // v0.4.4：tabId 一并传给 offscreen，SW 30s 闲置回收后能从 QUERY_STATE 拿回原录屏 tab
   const res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'START', streamId, tabId })
   if (!res?.ok) {
+    // START 被拒时先查 offscreen 真实状态：若它正在录（双 START 漏过上面守卫的 race，
+    // 比如 rehydrate 误读），关文档会销毁进行中的录屏。只有确认 idle / 查询不通才关。
+    try {
+      const st = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'QUERY_STATE' })
+      if (st?.state && st.state !== 'idle') {
+        return { ok: false, error: res?.error || t('record.start.offscreen-fail') }
+      }
+    } catch { /* offscreen 不在 / 查询失败 → 按原逻辑清理 */ }
     await closeOffscreenDocument()
     return { ok: false, error: res?.error || t('record.start.offscreen-fail') }
   }

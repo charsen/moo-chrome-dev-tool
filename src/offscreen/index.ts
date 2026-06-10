@@ -48,6 +48,11 @@ let stream: MediaStream | null = null
 let stopResolver: ((r: StopResult) => void) | null = null
 /** v0.4.4：记录录屏元数据，QUERY_STATE 时回给 SW 恢复 currentRecording */
 let recordingMeta: { tabId?: number; startedAt: number } | null = null
+// 35s tripwire 句柄 —— 必须在 cleanup 清掉。不清的话：track-ended 自停（SW 端
+// handleOffscreenAutoStopped 不关文档）后 35s 内重新开录会复用本文档，上一段的残留
+// timer 到点见 state==='recording' 判真（分不清是哪段录屏）就强制 recorder.stop()
+// 把新录屏掐死 —— 此刻 stopResolver===null，blob 在 onstop 里直接丢弃，整段静默丢失。
+let tripwireTimer: ReturnType<typeof setTimeout> | null = null
 
 /**
  * 包装 canTransition：合法就提交 module-level state、返回 true；非法返回 false 不改 state。
@@ -218,7 +223,8 @@ async function handleStart(streamId: string, tabId?: number): Promise<{ ok: bool
   // v0.4.8：独立 35s tripwire 兜底 content 端 30s timer（inactive tab 节流可绕导致录到 1-2 分钟）。
   // 35s 留 5s buffer 让 content 端正常 stop 先执行；如果还没停就强制 stop 防长录像爆 IPC。
   const TRIPWIRE_MS = 35_000
-  setTimeout(() => {
+  tripwireTimer = setTimeout(() => {
+    tripwireTimer = null
     if (state === 'recording') {
       console.log('[Moo offscreen] 35s tripwire fired — content 端 30s timer 可能被 inactive tab 节流，强制 stop')
       if (!transition('recording', 'stopping')) {
@@ -311,6 +317,11 @@ function handleCancel() {
 }
 
 function cleanup(next: State) {
+  // 清掉本段录屏的 tripwire —— 防文档复用时残留 timer 掐死下一段录屏（见声明处注释）
+  if (tripwireTimer != null) {
+    clearTimeout(tripwireTimer)
+    tripwireTimer = null
+  }
   if (stream) {
     stream.getTracks().forEach((t) => t.stop())
     stream = null

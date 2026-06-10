@@ -31,6 +31,7 @@
 export const messages = {
   // ── 录屏相关 ────────────────────────────────────────
   'record.start.no-tab': '没找到要录的标签页。请确保焦点在网页上（不要在 DevTools 内）再按 ⌥⇧R',
+  'record.start.already-recording': '已有标签页在录制中。请先停止当前录制（rec 条「停止」）再开新的',
   'record.start.permission': '录屏功能尚未启用。请点击浏览器右上角的 Moo 图标 → 启用录屏后再试',
   'record.start.gesture': '浏览器拒绝了录屏请求：{reason}。建议直接按 ⌥⇧R（不要通过点击悬浮球），否则用户手势会失效',
   'record.start.offscreen-fail': '录屏后台进程启动失败，请稍后重试',

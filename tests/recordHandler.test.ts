@@ -35,6 +35,12 @@ interface MockState {
   /** chrome.alarms.create / clear 调用记录 */
   alarmsCreated: Array<{ name: string; opts: unknown }>
   alarmsCleared: string[]
+  /** v0.8.8 双 START 守卫断言用：offscreen.closeDocument 调用次数 */
+  closeDocCalls: number
+  /** v0.8.8：getMediaStreamId 调用次数（守卫应在它之前拦截） */
+  streamIdCalls: number
+  /** v0.8.8：让 QUERY_STATE 抛错（模拟 offscreen 不在 / 查询失败） */
+  queryStateThrows: boolean
 }
 
 let state: MockState
@@ -58,7 +64,10 @@ function makeChrome(): void {
         if (msg.type === 'START') return state.offscreenStartRes
         if (msg.type === 'STOP') return state.offscreenStopRes
         if (msg.type === 'CANCEL') return { ok: true }
-        if (msg.type === 'QUERY_STATE') return state.offscreenState
+        if (msg.type === 'QUERY_STATE') {
+          if (state.queryStateThrows) throw new Error('offscreen gone')
+          return state.offscreenState
+        }
         return undefined
       },
       async getContexts(_opts: { contextTypes: string[] }) {
@@ -73,6 +82,7 @@ function makeChrome(): void {
         _opts: { targetTabId: number },
         cb: (id: string) => void
       ) {
+        state.streamIdCalls++
         if (state.streamIdResult.err) {
           ;(globalThis as { chrome: { runtime: { lastError?: { message: string } } } })
             .chrome.runtime.lastError = { message: state.streamIdResult.err }
@@ -108,7 +118,7 @@ function makeChrome(): void {
     },
     offscreen: {
       async createDocument() {},
-      async closeDocument() {}
+      async closeDocument() { state.closeDocCalls++ }
     }
   }
 }
@@ -125,7 +135,10 @@ beforeEach(() => {
     tabs: [],
     sentToTabs: [],
     alarmsCreated: [],
-    alarmsCleared: []
+    alarmsCleared: [],
+    closeDocCalls: 0,
+    streamIdCalls: 0,
+    queryStateThrows: false
   }
   makeChrome()
   vi.resetModules()
@@ -295,6 +308,57 @@ describe('rehydrateRecordingFromOffscreen', () => {
     const { rehydrateRecordingFromOffscreen, handleQueryRecordingState } = await importRecord()
     await rehydrateRecordingFromOffscreen()
     expect((await handleQueryRecordingState()).recording).toBe(false)
+  })
+})
+
+// ─────────────────────────── v0.8.8 Fix A：双 START 不得销毁进行中录屏 ───────────────────────────
+// 回归背景：第二次 START（另一 tab 点录制 / 再按 ⌥⇧R）被 offscreen 状态机拒后，
+// 旧代码无条件 closeOffscreenDocument() → 把正在录的 offscreen 文档销毁 = 整段录屏丢失。
+// 修法两层：① startTabRecording 入口查 currentRecording 直接拒；
+//          ② START 被拒时先 QUERY_STATE，state 非 idle 不关文档。
+describe('双 START 守卫（v0.8.8）', () => {
+  it('守卫①：已有 currentRecording → 二次 start 返 already-recording，不发 getMediaStreamId、不关 offscreen', async () => {
+    state.tabs = [{ id: 7, windowId: 1 }, { id: 8, windowId: 1 }]
+    const { handleRecordStart } = await importRecord()
+    const first = await handleRecordStart(fakeSender(7))
+    expect(first.ok).toBe(true)
+    expect(state.streamIdCalls).toBe(1)
+
+    const second = await handleRecordStart(fakeSender(8))
+    expect(second.ok).toBe(false)
+    if (!second.ok) expect(second.error).toContain('已有标签页在录制中')
+    // 守卫必须在 getMediaStreamId 之前拦（user-activation 不该被白白消耗）
+    expect(state.streamIdCalls).toBe(1)
+    // 关键资产保护：正在录的 offscreen 文档绝不能被关
+    expect(state.closeDocCalls).toBe(0)
+  })
+
+  it('守卫②：currentRecording=null（守卫①被 race 绕过）但 offscreen 在录 → START 被拒 + QUERY_STATE=recording → 不关文档', async () => {
+    state.offscreenStartRes = { ok: false, error: '当前状态 recording，无法 START' }
+    state.offscreenState = { state: 'recording', meta: { tabId: 9, startedAt: Date.now() } }
+    const { handleRecordStart } = await importRecord()
+    const res = await handleRecordStart(fakeSender(7))
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.error).toContain('当前状态 recording')
+    expect(state.closeDocCalls).toBe(0)
+  })
+
+  it('原行为不回归：START 失败 + QUERY_STATE=idle → closeDocument 正常被调', async () => {
+    state.offscreenStartRes = { ok: false, error: '内部错误' }
+    state.offscreenState = { state: 'idle', meta: null }
+    const { handleRecordStart } = await importRecord()
+    const res = await handleRecordStart(fakeSender(7))
+    expect(res.ok).toBe(false)
+    expect(state.closeDocCalls).toBe(1)
+  })
+
+  it('原行为不回归：START 失败 + QUERY_STATE 抛错（offscreen 不在）→ closeDocument 正常被调', async () => {
+    state.offscreenStartRes = { ok: false, error: '内部错误' }
+    state.queryStateThrows = true
+    const { handleRecordStart } = await importRecord()
+    const res = await handleRecordStart(fakeSender(7))
+    expect(res.ok).toBe(false)
+    expect(state.closeDocCalls).toBe(1)
   })
 })
 
