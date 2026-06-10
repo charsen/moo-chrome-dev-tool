@@ -190,7 +190,13 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
     }
     try {
       const resp = await fetch(q.endpoint, { method: q.method, headers: q.headers, body: q.bodyString })
-      if (resp.ok) return { kind: 'ok' }
+      if (resp.ok) {
+        // 跟首次提交同款：响应体 id 是 remoteId（history 回填 + 状态回查用）。
+        // 读体失败不影响成功判定 —— remoteId 缺省只是回填不上 id。
+        let remoteId: string | undefined
+        try { remoteId = parseRemoteId(await resp.text()) } catch { /* body 不可读 */ }
+        return { kind: 'ok', remoteId }
+      }
       if (resp.status >= 400 && resp.status < 500) {
         return { kind: 'drop', reason: `HTTP ${resp.status}（不重试）` }
       }

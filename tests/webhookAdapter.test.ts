@@ -271,6 +271,23 @@ describe('webhookAdapter.retryFromPayload', () => {
     expect(r.kind).toBe('ok')
   })
 
+  // v0.8.8 Fix B：重试成功要回带 remoteId（doFlush 据此回填 history entry）
+  it('200 + body {"id":"abc"} → kind:ok + remoteId 回带', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => textRes('{"id":"abc"}', 200)))
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.retryFromPayload(payload(), baseProject())
+    expect(r.kind).toBe('ok')
+    if (r.kind === 'ok') expect(r.remoteId).toBe('abc')
+  })
+
+  it('200 + body 非 JSON → remoteId undefined 但仍 kind:ok', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => textRes('<html>ok</html>', 200)))
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.retryFromPayload(payload(), baseProject())
+    expect(r.kind).toBe('ok')
+    if (r.kind === 'ok') expect(r.remoteId).toBeUndefined()
+  })
+
   it('400 → kind:drop（认证错，不重试）', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => textRes('bad token', 400)))
     const { webhookAdapter } = await importAdapter()

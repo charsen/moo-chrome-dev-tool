@@ -159,6 +159,26 @@ export async function clearHistory(): Promise<void> {
   })
 }
 
+/**
+ * retry 队列重试成功后把首次失败写的 entry 翻成成功（result.ok=true + 回填 remoteId）。
+ * 不提供这步的话：History 永远显示「失败」、红 badge 24h 不消、用户看着「失败」手动
+ * 重提 → 远端产生重复 bug 单（重试其实已经建过一条）。entry 已被删 / 找不到则静默跳过。
+ */
+export async function markHistoryEntryRetrySuccess(id: string, remoteId?: string): Promise<void> {
+  await withWriteMutex(async () => {
+    const list = await read()
+    const idx = list.findIndex((e) => e.id === id)
+    const old = idx >= 0 ? list[idx] : undefined
+    if (!old) return
+    list[idx] = {
+      ...old,
+      result: { ok: true, status: old.result.status, body: old.result.body },
+      remoteId: remoteId ?? old.remoteId
+    }
+    await write(list)
+  })
+}
+
 export async function updateHistoryEntry(id: string, entry: BugHistoryEntry): Promise<void> {
   await withWriteMutex(async () => {
     const list = await read()

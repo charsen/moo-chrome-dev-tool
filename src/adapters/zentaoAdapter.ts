@@ -98,7 +98,7 @@ export const zentaoAdapter: IssueAdapter<'zentao'> = {
     const res = await submitToZentao(q.req, project, dataUrlToBlob, {
       mooVersion: globalThis.chrome.runtime?.getManifest?.()?.version
     })
-    if (res.ok) return { kind: 'ok' }
+    if (res.ok) return { kind: 'ok', remoteId: res.remoteId }
     if (isPermanentFailure(res.error ?? '')) {
       return { kind: 'drop', reason: res.error ?? '永久失败' }
     }

@@ -39,7 +39,7 @@ function makeChrome(): MockStorage {
   return state
 }
 
-import { addHistoryEntry, listHistory, removeHistory, clearHistory, updateHistoryEntry, onHistoryChanged } from '@/storage/history'
+import { addHistoryEntry, listHistory, removeHistory, clearHistory, updateHistoryEntry, markHistoryEntryRetrySuccess, onHistoryChanged } from '@/storage/history'
 import type { BugHistoryEntry } from '@/types/history'
 
 function entry(id: string, image = 'data:image/png;base64,x'): BugHistoryEntry {
@@ -263,5 +263,54 @@ describe('history.ts — withWriteMutex 并发安全', () => {
     const list = await listHistory()
     expect(list).toHaveLength(5)
     expect(list.map(e => e.id).sort()).toEqual(['p1', 'p2', 'p3', 'p4', 'p5'])
+  })
+})
+
+// ─────────────────────────── v0.8.8 Fix B：markHistoryEntryRetrySuccess ───────────────────────────
+// retry 队列重试成功后把首次失败写的 entry 翻成功 + 回填 remoteId。
+describe('markHistoryEntryRetrySuccess', () => {
+  beforeEach(() => { makeChrome() })
+
+  it('失败 entry → result.ok 翻 true + remoteId 回填，其它字段不动', async () => {
+    const e = entry('f1')
+    e.result = { ok: false, status: 500, error: 'HTTP 500' }
+    await addHistoryEntry(e)
+
+    await markHistoryEntryRetrySuccess('f1', '77')
+
+    const list = await listHistory()
+    expect(list).toHaveLength(1)
+    expect(list[0]?.result.ok).toBe(true)
+    expect(list[0]?.remoteId).toBe('77')
+    expect(list[0]?.title).toBe('Title f1')
+    // status / body 保留（按实现：result 翻 {ok:true, status, body}，error 清掉）
+    expect(list[0]?.result.status).toBe(500)
+    expect(list[0]?.result.error).toBeUndefined()
+  })
+
+  it('entry 已删 / id 不存在 → 静默不 throw、不改其它条', async () => {
+    const e = entry('keep')
+    e.result = { ok: false, error: 'x' }
+    await addHistoryEntry(e)
+
+    await expect(markHistoryEntryRetrySuccess('gone-id', '9')).resolves.toBeUndefined()
+
+    const list = await listHistory()
+    expect(list).toHaveLength(1)
+    expect(list[0]?.id).toBe('keep')
+    expect(list[0]?.result.ok).toBe(false)  // 没被误翻
+  })
+
+  it('remoteId 缺省 → 保留 entry 旧 remoteId', async () => {
+    const e = entry('f2')
+    e.result = { ok: false, error: 'x' }
+    e.remoteId = 'old-id'
+    await addHistoryEntry(e)
+
+    await markHistoryEntryRetrySuccess('f2', undefined)
+
+    const list = await listHistory()
+    expect(list[0]?.result.ok).toBe(true)
+    expect(list[0]?.remoteId).toBe('old-id')
   })
 })

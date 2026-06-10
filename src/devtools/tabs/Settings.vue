@@ -383,16 +383,38 @@ async function clearHistoryAll() {
 
 async function flushQueue() {
   busy.value = 'flush'
+  // total 必须在 flush 前快照 —— flush 后取剩余数会把「最后一条达上限被放弃」说成
+  // 「队列没内容不用重试」，刚丢了数据却像没事发生
+  const totalBefore = queueCount.value
   try {
-    const res = await safeSendMessage({ type: MSG.RETRY_QUEUE_FLUSH, source: 'devtools' })
+    const res = (await safeSendMessage({ type: MSG.RETRY_QUEUE_FLUSH, source: 'devtools' })) as
+      | { processed?: number; dropped?: number; deferred?: number; skipped?: 'cooldown' | 'no-permission' | null }
+      | undefined
     await refreshStats()
-    const processed = (res as { processed?: number } | undefined)?.processed ?? 0
-    const total = queueCount.value
+    const processed = res?.processed ?? 0
+    const dropped = res?.dropped ?? 0
+    const deferred = res?.deferred ?? 0
+    // 三态语义（fetch-fail 链路同款铁律）：跳过 ≠ 试过失败。之前 cooldown/权限跳过时
+    // processed=0 一律走「都还在失败（后端没起/URL 写错）」—— 虚假诊断诱导用户改本来正确的配置。
     let msg: string
-    if (processed > 0) msg = `成功重新提交 ${processed} 条`
-    else if (total === 0) msg = '队列里没有待重试的内容，不用重试'
-    else msg = `${total} 条都还在失败（可能后端没起，或者「请求 URL」写错了）`
-    showToast(msg, processed > 0 ? 'success' : 'info')
+    let kind: 'success' | 'info' = 'info'
+    if (res?.skipped === 'cooldown') {
+      msg = '距上次重试不足 90 秒，本次已跳过（防对后端重复发）。稍后会自动重试，或等一会再点'
+    } else if (res?.skipped === 'no-permission') {
+      msg = '「向上报服务器发送请求」权限未授权，没法重试 — 点浏览器右上角 Moo 图标一键启用后再试'
+    } else if (processed > 0) {
+      msg = `成功重新提交 ${processed} 条` + (dropped > 0 ? `；另有 ${dropped} 条达重试上限已放弃` : '')
+      kind = 'success'
+    } else if (deferred > 0) {
+      msg = `${deferred} 条在 60 秒冷却中（刚试过），本次没重试。稍后会自动重试`
+    } else if (dropped > 0) {
+      msg = `${dropped} 条已达最大重试次数（5 次），已从队列放弃 — 需要的话去「历史」手动重提`
+    } else if (totalBefore === 0) {
+      msg = '队列里没有待重试的内容，不用重试'
+    } else {
+      msg = `${totalBefore} 条都还在失败（可能后端没起，或者「请求 URL」写错了）`
+    }
+    showToast(msg, kind)
   } catch (e) {
     showToast(`没能联系上扩展后台：${(e as Error).message}。请刷新页面或重新加载扩展`, 'error')
   } finally {

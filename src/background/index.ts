@@ -270,8 +270,9 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
           break
         }
         case MSG.RETRY_QUEUE_FLUSH: {
-          const n = await flushRetryQueue()
-          sendResponse({ ok: true, processed: n })
+          // 结构化透传 —— UI 要能区分「真试了全失败」vs「cooldown/权限被跳过」vs「放弃了 N 条」
+          const r = await flushRetryQueue()
+          sendResponse({ ok: true, ...r })
           break
         }
         // v0.5.2 P0 重构第 2 阶段：5 个录屏 case 抽到 src/background/handlers/record.ts

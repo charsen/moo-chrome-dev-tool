@@ -94,7 +94,10 @@ export type AdapterRetryPayload = unknown
  * adapter retry 的结果 —— 让 retryQueue 决定 drop / keep / 成功移除。
  */
 export type AdapterRetryOutcome =
-  | { kind: 'ok' }              // 重试成功，从队列移除
+  // 重试成功，从队列移除。remoteId（禅道 bugId / webhook 响应 id）回带给 doFlush
+  // 把首次失败时写的 history entry 翻成成功 —— 不回带的话历史永远显示「失败」、
+  // 红 badge 24h 不消、用户手动重提产生重复 bug 单。
+  | { kind: 'ok'; remoteId?: string }
   | { kind: 'drop'; reason: string }  // 永久放弃（认证失败 / 项目已删 / 4xx 等）
   | { kind: 'keep'; status?: number; error: string }  // 仍是瞬时错，attempts++ 后保留
 

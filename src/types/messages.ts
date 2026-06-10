@@ -157,7 +157,17 @@ export const MSG = {
 // 因为旧 API 表达力足够；type-safe sender wrapper 留下个 PR。
 
 export interface RefreshHistoryStatusRes { ok: true; updated: number }
-export interface RetryQueueFlushRes { ok: true; processed: number }
+export interface RetryQueueFlushRes {
+  ok: true
+  /** 重试成功移出队列的条数 */
+  processed: number
+  /** 永久放弃的条数（达 5 次上限 / 永久失败 / adapter 缺失） */
+  dropped: number
+  /** per-item 60s 冷却中本轮没试、留队的条数 */
+  deferred: number
+  /** 整轮被跳过（一个请求都没发）的原因；null = 真跑了。UI 必须区分，不能把「跳过」谎报成「都还在失败」 */
+  skipped: 'cooldown' | 'no-permission' | null
+}
 export interface RecordStartRes { ok: boolean; error?: string }
 export interface RecordStopRes { ok: boolean; dataUrl?: string; bytes?: number; mime?: string; error?: string }
 export interface RecordCancelRes { ok: boolean }

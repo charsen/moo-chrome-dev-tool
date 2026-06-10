@@ -25,9 +25,11 @@
 
 import type { SubmitBugReq } from '@/types/messages'
 import { loadConfig } from '@/storage/config'
+import { markHistoryEntryRetrySuccess } from '@/storage/history'
 import { getAdapter } from '@/adapters'
 import { estimateZentaoSize } from '@/adapters/zentaoAdapter'
 import { hasHostPermission } from '@/utils/hostPermission'
+import { refreshBadge } from '@/background/handlers/badge'
 
 const RETRY_QUEUE_KEY = 'mooRetryQueue'
 
@@ -48,6 +50,10 @@ export const PER_ITEM_RETRY_COOLDOWN_MS = 60_000
 interface QueuedBase {
   enqueuedAt: number
   attempts: number
+  /** 首次失败时写的 history entry id —— 重试成功后 doFlush 据此把该 entry 翻成成功
+   *  （否则历史永远显示「失败」+ 红 badge 不消 + 用户手动重提产生重复单）。
+   *  老条目（< 加字段版本）无此字段 → 跳过回填，行为同旧版。 */
+  historyId?: string
   /** v0.7.6：本 item 上次 attempt 开始时间 — 防 cooldown 内重发让远端产生重复 bug */
   lastAttemptAt?: number
   /** 上次尝试的 HTTP 状态（zentao 路径下：成功 = 不入队；4xx-token-related = 不入队；5xx/网络错 = 入此字段） */
@@ -90,6 +96,8 @@ function normalizeQueueItem(raw: unknown): QueuedItem | null {
       kind: 'zentao',
       enqueuedAt: r.enqueuedAt,
       attempts: r.attempts ?? 0,
+      // historyId 必须读回 —— normalizer 漏列 = read 时静默剥光（v0.8.7 history 同款教训）
+      historyId: typeof r.historyId === 'string' ? r.historyId : undefined,
       lastAttemptAt: r.lastAttemptAt,
       projectId: r.projectId,
       req: r.req,
@@ -103,6 +111,7 @@ function normalizeQueueItem(raw: unknown): QueuedItem | null {
     kind: 'webhook',
     enqueuedAt: r.enqueuedAt,
     attempts: r.attempts ?? 0,
+    historyId: typeof r.historyId === 'string' ? r.historyId : undefined,
     lastAttemptAt: r.lastAttemptAt,
     endpoint: r.endpoint,
     method: r.method ?? 'POST',
@@ -141,16 +150,16 @@ function withQueueMutex<T>(fn: () => Promise<T>): Promise<T> {
  * （endpoint / bodyString vs projectId / req），只把 adapter 返的 payload envelope 投递即可。
  * adapter 已经做完 serializeForRetry 内的合法性检查（multipart 拒 / 大小估算）。
  */
-export async function pushQueueItem(payload: unknown): Promise<boolean> {
+export async function pushQueueItem(payload: unknown, historyId?: string): Promise<boolean> {
   if (!payload || typeof payload !== 'object') return false
   const kind = (payload as { kind?: string }).kind
   if (kind === 'webhook') {
     const w = payload as WebhookPayloadShape
-    return enqueueRetry(w.endpoint, w.method, w.headers, w.bodyString)
+    return enqueueRetry(w.endpoint, w.method, w.headers, w.bodyString, historyId)
   }
   if (kind === 'zentao') {
     const z = payload as ZentaoPayloadShape
-    return enqueueZentaoRetry(z.projectId, z.req)
+    return enqueueZentaoRetry(z.projectId, z.req, historyId)
   }
   console.warn('[Moo] pushQueueItem: unknown adapter payload kind:', kind)
   return false
@@ -181,7 +190,8 @@ export async function enqueueRetry(
   endpoint: string,
   method: string,
   headers: Record<string, string>,
-  body: BodyInit
+  body: BodyInit,
+  historyId?: string
 ): Promise<boolean> {
   if (typeof body !== 'string') return false // multipart 不重试
   if (body.length > RETRY_MAX_BODY_BYTES) return false // 太大不入队
@@ -192,7 +202,8 @@ export async function enqueueRetry(
     endpoint,
     method,
     headers,
-    bodyString: body
+    bodyString: body,
+    historyId
   }
   return pushItem(item)
 }
@@ -203,7 +214,7 @@ export async function enqueueRetry(
  * 1MB 阈值用估算（SubmitBugReq 序列化后字符长度）来卡 —— 带 video 的请求几乎肯定超，
  * 跟 webhook multipart 不入队保持一致行为：用户得自己去 历史 Tab 手动重提。
  */
-export async function enqueueZentaoRetry(projectId: string, req: SubmitBugReq): Promise<boolean> {
+export async function enqueueZentaoRetry(projectId: string, req: SubmitBugReq, historyId?: string): Promise<boolean> {
   // image 的 thumbnailize 由上游 router 的 preprocessZentaoForRetry 统一做（结果还喂给
   // serializeForRetry 的 size 检查）。这里只做队列自己的大小兜底，不重复缩略。
   const estimatedSize = estimateZentaoSize(req)
@@ -213,7 +224,8 @@ export async function enqueueZentaoRetry(projectId: string, req: SubmitBugReq): 
     enqueuedAt: Date.now(),
     attempts: 0,
     projectId,
-    req
+    req,
+    historyId
   }
   return pushItem(item)
 }
@@ -249,7 +261,7 @@ async function pushItem(item: QueuedItem): Promise<boolean> {
  * flush。无锁的话两份并发都读到同一份队列，各自 fetch 完写 remaining 时互相
  * 覆盖，成功重试可能被另一份覆盖回原状。
  */
-let flushPromise: Promise<number> | null = null
+let flushPromise: Promise<FlushResult> | null = null
 
 /**
  * v0.4.5：flushPromise 是 SW 内存锁，SW 30s 回收后锁丢但 inflight fetch 在 keep-alive 期间已发出。
@@ -271,41 +283,66 @@ async function markFlushStart(): Promise<void> {
   await chrome.storage.local.set({ [FLUSH_COOLDOWN_KEY]: Date.now() })
 }
 
-export async function flushRetryQueue(): Promise<number> {
+/**
+ * flush 的结构化结果 —— UI（Settings「立即重试」）必须能区分「真试了全失败」和
+ * 「根本没试（cooldown / 权限）」，否则 toast 谎报「都还在失败（后端没起/URL 写错）」
+ * 给出虚假诊断（fetch-fail 三态语义同款铁律：跳过 ≠ 试过失败）。
+ */
+export interface FlushResult {
+  /** 重试成功并移出队列的条数 */
+  processed: number
+  /** 永久放弃的条数（达 5 次上限 / adapter 判永久失败 / adapter 缺失） */
+  dropped: number
+  /** 因 per-item 60s 冷却本轮未尝试、留队等下次的条数 */
+  deferred: number
+  /** 整轮被跳过的原因（一个网络请求都没发）；null = 真跑了 */
+  skipped: 'cooldown' | 'no-permission' | null
+}
+
+export async function flushRetryQueue(): Promise<FlushResult> {
   if (flushPromise) return flushPromise
   // v0.4.5：同步设置 flushPromise 避免 shouldSkipForCooldown await 期间第二个 caller 漏进。
-  // 把 cooldown check + markFlushStart + doFlush 都放进同一个 Promise 里原子化。
+  // 把 cooldown check + doFlush 都放进同一个 Promise 里原子化。
+  // 注：markFlushStart 已移入 doFlush「读到非空队列之后」—— 之前在这里无条件武装，
+  // 空队列 flush（SW spin-up / alarm 周期跑）也写 cooldown，把用户随后的「立即重试」
+  // 静默挡掉 90s。
   flushPromise = (async () => {
     if (await shouldSkipForCooldown()) {
-      console.log('[Moo] flushRetryQueue 跳过：30s cooldown 内（防 SW 回收后重发重复条）')
-      return 0
+      console.log('[Moo] flushRetryQueue 跳过：cooldown 内（防 SW 回收后重发重复条）')
+      return { processed: 0, dropped: 0, deferred: 0, skipped: 'cooldown' as const }
     }
-    await markFlushStart()
     return doFlush()
   })().finally(() => { flushPromise = null })
   return flushPromise
 }
 
-async function doFlush(): Promise<number> {
+async function doFlush(): Promise<FlushResult> {
   // v0.5.3 #128：host_permission 未授权 → 不 flush（fetch 必失败浪费 attempts++）。
-  // 用户重新授权后下次 alarm 周期 / SW spin-up 自动跑。
+  // 用户重新授权后下次 alarm 周期 / SW spin-up 自动跑。skipped 标出来让 UI 能
+  // 提示「去授权」而不是谎报「都还在失败」。
   if (!await hasHostPermission()) {
     console.log('[Moo] flushRetryQueue 跳过：host_permission 未授权')
-    return 0
+    return { processed: 0, dropped: 0, deferred: 0, skipped: 'no-permission' }
   }
   const list = await readQueue()
-  if (list.length === 0) return 0
+  if (list.length === 0) return { processed: 0, dropped: 0, deferred: 0, skipped: null }
+  // 真要发网络了才武装 90s cooldown —— 空队列轮不算（否则 SW spin-up 的空 flush
+  // 把用户随后的「立即重试」静默挡掉）
+  await markFlushStart()
   const remaining: QueuedItem[] = []
   let processed = 0
+  let dropped = 0
+  let deferred = 0
   // zentao 路径要 loadConfig 才能拿到 project；webhook 也接 project（adapter 自决要不要用）
   let configCache: Awaited<ReturnType<typeof loadConfig>> | null = null
   const getConfig = async () => configCache ?? (configCache = await loadConfig())
 
   for (const q of list) {
-    if (q.attempts >= RETRY_MAX_ATTEMPTS) continue
+    if (q.attempts >= RETRY_MAX_ATTEMPTS) { dropped++; continue }
     // v0.7.6 P2-4：per-item cooldown — 防同条在远端慢响应（zentao multipart 80s）
     // + flush 90s cooldown 之后立即重发让远端产生重复 bug（dogfood 撞过）
     if (q.lastAttemptAt && Date.now() - q.lastAttemptAt < PER_ITEM_RETRY_COOLDOWN_MS) {
+      deferred++
       remaining.push(q)  // 留在队列等下次 alarm，不丢
       continue
     }
@@ -313,6 +350,7 @@ async function doFlush(): Promise<number> {
     if (!adapter) {
       // 未注册 adapter（历史 storage 残留 kind） → drop
       console.warn('[Moo] retry: adapter not found for kind', q.kind)
+      dropped++
       continue
     }
     // zentao 路径需要 project 查 baseUrl；webhook payload 自带 endpoint，project undefined 也行
@@ -320,8 +358,17 @@ async function doFlush(): Promise<number> {
     const project = projectId ? (await getConfig()).projects.find(p => p.id === projectId) : undefined
     q.lastAttemptAt = Date.now()  // 标记本次开始尝试（不管 outcome 都更新，避免 60s 内重试）
     const outcome = await adapter.retryFromPayload(q, project)
-    if (outcome.kind === 'ok') { processed++; continue }
-    if (outcome.kind === 'drop') continue
+    if (outcome.kind === 'ok') {
+      processed++
+      // 把首次失败写的 history entry 翻成成功 + 回填 remoteId。不回填的话该条永远显示
+      // 「失败」、红 badge 24h 不消、用户照着「失败」手动重提 → 远端重复 bug 单。
+      // 老条目无 historyId → 跳过（行为同旧版）。回填失败不影响队列移除。
+      if (q.historyId) {
+        try { await markHistoryEntryRetrySuccess(q.historyId, outcome.remoteId) } catch { /* best-effort */ }
+      }
+      continue
+    }
+    if (outcome.kind === 'drop') { dropped++; continue }
     q.attempts++
     q.lastStatus = outcome.status
     q.lastError = outcome.error
@@ -347,7 +394,11 @@ async function doFlush(): Promise<number> {
     }
     await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: merged })
   })
-  return processed
+  // 有重试成功（history 已翻成功）→ 刷 badge 让 24h 失败计数立即缩水，不等下次提交
+  if (processed > 0) {
+    try { await refreshBadge() } catch { /* badge 失败不影响 flush 结果 */ }
+  }
+  return { processed, dropped, deferred, skipped: null }
 }
 
 /** v0.4.7：判断错误是否「永久失败」（重试无意义，drop）。

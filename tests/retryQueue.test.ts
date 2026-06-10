@@ -51,6 +51,9 @@ const {
 // 让 case 之间互不污染必须每次 reset
 const { _clearZentaoCaches } = await import('@/background/zentao/client')
 
+// v0.8.8 Fix B：重试成功后 doFlush 回填 history —— 走公共 read API 验证（不裸读 storage）
+const { listHistory } = await import('@/storage/history')
+
 // 给 zentao 路径准备 mock：chrome.runtime.getManifest 在 submit.ts 里被 retryZentao 调
 function stubChromeRuntime() {
   ;(globalThis as any).chrome.runtime = {
@@ -128,8 +131,8 @@ describe('retryQueue', () => {
     const [n1, n2] = await Promise.all([flushRetryQueue(), flushRetryQueue()])
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(n1).toBe(1)
-    expect(n2).toBe(1) // 共享同一个 promise，结果一致
+    expect(n1.processed).toBe(1)
+    expect(n2.processed).toBe(1) // 共享同一个 promise，结果一致
     expect(storage.data.mooRetryQueue).toEqual([])
   })
 
@@ -141,7 +144,8 @@ describe('retryQueue', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const n = await flushRetryQueue()
-    expect(n).toBe(0) // 4xx 不算 processed（不是 ok 成功）
+    expect(n.processed).toBe(0) // 4xx 不算 processed（不是 ok 成功）
+    expect(n.dropped).toBe(1)   // v0.8.8：4xx 永久放弃计入 dropped（UI 三态用）
     expect(storage.data.mooRetryQueue).toEqual([]) // 已丢
   })
 
@@ -153,7 +157,7 @@ describe('retryQueue', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const n = await flushRetryQueue()
-    expect(n).toBe(0)
+    expect(n.processed).toBe(0)
     const list = storage.data.mooRetryQueue as Array<{ attempts: number }>
     expect(list).toHaveLength(1)
     expect(list[0]?.attempts).toBe(2)
@@ -168,7 +172,8 @@ describe('retryQueue', () => {
 
     const n = await flushRetryQueue()
     expect(fetchMock).not.toHaveBeenCalled() // 上限后不再发请求
-    expect(n).toBe(0)
+    expect(n.processed).toBe(0)
+    expect(n.dropped).toBe(1)   // v0.8.8：达上限放弃计入 dropped
     expect(storage.data.mooRetryQueue).toEqual([])
   })
 
@@ -336,7 +341,7 @@ describe('retryQueue', () => {
     ]
     vi.stubGlobal('fetch', vi.fn(async () => new Response('boom', { status: 500 })))
 
-    await expect(flushRetryQueue()).resolves.toBe(0)
+    await expect(flushRetryQueue()).resolves.toMatchObject({ processed: 0 })
     const list = storage.data.mooRetryQueue as Array<{ lastStatus?: number; lastError?: string }>
     expect(list[0]?.lastStatus).toBe(500)
     expect(list[0]?.lastError).toBeTruthy()
@@ -365,7 +370,7 @@ describe('retryQueue', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const n = await flushRetryQueue()
-    expect(n).toBe(1)
+    expect(n.processed).toBe(1)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
@@ -430,7 +435,7 @@ describe('retryQueue — v0.2.0 zentao 路径', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const n = await flushRetryQueue()
-    expect(n).toBe(1)
+    expect(n.processed).toBe(1)
     expect(storage.data.mooRetryQueue).toEqual([])
   })
 
@@ -444,7 +449,7 @@ describe('retryQueue — v0.2.0 zentao 路径', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const n = await flushRetryQueue()
-    expect(n).toBe(0)
+    expect(n.processed).toBe(0)
     expect(storage.data.mooRetryQueue).toEqual([])  // drop
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -460,7 +465,7 @@ describe('retryQueue — v0.2.0 zentao 路径', () => {
     vi.stubGlobal('fetch', vi.fn())
 
     const n = await flushRetryQueue()
-    expect(n).toBe(0)
+    expect(n.processed).toBe(0)
     expect(storage.data.mooRetryQueue).toEqual([])  // drop
   })
 
@@ -475,7 +480,7 @@ describe('retryQueue — v0.2.0 zentao 路径', () => {
     ))
 
     const n = await flushRetryQueue()
-    expect(n).toBe(0)
+    expect(n.processed).toBe(0)
     expect(storage.data.mooRetryQueue).toEqual([])  // drop
   })
 
@@ -488,7 +493,7 @@ describe('retryQueue — v0.2.0 zentao 路径', () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down') }))
 
     const n = await flushRetryQueue()
-    expect(n).toBe(0)
+    expect(n.processed).toBe(0)
     const list = storage.data.mooRetryQueue as any[]
     expect(list).toHaveLength(1)
     expect(list[0].attempts).toBe(2)
@@ -504,7 +509,7 @@ describe('retryQueue — v0.2.0 zentao 路径', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const n = await flushRetryQueue()
-    expect(n).toBe(1)
+    expect(n.processed).toBe(1)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(storage.data.mooRetryQueue).toEqual([])
   })
@@ -530,6 +535,201 @@ describe('retryQueue — v0.2.0 zentao 路径', () => {
     const list = storage.data.mooRetryQueue as any[]
     expect(list).toHaveLength(1)
     expect(list[0].kind).toBe('webhook')
+  })
+})
+
+// ─────────────────────────── v0.8.8 Fix B：重试成功回填 history / badge ───────────────────────────
+// 回归背景：失败提交入 history（显示「失败」）+ 入重试队列；旧版 flush 重试成功后只从队列
+// 移除，history 永远停在「失败」、红 badge 24h 不消、用户照着失败手动重提 → 远端重复 bug 单。
+// 修法：queue item 带 historyId，doFlush ok 分支调 markHistoryEntryRetrySuccess 回填
+// remoteId，processed>0 时 refreshBadge。
+describe('retryQueue — v0.8.8 重试成功回填 history / badge', () => {
+  let storage: MockStorage
+  let badgeTexts: string[]
+
+  /** 首次提交失败时写进 history 的 raw entry（shape 同 submit.ts buildHistoryEntry） */
+  function failedHistoryEntry(id: string) {
+    return {
+      id, timestamp: Date.now(), projectId: 'p1', projectName: 'P',
+      serverId: 's1', serverName: 'S', title: 'bug ' + id, description: '',
+      image: '', url: 'http://x', userAgent: 'ua', viewport: '1x1',
+      requests: [], errors: [],
+      result: { ok: false, error: 'HTTP 500' }
+    }
+  }
+
+  beforeEach(() => {
+    storage = makeChrome()
+    __resetForTest()
+    // refreshBadge → updateActionBadge 走 chrome.action；记录 setBadgeText 调用
+    // 验证 processed>0 时 badge 真的被刷（而不是依赖 try/catch 静默吞掉）
+    badgeTexts = []
+    ;(globalThis as any).chrome.action = {
+      async setBadgeBackgroundColor() {},
+      async setBadgeText(o: { text: string }) { badgeTexts.push(o.text) }
+    }
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    __resetForTest()
+  })
+
+  it('核心闭环：失败 entry + 队列带 historyId → flush 成功 → 队列移除 + history 翻成功 + remoteId 回填 + badge 刷新', async () => {
+    storage.data.mooHistory = [failedHistoryEntry('h1')]
+    storage.data.mooRetryQueue = [{
+      kind: 'webhook', enqueuedAt: 0, attempts: 0,
+      endpoint: 'http://x/a', method: 'POST', headers: {}, bodyString: '{}',
+      historyId: 'h1'
+    }]
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"id":"77"}', { status: 200 })))
+
+    const n = await flushRetryQueue()
+    expect(n.processed).toBe(1)
+    expect(storage.data.mooRetryQueue).toEqual([])
+    // 经公共 read API 验证（listHistory 含 normalize，裸读 storage 测不出 normalizer 剥光）
+    const list = await listHistory()
+    expect(list).toHaveLength(1)
+    expect(list[0]?.result.ok).toBe(true)
+    expect(list[0]?.remoteId).toBe('77')
+    // processed>0 → refreshBadge 真跑到 chrome.action.setBadgeText
+    expect(badgeTexts.length).toBeGreaterThan(0)
+  })
+
+  it('normalize round-trip：webhook + zentao 入队带 historyId → readQueue 后 historyId 还在（防 normalizer 剥光）', async () => {
+    await enqueueRetry('http://x', 'POST', {}, '{}', 'h-web')
+    await enqueueZentaoRetry('proj-zentao', makeZentaoReq() as any, 'h-zen')
+    const items = await getQueueItems()
+    expect(items).toHaveLength(2)
+    expect(items[0]?.historyId).toBe('h-web')
+    expect(items[1]?.historyId).toBe('h-zen')
+  })
+
+  it('老条目无 historyId → flush 成功不 throw、不误改任何 history entry', async () => {
+    storage.data.mooHistory = [failedHistoryEntry('h1')]
+    storage.data.mooRetryQueue = [{
+      kind: 'webhook', enqueuedAt: 0, attempts: 0,
+      endpoint: 'http://x/a', method: 'POST', headers: {}, bodyString: '{}'
+      // 无 historyId（< v0.8.8 入队的老条目）
+    }]
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"id":"77"}', { status: 200 })))
+
+    await expect(flushRetryQueue()).resolves.toMatchObject({ processed: 1 })
+    expect(storage.data.mooRetryQueue).toEqual([])
+    // 没 historyId 不许乱回填：失败 entry 保持原样
+    const list = await listHistory()
+    expect(list[0]?.result.ok).toBe(false)
+    expect(list[0]?.remoteId).toBeUndefined()
+  })
+
+  it('重试仍失败（5xx）→ 不动 history（只有 ok 分支才回填）', async () => {
+    storage.data.mooHistory = [failedHistoryEntry('h1')]
+    storage.data.mooRetryQueue = [{
+      kind: 'webhook', enqueuedAt: 0, attempts: 0,
+      endpoint: 'http://x/a', method: 'POST', headers: {}, bodyString: '{}',
+      historyId: 'h1'
+    }]
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('boom', { status: 503 })))
+
+    await flushRetryQueue()
+    const list = await listHistory()
+    expect(list[0]?.result.ok).toBe(false)
+  })
+})
+
+// ─────────────────────── v0.8.8 Fix C：flush 三态结果 + cooldown 武装时机 ───────────────────────
+// 回归背景：markFlushStart 原在 flushRetryQueue 里无条件武装 —— SW spin-up / alarm 周期的
+// 空队列 flush 也写 mooLastFlushAt，把用户随后的「立即重试」静默挡掉 90s，且老返回值是裸
+// number，Settings toast 把「跳过」谎报成「都还在失败（后端没起/URL 写错）」给虚假诊断。
+// 修法：markFlushStart 移入 doFlush「读到非空队列之后」；FlushResult 带 processed/dropped/
+// deferred/skipped 三态让 UI 区分「真试了」vs「被跳过」vs「放弃了 N 条」。
+describe('retryQueue — v0.8.8 flush 三态 + 空队列不武装 cooldown', () => {
+  let storage: MockStorage
+
+  beforeEach(() => {
+    storage = makeChrome()
+    __resetForTest()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    __resetForTest()
+  })
+
+  it('核心回归：空队列 flush 不武装 cooldown → 随后入队 1 条再 flush 真发 fetch', async () => {
+    const fetchMock = vi.fn(async () => new Response('ok', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    // 第一轮：空队列（SW spin-up / alarm 周期跑到的常态）
+    const n1 = await flushRetryQueue()
+    expect(n1).toEqual({ processed: 0, dropped: 0, deferred: 0, skipped: null })
+    // 机制直证：空 flush 后 mooLastFlushAt 不存在（修前在这里就红 —— 旧位置无条件武装）
+    expect(storage.data.mooLastFlushAt).toBeUndefined()
+
+    // 用户提交失败入队 → 立刻点 Settings「立即重试」
+    await enqueueRetry('http://x/a', 'POST', {}, '{}')
+    const n2 = await flushRetryQueue()
+    // 修前：第一轮空 flush 写的 cooldown 把这轮静默挡掉（processed=0、fetch 0 次）
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(n2.processed).toBe(1)
+    expect(n2.skipped).toBeNull()
+  })
+
+  it('cooldown 内 flush → skipped=cooldown（不是裸 0），一个 fetch 都不发、条目留队', async () => {
+    storage.data.mooLastFlushAt = Date.now() // 90s cooldown 窗口内
+    storage.data.mooRetryQueue = [
+      { enqueuedAt: 0, attempts: 0, endpoint: 'http://x/a', method: 'POST', headers: {}, bodyString: '{}' }
+    ]
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const n = await flushRetryQueue()
+    expect(n).toEqual({ processed: 0, dropped: 0, deferred: 0, skipped: 'cooldown' })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(storage.data.mooRetryQueue as unknown[]).toHaveLength(1)
+  })
+
+  it('host_permission 未授权 → skipped=no-permission，且不武装 cooldown', async () => {
+    ;(globalThis as any).chrome.permissions.contains = async () => false
+    storage.data.mooRetryQueue = [
+      { enqueuedAt: 0, attempts: 0, endpoint: 'http://x/a', method: 'POST', headers: {}, bodyString: '{}' }
+    ]
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const n = await flushRetryQueue()
+    expect(n).toEqual({ processed: 0, dropped: 0, deferred: 0, skipped: 'no-permission' })
+    expect(fetchMock).not.toHaveBeenCalled()
+    // 权限 check 在 markFlushStart 之前 —— 用户授权后第一次 flush 不该被自己挡 90s
+    expect(storage.data.mooLastFlushAt).toBeUndefined()
+  })
+
+  it('达 5 次上限的条目 → dropped=1（toast 能说「放弃 N 条」而不是混进失败）', async () => {
+    storage.data.mooRetryQueue = [
+      { enqueuedAt: 0, attempts: 5, endpoint: 'http://x/a', method: 'POST', headers: {}, bodyString: '{}' }
+    ]
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const n = await flushRetryQueue()
+    expect(n).toEqual({ processed: 0, dropped: 1, deferred: 0, skipped: null })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(storage.data.mooRetryQueue).toEqual([])
+  })
+
+  it('per-item 60s 冷却内的条目 → deferred=1 且留队（attempts 不动）', async () => {
+    storage.data.mooRetryQueue = [
+      { enqueuedAt: 0, attempts: 1, lastAttemptAt: Date.now(), endpoint: 'http://x/a', method: 'POST', headers: {}, bodyString: '{}' }
+    ]
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const n = await flushRetryQueue()
+    expect(n).toEqual({ processed: 0, dropped: 0, deferred: 1, skipped: null })
+    expect(fetchMock).not.toHaveBeenCalled()
+    const list = storage.data.mooRetryQueue as Array<{ attempts: number }>
+    expect(list).toHaveLength(1)
+    expect(list[0]?.attempts).toBe(1) // 没真试，不浪费 attempts
   })
 })
 

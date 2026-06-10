@@ -62,6 +62,10 @@ export async function handleSubmitBug(req: SubmitBugReq, tabId?: number): Promis
     error: outcome.error
   }
 
+  // entry 先建（id 在这里生成）：失败入队时把 entry.id 带进 queue item，
+  // 重试成功后 doFlush 才能据此把这条 history 翻成成功（不带 = 永远显示失败）
+  const entry = buildHistoryEntry(req, project, outcome)
+
   // 失败时算 queued：adapter 给 retryable 信号优先；否则按 HTTP 状态自决。
   // 默认 false，仅 retryable !== false + payload 可序列化时调 pushQueueItem 覆盖
   if (!outcome.ok) {
@@ -70,12 +74,11 @@ export async function handleSubmitBug(req: SubmitBugReq, tabId?: number): Promis
       // 先 thumbnailize（zentao 路径 image 太大长期驻 storage）—— 跑 await 异步预处理
       const reqForRetry = project.kind === 'zentao' ? await preprocessZentaoForRetry(req) : req
       const payload = adapter.serializeForRetry(reqForRetry, project)
-      if (payload !== null) result.queued = await pushQueueItem(payload)
+      if (payload !== null) result.queued = await pushQueueItem(payload, entry.id)
     }
   }
 
   // 写 history（成功 + 失败都写）
-  const entry = buildHistoryEntry(req, project, outcome)
   try {
     const writeRes = await addHistoryEntry(entry)
     if (writeRes.allDropped) {
