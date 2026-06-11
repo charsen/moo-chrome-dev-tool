@@ -150,6 +150,55 @@ describe('handleZentaoListUsers', () => {
   })
 })
 
+describe('handleZentaoListUsers — v0.8.9 tier-3 接线（projectId → discoverProduct → productId 透传）', () => {
+  // 普通账号场景：v2 users 不识别 + v1 users 400（权限墙）。tier-3 建单页是唯一活路 ——
+  // 用「v1 挂 + 建单页好使 → 返 ok」间接断言 listUsers 真收到了 discoverProduct 的 productId。
+  it('payload 带 projectId + discoverProduct 成功 → tier-3 拿到用户（productID 透传到建单页 URL）', async () => {
+    let pageUrl = ''
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) return loginSuccess()
+      if (url.match(/\/v2\/projects\/26$/)) {
+        return jsonRes({ id: 26, products: [14] })  // discoverProduct → 14
+      }
+      if (url.includes('/v2/users?')) return jsonRes({ status: 'success', data: {} })  // 不识别
+      if (url.includes('/v1/users?')) return new Response('bad request', { status: 400 })  // 权限墙
+      if (url.includes('index.php') && url.includes('f=create')) {
+        pageUrl = url
+        return jsonRes({ status: 'success', data: JSON.stringify({ users: { zhangsan: 'zhangsan:张三' }, moduleOptionMenu: {} }) })
+      }
+      return jsonRes({})
+    }))
+    const { handleZentaoListUsers } = await importHandlers()
+    const r = await handleZentaoListUsers({ ...creds, projectId: 26 })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.users).toHaveLength(1)
+      expect(r.users?.[0]).toMatchObject({ account: 'zhangsan', realname: '张三' })
+    }
+    expect(pageUrl).toContain('productID=14')  // discoverProduct 的结果真透传给了 listUsers
+  })
+
+  it('discoverProduct 失败 → 不阻断不炸，tier-3 跳过，保留原 v1 错误（行为同旧版）', async () => {
+    const calls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url)
+      if (url.includes('/users/login')) return loginSuccess()
+      if (url.match(/\/v2\/projects\/26$/)) {
+        return new Response('', { status: 404 })  // 项目不存在 → discoverProduct 失败
+      }
+      if (url.includes('/v2/users?')) return jsonRes({ status: 'success', data: {} })
+      if (url.includes('/v1/users?')) return new Response('bad request', { status: 400 })
+      return jsonRes({})
+    }))
+    const { handleZentaoListUsers } = await importHandlers()
+    const r = await handleZentaoListUsers({ ...creds, projectId: 26 })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toBe('HTTP 400（v1 users fallback）')  // 原错误，不是 discover 的错
+    // tier-3 不可用 → 建单页 0 次请求
+    expect(calls.filter(u => u.includes('index.php') && u.includes('f=create'))).toHaveLength(0)
+  })
+})
+
 describe('handleZentaoListModules', () => {
   it('缺 projectId → 早返 error 不调 login', async () => {
     const fetchMock = vi.fn(async () => jsonRes({}))

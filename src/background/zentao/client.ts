@@ -452,19 +452,84 @@ export async function listProjects(env: ZentaoEnv, limit = 50): Promise<ZentaoRe
   })
 }
 
+// ─────────────── tier-3 兜底：建单页视图数据（cookie session）───────────────
+
+/**
+ * v0.8.9 dogfood 暴露（同事普通账号实测）：/v2/users、/v1/users、/v1/modules 在部分禅道
+ * 实例上是**管理员权限端点** —— 产品/管理类账号好使；普通账号 v2 不识别、v1 返 400/403
+ * （400 连 cookie cascade 都不触发，cascade 只认 403）。指派人/模块下拉对普通账号全挂。
+ *
+ * 但「能建单的账号必然打得开禅道自己的建单页」—— bug-create 页面本身就有 指派人 + 模块
+ * 两个下拉，视图数据里就是这两份列表。tier-3 直接拉建单页视图数据：
+ *   GET {base}/index.php?m=bug&f=create&productID={pid}&t=json
+ *   → { status:'success', data:'<json 字符串>' } → JSON.parse(data) →
+ *     { users: {account: realname}, moduleOptionMenu: {moduleId: '/路径名'} , ...}
+ *
+ * 走 credentials:'include'（浏览器 cookie session —— 跟弹窗「✓ 已登录禅道」预检同一通道），
+ * 不带 Token（页面层只认 session 不认 API Token）。任何一步失败返 null，caller 保留原
+ * v1 错误文案 —— 只加层不换轨，见 [[feedback_zentao_v2_dual_track_rule]]。
+ */
+async function fetchBugCreatePageData(
+  env: ZentaoEnv,
+  productId: number
+): Promise<{ users: ZentaoUserSummary[]; modules: ZentaoModuleSummary[] } | null> {
+  try {
+    const url = `${trimBase(env.baseUrl)}/index.php?m=bug&f=create&productID=${productId}&t=json`
+    const res = await fetch(url, { credentials: 'include' })
+    if (!res.ok) return null
+    const outer = await readJson(res) as { status?: string; data?: unknown } | null
+    if (outer?.status !== 'success' || typeof outer.data !== 'string') return null
+    let inner: { users?: Record<string, unknown>; moduleOptionMenu?: Record<string, unknown> }
+    try { inner = JSON.parse(outer.data) as typeof inner } catch { return null }
+
+    const users: ZentaoUserSummary[] = []
+    if (inner.users && typeof inner.users === 'object') {
+      let i = 0
+      for (const [account, raw] of Object.entries(inner.users)) {
+        if (!account || typeof raw !== 'string' || !raw) continue
+        // 部分版本 display 是 "account:真名" 形态 —— 剥 account 前缀
+        const realname = raw.startsWith(`${account}:`) ? raw.slice(account.length + 1) : raw
+        if (!realname) continue
+        users.push({ id: ++i, account, realname })  // 视图数据无数字 id，给顺序合成 id（UI 以 account 为准）
+      }
+    }
+
+    const modules: ZentaoModuleSummary[] = []
+    if (inner.moduleOptionMenu && typeof inner.moduleOptionMenu === 'object') {
+      for (const [k, raw] of Object.entries(inner.moduleOptionMenu)) {
+        const id = Number(k)
+        if (!Number.isFinite(id) || id <= 0) continue  // '0' 是根模块，UI 自带「根模块（/）」
+        if (typeof raw !== 'string') continue
+        // 清缩进装饰（&nbsp; / |- 前缀），保留路径语义
+        const label = raw.replace(/&nbsp;| /g, ' ').replace(/^[\s|/-]+/, '').trim()
+        if (!label) continue
+        modules.push({ id, name: label, path: raw.startsWith('/') ? raw : `/${label}`, parent: 0 })
+      }
+    }
+
+    // 两份都空 = 大概率拿到的是登录页/异形数据 → 当失败，别把空列表当成功盖掉错误提示
+    if (users.length === 0 && modules.length === 0) return null
+    return { users, modules }
+  } catch {
+    return null
+  }
+}
+
 // ────────────────────────── listUsers ──────────────────────────
 
 /**
  * 拉禅道全公司用户列表。SubmitDialog「指派给」下拉用 —— 实测 v1/v2 都没有「按项目过滤的项目成员」
  * 端点（v1 试过 404），列全公司用户是 next-best：前端搜索过滤即可。
  *
- * 双路探测（v0.4.3）：
+ * 三路探测（v0.4.3 双轨 + v0.8.9 加 tier-3）：
  *   1. v2 `GET /api.php/v2/users?recPerPage=N&pageID=1`（recPerPage 上限 1000）
  *   2. v2 拿不到 → fallback v1 `GET /api.php/v1/users?limit=N`
+ *   3. v1 也挂（非 401）且 caller 给了 productId → 建单页视图数据兜底
+ *      （普通账号 v2/v1 users 都是权限墙，但建单页人人能开 —— 见 fetchBugCreatePageData）
  *
  * 见 [[feedback_zentao_v2_dual_track_rule]]。
  */
-export async function listUsers(env: ZentaoEnv, limit = 200): Promise<ZentaoResult<ZentaoUserSummary[]>> {
+export async function listUsers(env: ZentaoEnv, limit = 200, pageFallbackProductId?: number): Promise<ZentaoResult<ZentaoUserSummary[]>> {
   return withAuth(env, async (token) => {
     const v2Url = `${trimBase(env.baseUrl)}/api.php/v2/users?recPerPage=${limit}&pageID=1`
     const v2Res = await fetchV2(v2Url, token)
@@ -480,10 +545,21 @@ export async function listUsers(env: ZentaoEnv, limit = 200): Promise<ZentaoResu
     // v0.6.2 dogfood：v1 endpoint cookie cascade 兜底
     const v1Res = await fetchV1WithCookieFallback(v1Url, token)
     if (v1Res.status === 401) return { _retry: true as const }
-    if (!v1Res.ok) return { ok: false as const, error: zentaoV1ErrorMsg(v1Res, '用户列表', 'v1 users fallback') }
+    if (!v1Res.ok) {
+      // tier-3：普通账号 v1 users 常见 400/403（权限墙），试建单页数据
+      if (pageFallbackProductId) {
+        const page = await fetchBugCreatePageData(env, pageFallbackProductId)
+        if (page && page.users.length > 0) return { ok: true as const, data: page.users }
+      }
+      return { ok: false as const, error: zentaoV1ErrorMsg(v1Res, '用户列表', 'v1 users fallback') }
+    }
     const v1Body = await readJson(v1Res) as { users?: ZentaoUserSummary[] } | null
     if (Array.isArray(v1Body?.users)) {
       return { ok: true as const, data: v1Body!.users!.map(u => ({ id: u.id, account: u.account, realname: u.realname, role: u.role })) }
+    }
+    if (pageFallbackProductId) {
+      const page = await fetchBugCreatePageData(env, pageFallbackProductId)
+      if (page && page.users.length > 0) return { ok: true as const, data: page.users }
     }
     return { ok: false as const, error: 'v2/v1 用户列表响应都不识别' }
   })
@@ -586,6 +662,12 @@ export async function listModules(env: ZentaoEnv, productId: number): Promise<Ze
     const body = await readJson(res) as { modules?: ZentaoModuleSummary[] } | null
     if (res.ok && Array.isArray(body?.modules)) {
       return { ok: true as const, data: body.modules.map(m => ({ id: m.id, name: m.name, path: m.path, parent: m.parent })) }
+    }
+    // v0.8.9 tier-3：普通账号 /v1/modules 撞权限墙（403 连 cascade 都救不了）时，
+    // 走建单页视图数据 —— 能建单的账号必然打得开建单页（见 fetchBugCreatePageData）
+    const page = await fetchBugCreatePageData(env, productId)
+    if (page && page.modules.length > 0) {
+      return { ok: true as const, data: page.modules }
     }
     return { ok: false as const, error: zentaoV1ErrorMsg(res, '模块列表', 'v1 modules') }
   })

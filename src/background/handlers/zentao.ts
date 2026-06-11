@@ -89,7 +89,17 @@ export async function handleZentaoListProjects(payload: ZentaoCredsReq): Promise
 
 export async function handleZentaoListUsers(payload: ZentaoCredsReq): Promise<ZentaoListUsersRes> {
   return withZentaoSession(payload, async (env) => {
-    const list = await zentaoListUsers(env)
+    // v0.8.9：caller 给了 projectId（SubmitFormZentao 路径）→ best-effort 发现 productId，
+    // 供 listUsers 的 tier-3「建单页视图数据」兜底用（普通账号 v2/v1 users 是权限墙，
+    // 建单页人人能开）。discoverProduct 带 24h 缓存；失败不阻断 —— 只是 tier-3 不可用，
+    // 行为与旧版一致。
+    let pageFallbackProductId: number | undefined
+    if (payload.projectId) {
+      env.projectId = payload.projectId
+      const prod = await zentaoDiscoverProduct(env)
+      if (prod.ok) pageFallbackProductId = prod.data
+    }
+    const list = await zentaoListUsers(env, 200, pageFallbackProductId)
     if (!list.ok) return { ok: false, error: list.error }
     return { ok: true, users: list.data }
   })

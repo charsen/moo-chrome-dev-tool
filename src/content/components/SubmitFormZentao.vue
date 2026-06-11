@@ -225,7 +225,9 @@ async function loadUsers() {
     const res = await safeSendMessage<ZentaoListUsersRes>({
       type: MSG.ZENTAO_LIST_USERS,
       source: 'content',
-      payload: { baseUrl: zz.baseUrl, account: zz.account, password: zz.password }
+      // v0.8.9：带 projectId → BG 能 discoverProduct，给「建单页视图数据」tier-3 兜底用
+      // （普通账号 v2/v1 users 是权限墙，没这层就只有产品/管理类账号拉得到指派人列表）
+      payload: { baseUrl: zz.baseUrl, account: zz.account, password: zz.password, projectId: zz.projectId }
     })
     if (res?.ok && res.users) {
       users.value = res.users

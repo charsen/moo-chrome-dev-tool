@@ -917,3 +917,194 @@ describe('submitBug — v2 响应 id 宽容解析（第四轮 fix 3）', () => {
     if (!r.ok) expect(r.error).toContain('标题不能为空')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v0.8.9 tier-3 — 建单页视图数据兜底
+//
+// 同事普通账号 dogfood 实测：/v2/users、/v1/users、/v1/modules 在部分禅道实例是
+// **管理员权限端点** —— 普通账号 v2 不识别、v1 返 400（400 不触发 cookie cascade，
+// cascade 只认 403）或 403（cascade 后仍 403）→ 指派人/模块下拉全挂，只有产品账号好使。
+// tier-3：GET {base}/index.php?m=bug&f=create&productID={pid}&t=json（cookie session，
+// 无 Token header）→ {status:'success', data:'<json字符串>'} 二次 parse → users +
+// moduleOptionMenu。两份全空 → null（防登录页假成功）；任何失败 → null，保留原错误文案。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** tier-3 建单页 URL 判定（按 URL 路由 mock 用） */
+function isBugCreatePageUrl(u: string): boolean {
+  return u.includes('index.php') && u.includes('m=bug') && u.includes('f=create')
+}
+
+/** 建单页响应：外层 status + data 是 **JSON 字符串**（禅道 t=json 视图数据形态） */
+function bugCreatePageRes(inner: unknown): Response {
+  return mockJsonRes({ status: 'success', data: JSON.stringify(inner) })
+}
+
+describe('listUsers — v0.8.9 tier-3 建单页兜底（普通账号 users 权限墙）', () => {
+  it('核心路径：v2 200 不识别 + v1 400 + 建单页好使 → ok（"account:真名" 前缀剥掉、空项跳过）', async () => {
+    const { listUsers } = await import('@/background/zentao/client')
+    let pageCreds: RequestCredentials | undefined
+    let pageUrl = ''
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/users')) {
+        return mockJsonRes({ status: 'success', data: { wrongShape: 1 } })  // v2 不识别
+      }
+      if (url.includes('/api.php/v1/users')) {
+        return new Response('bad request', { status: 400 })  // 权限墙（400 不触发 cascade）
+      }
+      if (isBugCreatePageUrl(url)) {
+        pageCreds = init?.credentials
+        pageUrl = url
+        return bugCreatePageRes({
+          users: {
+            zhangsan: 'zhangsan:张三',  // 前缀形态 → 剥 account 前缀
+            lisi: '李四',               // 普通形态
+            '': '空账号占位',            // 空 account → 跳
+            wangwu: '',                 // 空显示名 → 跳
+            zhaoliu: 'zhaoliu:'         // 剥前缀后空 → 跳
+          },
+          moduleOptionMenu: {}
+        })
+      }
+      return mockJsonRes({})
+    }))
+    const r = await listUsers(env, 200, 14)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data).toHaveLength(2)
+      expect(r.data[0]).toMatchObject({ account: 'zhangsan', realname: '张三' })
+      expect(r.data[1]).toMatchObject({ account: 'lisi', realname: '李四' })
+    }
+    // tier-3 走 cookie session：credentials include + URL 带 productID
+    expect(pageCreds).toBe('include')
+    expect(pageUrl).toContain('productID=14')
+  })
+
+  it('全挂保留原文案：v1 400 + 建单页返登录页 HTML（JSON parse 失败）→ HTTP 400（v1 users fallback）', async () => {
+    const { listUsers } = await import('@/background/zentao/client')
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/users')) return mockJsonRes({ status: 'success', data: {} })
+      if (url.includes('/api.php/v1/users')) return new Response('bad request', { status: 400 })
+      if (isBugCreatePageUrl(url)) {
+        // 未登录态：禅道回登录页 HTML 壳，不是 JSON
+        return new Response('<html><body>login</body></html>', { status: 200, headers: { 'content-type': 'text/html' } })
+      }
+      return mockJsonRes({})
+    }))
+    const r = await listUsers(env, 200, 14)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toBe('HTTP 400（v1 users fallback）')
+  })
+
+  it('登录页假成功防御：建单页返 {status:success, data:"{}"} 两份全空 → null → 保留原错误', async () => {
+    const { listUsers } = await import('@/background/zentao/client')
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/users')) return mockJsonRes({ status: 'success', data: {} })
+      if (url.includes('/api.php/v1/users')) return new Response('bad request', { status: 400 })
+      if (isBugCreatePageUrl(url)) return bugCreatePageRes({})  // users / moduleOptionMenu 都缺
+      return mockJsonRes({})
+    }))
+    const r = await listUsers(env, 200, 14)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toBe('HTTP 400（v1 users fallback）')
+  })
+
+  it('401 不走 tier-3：v2 401 → withAuth retry 语义不变，建单页 0 次请求', async () => {
+    const { listUsers } = await import('@/background/zentao/client')
+    const calls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url)
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/users')) return new Response('', { status: 401 })
+      return mockJsonRes({})
+    }))
+    const r = await listUsers(env, 200, 14)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('认证持续失败')  // retry 后仍 401 的 withAuth 原语义
+    expect(calls.filter(isBugCreatePageUrl)).toHaveLength(0)
+    expect(calls.filter(u => u.includes('/api.php/v1/users'))).toHaveLength(0)  // 401 也不落 v1
+  })
+
+  it('不传 productId 行为同旧版：v1 400 → 直接原错误，建单页 0 次请求', async () => {
+    const { listUsers } = await import('@/background/zentao/client')
+    const calls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url)
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v2/users')) return mockJsonRes({ status: 'success', data: {} })
+      if (url.includes('/api.php/v1/users')) return new Response('bad request', { status: 400 })
+      return mockJsonRes({})
+    }))
+    const r = await listUsers(env)  // 无 pageFallbackProductId
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toBe('HTTP 400（v1 users fallback）')
+    expect(calls.filter(isBugCreatePageUrl)).toHaveLength(0)
+  })
+})
+
+describe('listModules — v0.8.9 tier-3 建单页兜底（普通账号 v1 modules 403）', () => {
+  it('核心路径：v1 403（cascade 两次都 403）+ 建单页 moduleOptionMenu → ok（根 "0" 跳过、&nbsp;|- 缩进清掉、id 为数字）', async () => {
+    const { listModules } = await import('@/background/zentao/client')
+    let v1Attempts = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v1/modules')) {
+        v1Attempts++
+        return new Response('forbidden', { status: 403 })  // omit + include 两次都拒
+      }
+      if (isBugCreatePageUrl(url)) {
+        return bugCreatePageRes({
+          users: {},
+          moduleOptionMenu: {
+            '0': '/',                      // 根模块 → 跳（UI 自带「根模块（/）」）
+            '12': '/前端',
+            '15': '&nbsp;&nbsp;|-列表页'    // 缩进装饰 → 清
+          }
+        })
+      }
+      return mockJsonRes({})
+    }))
+    const r = await listModules(env, 14)
+    expect(v1Attempts).toBe(2)  // cookie cascade 真走了两次
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.data).toHaveLength(2)  // 根 '0' 不在
+      expect(r.data.map(m => m.id)).toEqual([12, 15])
+      r.data.forEach(m => expect(typeof m.id).toBe('number'))
+      expect(r.data[0].name).toBe('前端')
+      expect(r.data[1].name).toBe('列表页')  // &nbsp; / |- 缩进已清
+    }
+  })
+
+  it('全挂保留原文案：v1 403 + 建单页全空 → 仍是 403 友好文案', async () => {
+    const { listModules } = await import('@/background/zentao/client')
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) {
+        return mockJsonRes({ status: 'success', token: 't', user: { id: 1, account: 'a', realname: 'A' } })
+      }
+      if (url.includes('/api.php/v1/modules')) return new Response('forbidden', { status: 403 })
+      if (isBugCreatePageUrl(url)) return bugCreatePageRes({ users: {}, moduleOptionMenu: {} })
+      return mockJsonRes({})
+    }))
+    const r = await listModules(env, 14)
+    expect(r.ok).toBe(false)
+    if (!r.ok) {
+      expect(r.error).toContain('禅道服务器拒绝')
+      expect(r.error).toContain('403')
+    }
+  })
+})
