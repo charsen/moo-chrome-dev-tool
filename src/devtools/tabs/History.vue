@@ -4,7 +4,8 @@
       <input v-model="filterDraft" placeholder="按标题/URL 过滤" class="filter" />
       <span class="count">{{ filtered.length }} / {{ list.length }}</span>
       <button class="moo-btn" @click="reload" :disabled="loading">刷新</button>
-      <button class="moo-btn" @click="syncRemoteStatus" :disabled="syncing">{{ syncing ? '同步中…' : '同步远端状态' }}</button>
+      <!-- 显式传 true：裸引用 @click 会把 MouseEvent 当 force 参数传进去（truthy 误判） -->
+      <button class="moo-btn" @click="syncRemoteStatus(true)" :disabled="syncing">{{ syncing ? '同步中…' : '同步远端状态' }}</button>
       <button class="moo-btn moo-btn--danger" @click="clearAll" :disabled="!list.length">清空</button>
     </header>
 
@@ -134,10 +135,12 @@ function remoteStatusLabel(s: string): string {
   return { open: '待处理', in_progress: '处理中', done: '已完成', deleted: '已删除' }[s] ?? s
 }
 
-async function syncRemoteStatus() {
+// force=true（手动按钮）绕过 SW 端 60s 扫描冷却 —— 用户明示要刷就给刷；
+// 自动触发（进 Tab）不带 force，吃冷却防来回切 Tab 对后端打请求风暴
+async function syncRemoteStatus(force = false) {
   syncing.value = true
   try {
-    await safeSendMessage({ type: MSG.REFRESH_HISTORY_STATUS, source: 'devtools' })
+    await safeSendMessage({ type: MSG.REFRESH_HISTORY_STATUS, source: 'devtools', payload: { force } })
     await reload()
   } catch (e) {
     showToast(`没能从服务端拉到最新状态：${(e as Error).message}。可能后端没起，或者「请求 URL」写错了`, 'error')
@@ -184,10 +187,13 @@ async function subscribeChanges(): Promise<void> {
   try {
     await reload()
     dispose = onHistoryChanged(() => reload())
-    // v0.3：进 Tab 时如果有 zentao kind 项目的 history，自动同步一次状态。
-    // webhook 路径仍要用户点「同步远端状态」（避免对未配的后端做无意义 ping）。
-    const hasZentao = projects.value.some(p => p.kind === 'zentao' && list.value.some(e => e.projectId === p.id && e.remoteId))
-    if (hasZentao) void syncRemoteStatus()
+    // v0.8.9：进 Tab 时只要有「拿到过远端单号」的记录就自动同步一次状态（之前仅禅道）。
+    // remoteId 存在 = 后端真返回过 id，大概率实现了回查接口（webhook status-public /
+    // 禅道 getBug）；后端没实现回查时 fetchStatus 静默返 undefined 不报错，ping 一次无害。
+    // 原「webhook 必须手动点」的保守假设对 cloud(todos/intake) 主力场景已过时 ——
+    // 用户每次看状态都要手点一下。没有后台定时同步（无 alarm），只在进 Tab / 手动按钮时拉。
+    const hasRemote = list.value.some(e => e.remoteId)
+    if (hasRemote) void syncRemoteStatus()
   } finally {
     subscribing = false
   }
