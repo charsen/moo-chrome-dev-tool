@@ -73,11 +73,21 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
   if (!msg || msg.target !== 'offscreen') return false
 
   if (msg.type === 'START') {
-    handleStart(msg.streamId, msg.tabId).then(sendResponse)
+    // .catch 兜底：handleStart 内任何未捕获 throw 都必须有响应 —— 否则 SW 端
+    // startTabRecording 的 await sendMessage 永久 pending，state 卡 starting、
+    // stream 不释放（tab「正在被捕获」指示灯常亮），只能 CANCEL 救
+    handleStart(msg.streamId, msg.tabId)
+      .catch((e: unknown) => {
+        cleanup('idle')
+        return { ok: false, error: (e as Error)?.message || '录屏启动异常' }
+      })
+      .then(sendResponse)
     return true
   }
   if (msg.type === 'STOP') {
-    handleStop().then(sendResponse)
+    handleStop()
+      .catch((e: unknown) => ({ ok: false, error: (e as Error)?.message || '停止录屏异常' }))
+      .then(sendResponse)
     return true
   }
   if (msg.type === 'CANCEL') {
@@ -212,7 +222,15 @@ async function handleStart(streamId: string, tabId?: number): Promise<{ ok: bool
   // 渲染一个 video 元素持有 stream，保证 stream 不被回收（chrome 87+ 必要）
   attachStreamSink(stream)
 
-  recorder.start(1000)
+  // getUserMedia 成功到这里之间被捕获 tab 关闭/track 结束 → stream inactive →
+  // start() 抛 InvalidStateError。裸抛会让 START 永不响应（listener 虽有 .catch 兜底，
+  // 这里就近 cleanup 语义更明确：释放 stream + 状态归 idle + 返回可读错误）
+  try {
+    recorder.start(1000)
+  } catch (e) {
+    cleanup('idle')
+    return { ok: false, error: `录制器启动失败：${(e as Error)?.message || String(e)}` }
+  }
   // v0.7.9：过 transition() — starting → recording 合法迁移
   if (!transition('starting', 'recording')) {
     console.warn('[Moo offscreen] handleStart 末尾 starting → recording 拒绝，state=', state)

@@ -238,3 +238,48 @@ describe('handleZentaoClearCache', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
+
+// v0.8.9 Fix G 回归：handleZentaoPingCookie 必须把 payload.fresh 透传给
+// ensureCookieSession —— SubmitDialog 2 分钟复查带 fresh:true 强制真探测，
+// 修前 handler 不收 fresh，暖缓存下复查永远零网络空转报「✓ 已登录」。
+describe('handleZentaoPingCookie — fresh 透传（v0.8.9 Fix G）', () => {
+  it('暖缓存：无 fresh 0 新增 fetch；fresh:true → login fetch 真发生', async () => {
+    const loginCalls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) loginCalls.push(url)
+      return loginSuccess()
+    }))
+    const { handleZentaoPingCookie } = await importHandlers()
+
+    // 首检建暖缓存（1 次 login）
+    const r1 = await handleZentaoPingCookie(creds)
+    expect(r1.ok).toBe(true)
+    expect(r1.realname).toBe('爱丽丝')
+    expect(loginCalls).toHaveLength(1)
+
+    // 复检不带 fresh → 吃缓存，0 新增（快路径不回归）
+    const r2 = await handleZentaoPingCookie(creds)
+    expect(r2.ok).toBe(true)
+    expect(loginCalls).toHaveLength(1)
+
+    // 复检带 fresh:true → client 必须收到并强制真 login（修前：仍 1 次）
+    const r3 = await handleZentaoPingCookie({ ...creds, fresh: true })
+    expect(r3.ok).toBe(true)
+    expect(r3.realname).toBe('爱丽丝')
+    expect(loginCalls).toHaveLength(2)
+  })
+
+  it('fresh 缺省 / 非 true 值不触发真探测（payload.fresh === true 严格判定）', async () => {
+    const loginCalls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/users/login')) loginCalls.push(url)
+      return loginSuccess()
+    }))
+    const { handleZentaoPingCookie } = await importHandlers()
+    await handleZentaoPingCookie(creds)
+    expect(loginCalls).toHaveLength(1)
+    // 跨进程消息 shape 不可信：fresh 传了非布尔值也不许误触发真探测
+    await handleZentaoPingCookie({ ...creds, fresh: 'yes' as unknown as boolean })
+    expect(loginCalls).toHaveLength(1)
+  })
+})

@@ -255,6 +255,68 @@ describe('webhookAdapter.serializeForRetry', () => {
   })
 })
 
+// v0.8.9 Fix A 回归：multipart 路径删除 Content-Type 必须大小写无关。
+// 旧实现精确删 'Content-Type' / 'content-type' 两键 —— 用户手敲 `Content-type` /
+// `CONTENT-TYPE` 变体存活，fetch 不再给 FormData 注入 boundary，服务端 multipart
+// 解析直接失败（附件/字段全收不到）。
+describe('webhookAdapter.submit — multipart Content-Type 大小写无关删除（v0.8.9 Fix A）', () => {
+  const multipartProject = (headers: Record<string, string>): Project => {
+    const p = baseProject()
+    p.servers[0]!.imageFormat = 'multipart'
+    p.servers[0]!.headers = headers
+    return p
+  }
+
+  /** 跑一次 multipart submit，返回 fetch 实际收到的 headers */
+  async function submittedHeaders(headers: Record<string, string>): Promise<Record<string, string>> {
+    let captured: Record<string, string> = {}
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      captured = (init?.headers ?? {}) as Record<string, string>
+      return jsonRes({ id: 'bug-1' })
+    }))
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.submit(baseReq(), multipartProject(headers), {})
+    expect(r.ok).toBe(true)
+    return captured
+  }
+
+  function hasContentTypeVariant(h: Record<string, string>): boolean {
+    return Object.keys(h).some((k) => k.toLowerCase() === 'content-type')
+  }
+
+  it('用户手敲 `Content-type` 变体 → multipart 提交 headers 不含任何 content-type 变体', async () => {
+    const h = await submittedHeaders({ 'Content-type': 'application/json', 'X-Trace': 'keep-me' })
+    expect(hasContentTypeVariant(h)).toBe(false)
+    expect(h['X-Trace']).toBe('keep-me')   // 只删 content-type，别的 header 不许误伤
+  })
+
+  it('全大写 `CONTENT-TYPE` 变体 → 同样被删', async () => {
+    const h = await submittedHeaders({ 'CONTENT-TYPE': 'text/plain' })
+    expect(hasContentTypeVariant(h)).toBe(false)
+  })
+
+  it('标准两键 Content-Type / content-type 同时存在 → 删除不回归', async () => {
+    const h = await submittedHeaders({ 'Content-Type': 'a/b', 'content-type': 'c/d', 'X-Keep': '1' })
+    expect(hasContentTypeVariant(h)).toBe(false)
+    expect(h['X-Keep']).toBe('1')
+  })
+
+  it('JSON inline 路径不受影响：用户配置的 Content-Type 原样保留', async () => {
+    let captured: Record<string, string> = {}
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      captured = (init?.headers ?? {}) as Record<string, string>
+      return jsonRes({ id: 'bug-2' })
+    }))
+    const project = baseProject()   // imageFormat: 'inline'
+    project.servers[0]!.headers = { 'Content-Type': 'application/json', 'X-Trace': 't1' }
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.submit(baseReq(), project, {})
+    expect(r.ok).toBe(true)
+    expect(captured['Content-Type']).toBe('application/json')
+    expect(captured['X-Trace']).toBe('t1')
+  })
+})
+
 describe('webhookAdapter.retryFromPayload', () => {
   const payload = () => ({
     kind: 'webhook' as const,

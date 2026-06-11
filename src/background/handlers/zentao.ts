@@ -129,7 +129,8 @@ export async function handleZentaoPingCookie(payload: ZentaoPingCookieReq): Prom
     return { ok: false, error: t('host-permission.required') }
   }
   const env = makeZentaoEnv(payload)
-  const ensured = await zentaoEnsureCookie(env)
+  // v0.8.9：fresh（2 分钟复查）→ 强制真 login 探测，不吃暖缓存（否则复查永远空转报 ✓）
+  const ensured = await zentaoEnsureCookie(env, { fresh: payload.fresh === true })
   if (ensured.ok) return { ok: true, realname: ensured.data.realname }
   return { ok: false, error: ensured.error }
 }

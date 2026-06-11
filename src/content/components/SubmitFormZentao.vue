@@ -30,11 +30,12 @@
           target="_blank"
           rel="noopener noreferrer"
         >打开禅道登录</a>
+        <!-- 显式传 true（手动重查走真探测）；裸引用会把 MouseEvent 当 fresh 参数 -->
         <button
           v-if="cookieState === 'fail'"
           type="button"
           class="moo-btn small ghost"
-          @click="pingCookie"
+          @click="pingCookie(true)"
         >重新检查</button>
       </div>
     </div>
@@ -159,7 +160,10 @@ function emitField<K extends keyof ZentaoFormFields>(key: K, value: ZentaoFormFi
 // ---------- cookie 预检 ----------
 const cookieState = ref<'unknown' | 'ok' | 'fail'>('unknown')
 const cookieMsg = ref('')
-async function pingCookie() {
+// fresh=true（2 分钟复查路径）→ BG 强制真 login 探测，不吃暖缓存。
+// 否则 SW 长存活时缓存不清，复查每次都空转返「✓ 已登录」—— session 服务端早过期了
+// 也骗用户，提交时附件才挂（TOCTOU）。首检 fresh=false 保留快路径（缓存秒回）。
+async function pingCookie(fresh = false) {
   const zz = z.value
   if (!zz?.baseUrl) return
   cookieState.value = 'unknown'
@@ -169,7 +173,7 @@ async function pingCookie() {
     const res = await safeSendMessage<ZentaoPingCookieRes>({
       type: MSG.ZENTAO_PING_COOKIE,
       source: 'content',
-      payload: { baseUrl: zz.baseUrl, account: zz.account, password: zz.password }
+      payload: { baseUrl: zz.baseUrl, account: zz.account, password: zz.password, fresh }
     })
     if (res?.ok) {
       cookieState.value = 'ok'
@@ -248,9 +252,10 @@ onMounted(() => {
     void pingCookie()
     void loadUsers()
     void loadModules()
-    // 长时间挂着 dialog 时 cookie 真过期，避免一直显示「✓ 已登录禅道」骗用户提交后才发现错
+    // 长时间挂着 dialog 时 cookie 真过期，避免一直显示「✓ 已登录禅道」骗用户提交后才发现错。
+    // fresh=true：复查必须真探测（清缓存重 login），否则暖缓存下永远空转报 ✓
     cookieRecheckTimer = window.setInterval(() => {
-      if (cookieState.value === 'ok') void pingCookie()
+      if (cookieState.value === 'ok') void pingCookie(true)
     }, 2 * 60_000)
   }
 })

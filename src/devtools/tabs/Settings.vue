@@ -219,14 +219,14 @@ import type { Project } from '@/types/config'
 import { listHistory, clearHistory } from '@/storage/history'
 import { MSG } from '@/types/messages'
 import { safeSendMessage } from '@/utils/messaging'
-// retryQueue 是纯函数模块（只读 chrome.storage.local），devtools 上下文可用，
-// 直接 import 比走 sendMessage(RETRY_QUEUE_*) 少一次 SW 唤醒 + 一轮 IPC。
-// Storage key 完全封在模块里，UI 不再知道叫 'mooRetryQueue'。
+// retryQueue 的**只读**函数（getQueueLength/getQueueItems）devtools 直 import 没问题
+// （少一次 SW 唤醒 + 一轮 IPC）。但**写路径必须走 sendMessage 路由到 SW 执行** ——
+// withQueueMutex 是模块内存锁，devtools 与 SW 各持一把互不相干，直调写路径会跟 SW
+// flush 的 reconcile 写回交错：用户删的条复活 / flush 已移除的条被旧快照写回 → 重发重复单
+// （v0.8.9 修，原注释「纯函数模块（只读）」是过期假设 —— clear/remove 是写）。
 import {
   getQueueLength,
   getQueueItems,
-  clearQueue as clearRetryQueue,
-  removeQueueItem,
   RETRY_MAX_ATTEMPTS,
   type QueuedItem
 } from '@/background/retryQueue'
@@ -266,7 +266,10 @@ async function refreshStats() {
 async function removeQueueOne(enqueuedAt: number) {
   busy.value = 'rmOne'
   try {
-    const removed = await removeQueueItem(enqueuedAt)
+    const res = (await safeSendMessage({
+      type: MSG.RETRY_QUEUE_REMOVE, source: 'devtools', payload: { enqueuedAt }
+    })) as { removed?: boolean } | undefined
+    const removed = res?.removed === true
     await refreshStats()
     if (removed) showToast('已从队列移除 1 条', 'success')
     else showToast('这条已经不在队列里了（可能刚被重试掉）', 'info')
@@ -433,7 +436,7 @@ async function clearQueue() {
   if (!ok) return
   busy.value = 'clearQueue'
   try {
-    await clearRetryQueue()
+    await safeSendMessage({ type: MSG.RETRY_QUEUE_CLEAR, source: 'devtools' })
     await refreshStats()
     showToast(`已丢弃 ${n} 条`, 'success')
   } catch (e) {

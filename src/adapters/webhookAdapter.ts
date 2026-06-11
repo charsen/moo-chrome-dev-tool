@@ -289,8 +289,11 @@ function buildRequestBody(
     }
     form.append(server.imageField, dataUrlToBlob(String(ctx.image)), 'screenshot.png')
     const headers = { ...server.headers }
-    delete headers['Content-Type']
-    delete headers['content-type']
+    // 大小写无关删除 —— 用户手敲的 `Content-type` / `CONTENT-TYPE` 变体若存活，
+    // fetch 不再给 FormData 注入 boundary，服务端 multipart 解析直接失败（附件/字段全收不到）
+    for (const k of Object.keys(headers)) {
+      if (k.toLowerCase() === 'content-type') delete headers[k]
+    }
     return { body: form, headers }
   }
   return { body: rendered, headers: { ...server.headers } }

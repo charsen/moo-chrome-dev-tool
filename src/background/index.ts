@@ -15,7 +15,7 @@
 import type { IncomingMessage, SubmitBugReq, SubmitBugRes } from '@/types/messages'
 import { MSG } from '@/types/messages'
 import { onHistoryChanged } from '@/storage/history'
-import { flushRetryQueue, getQueueLength } from '@/background/retryQueue'
+import { flushRetryQueue, getQueueLength, removeQueueItem, clearQueue } from '@/background/retryQueue'
 import { refreshBadge } from '@/background/handlers/badge'
 import { UPGRADE_FLAG_KEY } from '@/utils/upgradeFlag'
 import { runVersionCheck, VERSION_CHECK_ALARM, checkUpgradeFinished } from '@/utils/versionCheck'
@@ -266,13 +266,26 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
           break
         }
         case MSG.REFRESH_HISTORY_STATUS: {
-          sendResponse(await handleRefreshHistoryStatus())
+          // force=true（手动点按钮）绕过 60s 扫描冷却；自动触发（进 History tab）吃冷却
+          sendResponse(await handleRefreshHistoryStatus(message.payload?.force === true))
           break
         }
         case MSG.RETRY_QUEUE_FLUSH: {
           // 结构化透传 —— UI 要能区分「真试了全失败」vs「cooldown/权限被跳过」vs「放弃了 N 条」
           const r = await flushRetryQueue()
           sendResponse({ ok: true, ...r })
+          break
+        }
+        // v0.8.9：删条/清空在 SW 内执行 —— devtools 直 import 写路径会绕过本上下文的
+        // withQueueMutex（各上下文一把锁），跟 flush reconcile 写回交错丢条/复活条
+        case MSG.RETRY_QUEUE_REMOVE: {
+          const removed = await removeQueueItem(message.payload.enqueuedAt)
+          sendResponse({ ok: true, removed })
+          break
+        }
+        case MSG.RETRY_QUEUE_CLEAR: {
+          await clearQueue()
+          sendResponse({ ok: true })
           break
         }
         // v0.5.2 P0 重构第 2 阶段：5 个录屏 case 抽到 src/background/handlers/record.ts

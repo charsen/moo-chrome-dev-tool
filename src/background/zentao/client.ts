@@ -285,7 +285,12 @@ function _clearToken(env: ZentaoEnv): void {
  *
  * 副作用：login 成功后用户在禅道页面也是登录态（共享 cookie jar）。
  */
-export async function ensureCookieSession(env: ZentaoEnv): Promise<ZentaoResult<{ realname: string }>> {
+export async function ensureCookieSession(env: ZentaoEnv, opts?: { fresh?: boolean }): Promise<ZentaoResult<{ realname: string }>> {
+  // v0.8.9：fresh=true（SubmitDialog 2 分钟复查路径）→ 先清本 env 的 token 缓存，强制走
+  // 真 login（同时刷新 cookie jar）。否则暖缓存下本函数零网络请求 —— SW 因抓包活动长存活
+  // 时缓存常驻，复查 interval 每次都空转返缓存的「✓ 已登录」，session 服务端早过期（默认
+  // ~24min）也骗用户，提交时附件才挂。首检不带 fresh 保留快路径（缓存秒回）。
+  if (opts?.fresh) _clearToken(env)
   // ensureToken 内部：token cache 命中 → 复用；不命中 → login（同时写 token + userCache + cookie jar）
   const t = await ensureToken(env)
   if (!t.ok) return t
@@ -534,11 +539,21 @@ export async function listUsers(env: ZentaoEnv, limit = 200, pageFallbackProduct
     const v2Url = `${trimBase(env.baseUrl)}/api.php/v2/users?recPerPage=${limit}&pageID=1`
     const v2Res = await fetchV2(v2Url, token)
     if (v2Res.status === 401) return { _retry: true as const }
+    // 「200 + 空 users 数组」也当权限墙嫌疑：合法的全公司用户列表不可能为空（发请求的
+    // 账号自己就是用户）—— 部分实例对无权限账号返空列表而非 4xx。空时也给 tier-3 机会，
+    // tier-3 失败再原样返空（ok）保持兼容。注意 listModules 不能同样处理：空模块是合法态。
     if (v2Res.ok) {
       const body = await readJson(v2Res) as { users?: ZentaoUserSummary[]; status?: string; result?: boolean; message?: string } | null
       if (isV2AuthExpired(body)) return { _retry: true as const }
       if (Array.isArray(body?.users)) {
-        return { ok: true as const, data: body.users.map(u => ({ id: u.id, account: u.account, realname: u.realname, role: u.role })) }
+        if (body.users.length > 0) {
+          return { ok: true as const, data: body.users.map(u => ({ id: u.id, account: u.account, realname: u.realname, role: u.role })) }
+        }
+        if (pageFallbackProductId) {
+          const page = await fetchBugCreatePageData(env, pageFallbackProductId)
+          if (page && page.users.length > 0) return { ok: true as const, data: page.users }
+        }
+        return { ok: true as const, data: [] }
       }
     }
     const v1Url = `${trimBase(env.baseUrl)}/api.php/v1/users?limit=${limit}`
@@ -555,7 +570,14 @@ export async function listUsers(env: ZentaoEnv, limit = 200, pageFallbackProduct
     }
     const v1Body = await readJson(v1Res) as { users?: ZentaoUserSummary[] } | null
     if (Array.isArray(v1Body?.users)) {
-      return { ok: true as const, data: v1Body!.users!.map(u => ({ id: u.id, account: u.account, realname: u.realname, role: u.role })) }
+      if (v1Body.users.length > 0) {
+        return { ok: true as const, data: v1Body.users.map(u => ({ id: u.id, account: u.account, realname: u.realname, role: u.role })) }
+      }
+      if (pageFallbackProductId) {
+        const page = await fetchBugCreatePageData(env, pageFallbackProductId)
+        if (page && page.users.length > 0) return { ok: true as const, data: page.users }
+      }
+      return { ok: true as const, data: [] }
     }
     if (pageFallbackProductId) {
       const page = await fetchBugCreatePageData(env, pageFallbackProductId)

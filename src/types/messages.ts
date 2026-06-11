@@ -120,6 +120,8 @@ export const MSG = {
   CLEAR_ERRORS: 'CLEAR_ERRORS',
   REFRESH_HISTORY_STATUS: 'REFRESH_HISTORY_STATUS',
   RETRY_QUEUE_FLUSH: 'RETRY_QUEUE_FLUSH',
+  RETRY_QUEUE_REMOVE: 'RETRY_QUEUE_REMOVE',
+  RETRY_QUEUE_CLEAR: 'RETRY_QUEUE_CLEAR',
   RECORD_START: 'RECORD_START',
   RECORD_STOP: 'RECORD_STOP',
   RECORD_CANCEL: 'RECORD_CANCEL',
@@ -207,7 +209,9 @@ export interface ZentaoListUsersRes {
 
 /** v0.2.3 起 payload 含账号密码 —— BG 调 ensureCookieSession 自动登录禅道（不再要求用户
  *  手动登录禅道页面）。复用 ZentaoCredsReq 类型，projectId 可选不读。 */
-export type ZentaoPingCookieReq = ZentaoCredsReq
+// v0.8.9：fresh=true（2 分钟复查路径）强制清 token 缓存真 login —— 暖缓存下 ensureCookie
+// 是零网络空转，复查永远「✓」骗用户；fresh 真探测顺带刷新 cookie jar。首检不带（快路径）。
+export type ZentaoPingCookieReq = ZentaoCredsReq & { fresh?: boolean }
 export interface ZentaoPingCookieRes {
   ok: boolean
   /** 成功时返用户名给「✓ 已登录为 XXX」显示 */
@@ -229,8 +233,13 @@ export type IncomingMessage =
   | { type: typeof MSG.MATCH_PROJECT; payload?: MatchProjectReq }
   | { type: typeof MSG.SUBMIT_BUG; payload: SubmitBugReq }
   | { type: typeof MSG.PREVIEW_PAYLOAD; payload?: PreviewPayloadReq }
-  | { type: typeof MSG.REFRESH_HISTORY_STATUS }
+  | { type: typeof MSG.REFRESH_HISTORY_STATUS; payload?: { force?: boolean } }
   | { type: typeof MSG.RETRY_QUEUE_FLUSH }
+  // v0.8.9：删条/清空必须路由到 SW 执行 —— devtools 直 import retryQueue 写路径时，
+  // withQueueMutex 是各 JS 上下文一把锁互不相干，会跟 SW flush 的 reconcile 写回交错
+  // （删的条复活 / flush 移除的条被旧快照写回 → 重发重复单）。读路径(getQueueItems)无害可直调
+  | { type: typeof MSG.RETRY_QUEUE_REMOVE; payload: { enqueuedAt: number } }
+  | { type: typeof MSG.RETRY_QUEUE_CLEAR }
   | { type: typeof MSG.RECORD_START }
   | { type: typeof MSG.RECORD_STOP }
   | { type: typeof MSG.RECORD_CANCEL }

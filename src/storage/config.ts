@@ -180,22 +180,58 @@ export function onConfigChanged(handler: (config: MooConfig) => void): () => voi
 }
 
 /**
- * 简单 URL 通配匹配：* 匹配任意字符（包含 /）。
+ * URL 通配匹配。
+ *
+ * v0.8.9：「scheme://host/path」形态按 **Chrome match-pattern 语义**对齐 —— 同一份
+ * pattern 字符串既交给 chrome.scripting 注册内容脚本（Chrome 自己的语义），又在这里
+ * 做悬浮球/采集匹配。两边语义分叉时出现「内容脚本注入了但球永远不出」（实测困惑）：
+ *   - Chrome：`*.example.com` 命中裸域 example.com 本身 + 任意层子域；本函数旧译法
+ *     `.*\.example\.com` 不命中裸域；
+ *   - Chrome：pattern host 不写端口 → 任意端口命中；旧译法 `:8443` 直接挂。
+ * 对齐规则（只对结构化形态生效）：
+ *   - scheme `*` → http/https；
+ *   - host `*.h` → 命中 h 与任意层子域；host 内其它 `*` → 域内通配（不跨 / 和 :）；
+ *   - pattern 不带端口 → URL 任意端口命中；`:*` 同；显式 `:8787` → 精确匹配；
+ *   - path `*` → 任意（含 / 与 query）。
+ * 非结构化形态（纯 `*` / 老配置遗留）走旧的「* 匹配任意字符」整串规则，行为不变。
+ *
  * 例：
- *   *                          → 匹配任意 URL
- *   https://*.example.com/*    → 匹配 https://api.example.com/users/123
- *   https://example.com/api/*  → 匹配 https://example.com/api/anything
+ *   https://*.example.com/*    → 命中 https://example.com/ 与 https://api.example.com:8443/users/1
+ *   https://example.com/api/*  → 命中 https://example.com/api/anything（任意端口）
  */
 export function urlMatches(url: string, pattern: string): boolean {
   if (!pattern) return false
-  const escaped = pattern
-    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*')
+  const m = /^(\*|[a-zA-Z][a-zA-Z0-9+.-]*):\/\/([^/]+)(\/.*)?$/.exec(pattern)
   try {
+    if (m) {
+      const schemeRe = m[1] === '*' ? 'https?' : escapeRegexLit(m[1] as string)
+      const hostPort = m[2] as string
+      const pm = /^(.*?)(?::(\d+|\*))?$/.exec(hostPort) as RegExpExecArray
+      const host = pm[1] ?? ''
+      const port = pm[2]
+      let hostRe: string
+      if (host === '*') {
+        hostRe = '[^/:]+'
+      } else if (host.startsWith('*.')) {
+        hostRe = `(?:[^/:]+\\.)*${escapeRegexLit(host.slice(2)).replace(/\*/g, '[^/:]*')}`
+      } else {
+        hostRe = escapeRegexLit(host).replace(/\*/g, '[^/:]*')
+      }
+      const portRe = port === undefined || port === '*' ? '(?::\\d+)?' : `:${port}`
+      const pathRe = escapeRegexLit(m[3] ?? '/*').replace(/\*/g, '.*')
+      return new RegExp(`^${schemeRe}://${hostRe}${portRe}${pathRe}$`).test(url)
+    }
+    // 兜底：非结构化 pattern —— 旧规则原样保留
+    const escaped = escapeRegexLit(pattern).replace(/\*/g, '.*')
     return new RegExp(`^${escaped}$`).test(url)
   } catch {
     return false
   }
+}
+
+/** 转义 regex 字面量（不转 `*` —— `*` 是 pattern 的通配语义，由 caller 按位置翻译） */
+function escapeRegexLit(s: string): string {
+  return s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')
 }
 
 /** 所有匹配当前 url 的启用项目。globalEnabled=false 时返回空数组。 */

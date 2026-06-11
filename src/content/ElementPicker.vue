@@ -23,6 +23,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { HOST_ID } from './styles'
 
 export interface PickedElement {
   selector: string
@@ -99,8 +100,9 @@ function resolveHover(x: number, y: number) {
   const target = document.elementFromPoint(x, y) as Element | null
   overlayEl.value.style.pointerEvents = ''
   if (!target || target === currentEl) return
-  // 忽略我们自己注入的 shadow host
-  if (target.tagName === 'MOO-DEV-TOOL-ROOT' || target.id === '__moo_root__') return
+  // 忽略我们自己注入的 shadow host —— 用 styles.ts 的 HOST_ID 单一事实源
+  // （旧码写死的 'MOO-DEV-TOOL-ROOT'/'__moo_root__' 是早已不存在的标识，等于没挡）
+  if (target.id === HOST_ID) return
   currentEl = target
   hoverRect.value = target.getBoundingClientRect()
   hoverSelector.value = uniqueSelector(target)

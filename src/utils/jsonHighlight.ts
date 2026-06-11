@@ -80,23 +80,40 @@ export function highlightJson(text: string): string {
  * 注意：必须在 highlightJson 之后调用——先语法高亮再叠搜索 mark，否则
  * mark 会切断 jx-* span 的边界（视觉上不好看但功能 OK；这里求美观）。
  *
- * 实现：用一个 placeholder 把 highlightJson 已生成的 <span>...</span>
- * 替换掉，跑搜索 mark，再换回 span。复杂但稳。
- *
- * 简化版（这里走）：直接在 HTML 字符串上跑搜索 regex，避开 <...> 区域。
- * 搜索 query 是用户输入的纯文本，先 escapeHtml 再做正则。
+ * v0.8.9 重写为「明文匹配」：文本段先解码 → 在明文上找 query → 重转义后插 <mark>。
+ * 旧实现直接在转义后的 HTML 串上跑 regex，会把 `&lt;` 这类实体从中间劈开
+ * （搜 "t" 命中 &lt; 里的 t → 输出 `&l<mark>t</mark>;`，浏览器渲染成字面量五个字符），
+ * 含 <>&" 的 body 显示损坏 + "amp"/"lt" 等查询产生假高亮。明文匹配同时修正
+ * 「搜 < / & / " 字面量」的语义（用户搜的是字符本身，不是它的转义串）。
  */
+
+// mark 边界占位符 —— 私有区码点，正常 body 文本不会出现；防御性起见处理前
+// 先剥掉文本里的同款码点（万一真有也只是丢两个不可见字符，不破坏转义）
+const MARK_OPEN = '\uE000'
+const MARK_CLOSE = '\uE001'
+
+/** 只解 escapeHtml 产出的 5 个实体（闭集）—— 文本段全部来自 escapeHtml，不存在其它实体 */
+function decodeBasicEntities(s: string): string {
+  return s.replace(/&(amp|lt|gt|quot|#39);/g, (_, e: string) =>
+    ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" } as Record<string, string>)[e] as string)
+}
+
 export function overlayBodySearch(html: string, query: string): string {
   const q = query.trim()
   if (!q) return html
-  const escaped = escapeHtml(q)
-  if (!escaped) return html
-  const rx = new RegExp(escapeRegex(escaped), 'gi')
-  // 跳过 <...> 标签区段，只在文本节点里 replace
-  return html.replace(/(<[^>]+>)|([^<]+)/g, (_, tag, text) => {
-    if (tag) return tag
-    return text.replace(rx, (m: string) => `<mark>${m}</mark>`)
-  })
+  const rx = new RegExp(escapeRegex(q), 'gi')
+  const parts = html.split(/(<[^>]+>)/)  // 奇数下标 = 标签段，原样保留
+  return parts.map((part, i) => {
+    if (i % 2 === 1 || !part) return part
+    const plain = decodeBasicEntities(part).replaceAll(MARK_OPEN, '').replaceAll(MARK_CLOSE, '')
+    rx.lastIndex = 0
+    if (!rx.test(plain)) return part
+    rx.lastIndex = 0
+    const marked = plain.replace(rx, (m: string) => `${MARK_OPEN}${m}${MARK_CLOSE}`)
+    return escapeHtml(marked)
+      .replaceAll(MARK_OPEN, '<mark>')
+      .replaceAll(MARK_CLOSE, '</mark>')
+  }).join('')
 }
 
 function escapeRegex(s: string): string {
