@@ -2,6 +2,39 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.8.9
+
+2026-06-11 发版。无 BREAKING —— **1 个 dogfood 真修（普通账号禅道指派人/模块拉不到）+ 1 个体验改进（历史自动同步）+ 记账 8 项全清 + 审计 2 项**。**+71 单测 / +3 e2e 全红→绿验证，768 单测 + 155 e2e（多遍跑零 flake）全绿。用户明示放行**。
+
+### 🔴 dogfood 修复：普通账号禅道指派人/模块列表拉不到（tier-3 建单页兜底）
+
+同事普通账号实测：`/v2/users`、`/v1/users`、`/v1/modules` 在部分禅道实例是**管理员权限端点** —— 产品/管理账号好使；普通账号 v2 不识别、v1 返 400/403（400 连 cookie cascade 都不触发），指派人/模块下拉全挂。修：新增 **tier-3「建单页视图数据」兜底** —— 能建单的账号必然打得开禅道自己的建单页（`index.php?m=bug&f=create&t=json`，cookie session 通道），从页面数据解析指派人 + 模块。只加层不换轨（v2→v1→tier-3）；`200+空 users 列表`（权限墙另一形态）也试 tier-3。+11 单测（前缀剥离/缩进清理/登录页假成功防御/401 不误走/空列表/handler 接线）。
+
+### ✨ 历史 Tab 自动同步放宽 + 负载三保护
+
+进「历史」Tab 自动同步远端状态从「仅禅道」放宽到**所有有单号（remoteId）的记录** —— webhook/cloud 历史不用再手动点。配套防请求风暴：① inflight 锁（双窗口共享一次扫描）② 60s 扫描冷却（手动按钮 force 绕过 —— 用户明示要刷就给刷）③ 冷却武装与真实发网条件按构造对齐（孤儿条目不白武装）。仍无后台定时轮询（只在进 Tab / 手动时拉）。
+
+### 🟠 记账 8 项全清（五轮 review 验证过的存量问题）
+
+- **multipart 非标大小写 Content-Type**：手敲 `Content-type` 变体存活 → FormData boundary 丢失服务端解析全挂。改大小写无关删除。
+- **Settings 队列删/清跨上下文锁失效**：devtools 直调 retryQueue 写路径与 SW flush reconcile 互踩（删的条复活 → 重发重复单）。改走 `RETRY_QUEUE_REMOVE/CLEAR` 消息路由到 SW（同一把锁）；只读保留直调。
+- **禅道 cookie 复查空转**：暖缓存下 2 分钟复查零网络、永远显示「✓ 已登录」，session 服务端早过期提交时附件才挂。复查/手动重查带 `fresh` 强制清缓存真 login（顺带刷新 cookie jar）；首检保留快路径。
+- **urlMatches 与 Chrome 语义分叉**：`*.example.com` 不命中裸域、pattern 无端口时带端口 URL 不命中 → 「内容脚本注入了但悬浮球不出」。结构化 pattern 按 Chrome match-pattern 语义对齐（裸域+任意层子域+任意端口；显式端口精确；scheme `*`→http/https）；非结构化老 pattern 旧规则兜底。
+- **useConfig 自写回声计数器泄漏**：`storage.set` 内容无变化时不 fire onChanged → 计数 +1 永不归零 → 下次真外部变更被吞 → 后续保存静默回滚别处改动。改「内容快照比对」，no-op 写入天然无残留，防闪屏属性保留。
+- **ElementPicker 自身过滤失效**：写死两个早已不存在的标识。改用 styles.ts 的 `HOST_ID` 单一事实源。
+- **recorder.start() 裸抛**：stream 在窄窗口失效时 throw → START 永不响应、state 卡 starting、捕获指示灯常亮。try/catch 就近 cleanup + START/STOP listener `.catch` 兜底。
+- **BodyViewer 搜索劈实体**：搜索 regex 在转义后 HTML 上跑，把 `&lt;` 从中间劈开 → 含 `<>&` 的 body 显示损坏 + "amp/lt" 假高亮。重写为明文匹配（解码→匹配→重转义+占位符插 mark），顺带修正搜 `<`/`&` 字面量语义。
+
+### 测试
+
+- 本版累计 **+71 单测 / +3 e2e**，每条修复均做红→绿验证（突变矩阵逐条对号）。
+- **768 单测（51 文件）+ 155 e2e 全绿**；e2e 累计 3 遍零 flake；type-check + build 绿。
+- 新增 mock 全脱敏（z.example.com / 张三李四占位），PII 模式扫描 0 命中。
+
+### 发版决策小记（跳 RELEASE_TEST_CHECKLIST 理由）
+
+非 BREAKING + 全绿 + 用户明示「commit，发版」。两个手测点留 dogfood：① 同事普通账号验指派人/模块下拉（tier-3 解析按禅道标准视图数据格式，自定义魔改实例若对不上会回落原报错不更糟）② 元素选取 hover（ElementPicker 改动，自动化驱不动 closed shadow 链路）。
+
 ## v0.8.8
 
 2026-06-10 发版。无 BREAKING —— **三轮主动 review 累计 9 个真 bug 全修**（录屏数据丢失 ×3 / 重试与历史一致性 ×2 / UI 卡死与泄漏 ×2 / 禅道重复单 ×1 / 配置回滚 ×1）。**+29 新 case 全红→绿验证，697 单测 + 152 e2e + vue-tsc 全绿。改动未走 dogfood ≥ 几天，用户明示放行**（同 v0.8.7 决策模式）。
