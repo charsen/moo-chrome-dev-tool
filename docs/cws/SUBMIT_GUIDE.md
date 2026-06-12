@@ -27,7 +27,7 @@ Gitee 上 markdown 自动渲染，CWS 评审员能打开看。
 ls -lh release/moo-chrome-dev-tool-X.Y.Z.zip   # 替换 X.Y.Z 为当前版本
 ```
 
-文件已经在 release/ 里，196 KB。直接上传这个。
+文件已经在 release/ 里（几百 KB 量级）。直接上传这个。
 
 （如果你想发更新版，先跑 `pnpm release --publish` 拿新 zip。）
 

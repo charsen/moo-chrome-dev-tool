@@ -36,7 +36,7 @@ v0.4.4 首跑战绩：4 严重 + 7 中等 + 一堆小问题，全修后单测 33
 
 ## 怎么用
 
-- 不依赖 MCP——chrome-devtools-mcp 用独立 profile + `--disable-extensions`，**测不了真扩展**
+- MCP 能测大半，但**user gesture 触发的 API（permissions.request / tabCapture）驱不了**（分工见 `docs/MCP_TESTING.md`：chrome-devtools MCP 连 `--remote-debugging-port=9222` 的真 Chrome 可以驱真扩展 + SW）——本清单聚焦 MCP 也兜不住的那部分，人肉跑
 - 人肉跑：把 `pnpm build` 出的 `dist/` 重新加载到 Chrome（`chrome://extensions` → Moo → 「重新加载」）
 - 全绿才 `pnpm release` + push；任何一条红就回去修
 - SW DevTools 路径：`chrome://extensions` → Moo 卡片底部「service worker」蓝字 → 打开 → console / 网络 Tab
@@ -94,7 +94,7 @@ v0.7.0 dynamic register + v0.6.0 optional_host_permissions 之后，**fresh inst
 playwright e2e 物理驱不动的真用户场景，必须手测兜底：
 
 16. **🔴 旗舰 P0：配 matchPatterns 后已开 tab 立即出悬浮球**（v0.7.6 backfill 闭环）：
-   - 装 v0.7.6 → 任意业务页 wn.* 已经开着 → 工作台「环境」配 matchPatterns
+   - 装 v0.7.6 → 任意业务页已经开着 → 工作台「环境」配 matchPatterns
    - **不刷新 tab + 不 reload extension** → 悬浮球 ≤ 3s 内出现
    - 反 case：reload extension 后**也不刷新 tab** → 悬浮球**重新**出现（孤儿 host 重建链路）
 17. **popup 版本 chip 检查更新真链路**：点 chip → spinner ≥ 600ms → 「✓ 已是最新」绿色高亮 2.5s →（实测真 fetch Gitee API，不是 mock）
@@ -110,7 +110,7 @@ playwright e2e 物理驱不动的真用户场景，必须手测兜底：
 
 ## v0.1.x 时代发版 checklist（历史 reference，v0.4.x 已不按此跑）
 
-> ⚠️ **下面的 v0.1.11 / v0.1.12 表格化 checklist 是 v0.1.x 时代逐项手填的发版护栏**。当前 v0.4.x 实际发版走「pre-commit 自动化 + `/full-team-review` + 双 MCP 分断面（上面段已规定）」，不再按下面表格逐项核对。
+> ⚠️ **下面的 v0.1.11 / v0.1.12 表格化 checklist 是 v0.1.x 时代逐项手填的发版护栏**。v0.4.x 起实际发版走「pre-commit 自动化 + `/full-team-review` + 双 MCP 分断面（上面段已规定）」，不再按下面表格逐项核对。
 >
 > 保留只作 ① 历史参照 ② 极端情况下需要回归到「逐项手填」时仍能照抄表格结构。
 
@@ -118,12 +118,12 @@ playwright e2e 物理驱不动的真用户场景，必须手测兜底：
 
 | # | 场景 | 操作 | 期望 | ☐ |
 |---|---|---|---|---|
-| 1 | 默认模板 happy path | gy 站新建项目 + 新建 server + 默认模板 → 悬浮球截图 → 写标题 → 提交 | toast「提交成功 (HTTP 200)」；历史多一条；scaffold todos UI 能看到 | ☐ |
+| 1 | 默认模板 happy path | 业务站 A 新建项目 + 新建 server + 默认模板 → 悬浮球截图 → 写标题 → 提交 | toast「提交成功 (HTTP 200)」；历史多一条；scaffold todos UI 能看到 | ☐ |
 | 2 | 带录屏 JSON 提交 | 同 #1 但 `⌥⇧R` 录 5 秒再截图提交 | 200；后端能解出 video（dataUrl 形态）| ☐ |
 | 3 | multipart 模式 | 把 server 切到 `multipart`，重提一遍 #1 | 200；scaffold 收到的 token 在顶层 form 字段；截图是 file 字段 | ☐ |
 | 4 | 状态回查 POST | 提交一条 → 在 scaffold todos UI 把状态改成「处理中」→ 回扩展「历史」Tab 点「同步状态」 | toast「已更新 N 条」（N≥1）；条目状态变成「处理中」| ☐ |
 | 5 | 登录态下提交不撞 CSRF | 浏览器**先**登录 `app.example.com/scaffold`（拿到 session cookie），**然后**在同域页面用扩展提交 | 200，不出现 419；证明 webhook 接口拆出 group 生效 | ☐ |
-| 6 | 跨 engine 后端 | wn 站对应 accounts.yaml 加你账号 token → 重启 wn 后端 → 扩展项目 endpoint 改 `app2.example.com/scaffold/todos/intake` → 提交 | 200；证明同份 moo-scaffold 在不同 engine 都跑通 | ☐ |
+| 6 | 跨 engine 后端 | 业务站 B 对应 accounts.yaml 加你账号 token → 重启站 B 后端 → 扩展项目 endpoint 改 `app2.example.com/scaffold/todos/intake` → 提交 | 200；证明同份 moo-scaffold 在不同 engine 都跑通 | ☐ |
 | 7 | 网络异常 + 重试 | 关掉后端进程 → 提交一条（无录屏）→ 等 toast → 等 5 分钟后看 SW console 是否自动重试 | toast 形态是「提交失败：Failed to fetch」，加一行「已加入重试队列」；5 分钟后 console 看到重试动作 | ☐ |
 
 ## v0.1.12 — 染色 + 快捷键

@@ -4,7 +4,7 @@
 
 # Moo Dev Tool
 
-一个给开发、测试、设计师在浏览器里报 bug 用的 Chrome 扩展。
+在出问题的页面上一键报 bug 的 Chrome 扩展——截图标注、网络请求、JS 报错、录屏自动打包进单，开发不用再追问现场。
 
 ## 它能帮你做什么
 
@@ -12,7 +12,7 @@
 
 装上这个扩展之后：
 
-1. 在出问题的页面按一下右下角悬浮球（或者快捷键截图、`⌥⇧R` 录屏）
+1. 在出问题的页面点一下右下角悬浮球（或按 `⌘⇧B / Ctrl+Shift+B` 直接截图、`⌥⇧R / Alt+Shift+R` 录屏）
 2. 在截图上画框圈出位置、加几个字
 3. 写一行标题，按提交
 
@@ -37,7 +37,7 @@
 
 ## 装上跑起来
 
-**最低要求**：Chrome **111+**（v0.7.0 起 MAIN world 动态注册要求；多数同事 Chrome 已 ≥ 130，不用单独升级）
+**最低要求**：Chrome **111+**（2023 年初之后的 Chrome 都满足，基本不用单独升级）
 
 **下载安装包**：去 [Releases](https://gitee.com/charsen/moo-chrome-dev-tool/releases) 下最新的 zip 解压。
 
@@ -46,10 +46,11 @@
 1. 打开 `chrome://extensions/`
 2. 右上角打开「开发者模式」
 3. 点「加载已解压的扩展程序」，选刚才解压的目录
+4. 点浏览器右上角的 Moo 图标，在弹窗里打开「**允许向上报服务器发送请求**」开关——**这步不做，悬浮球不会出现**。要用录屏的顺手把「录屏功能」也打开
 
 **配一个项目**：
 
-1. 在任意页面按 F12 打开 DevTools，找到「Moo」面板
+1. 在任意页面按 F12 打开 DevTools，找到「Moo」面板（不想开 F12？点 Moo 图标 → 底部「打开工作区」，界面一样）
 2. 切到「环境」Tab，新建项目
 3. 填项目名、要监控的网址（支持通配，比如 `https://*.example.com/*`）
 4. 加一个服务器，把团队后端给你的接收地址填到「请求 URL」，token 填到「项目 Token」
@@ -58,8 +59,8 @@
 **报一个 bug**：
 
 - 点悬浮球 → 截图 → 画框标注 → 填标题 → 提交
-- 或者从浏览器右上 toolbar 点 Moo 图标打开 popup 触发截图
-- 或者按 `⌥⇧R` / `Alt+Shift+R` 开始录屏，最长 30 秒自动停
+- 或者按 `⌘⇧B / Ctrl+Shift+B` 直接截图（悬浮球被页面挡住时好用）
+- 或者按 `⌥⇧R / Alt+Shift+R` 开始录屏，最长 30 秒自动停（首次要先在 Moo 图标弹窗里开「录屏功能」）
 
 ## 后端怎么接
 
@@ -82,15 +83,15 @@ pnpm install
 pnpm dev      # 启动 Vite，产物输出到 dist/
 ```
 
-然后在 `chrome://extensions` 加载 `dist/` 目录。改代码会自动重载。
+然后在 `chrome://extensions` 加载 `dist/` 目录（同样要在 Moo 图标弹窗里开「允许向上报服务器发送请求」）。改页面端代码会自动重载；**改 service worker 代码要手动去 `chrome://extensions` 点 🔄**，否则跑的还是老代码。
 
 要本地联调后端：
 
 ```bash
-pnpm mock     # 起一个假后端在 http://localhost:8787/bugs
+pnpm mock     # 起一个假后端在 http://localhost:8787/bugs/intake
 ```
 
-在「环境」Tab 新建项目，URL 填 `http://localhost:*/*`（v0.7.0 起 chrome MV3 严格要求 `https?://host/path` 形态，单个 `*` / 无 scheme 不再支持），服务器地址填 `http://localhost:8787/bugs`（跟上面 mock 起的 endpoint 一致），提交一条试试。mock 控制台会打印收到的内容，附件落在 `mock-uploads/`。
+在「环境」Tab 新建项目，URL 填 `http://localhost:*/*`（v0.7.0 起 chrome MV3 严格要求 `https?://host/path` 形态，单个 `*` / 无 scheme 不再支持），服务器地址填 `http://localhost:8787/bugs/intake`（mock 任意路径都收；`/intake` 结尾是正式协议的约定，见 SERVER_INTEGRATION.md），提交一条试试。mock 控制台会打印收到的内容，附件落在 `mock-uploads/`。
 
 **接禅道？** 在「环境」Tab 把「上报方式」切到「禅道」，填 baseUrl / 账号 / 项目 ID 即可。详细见 [docs/ZENTAO_SETUP.md](docs/ZENTAO_SETUP.md)。
 
@@ -113,5 +114,5 @@ src/
 
 - **录屏必须用快捷键**：Chrome 要求录屏在键盘手势上下文里启动，悬浮球的按钮点了没用（只显示提示）。
 - **截图前自动遮密码框**：默认开着，担心误遮可以在项目里关掉。
-- **网络请求只抓注入之后的**：刚装好扩展或刚刷新过，要再刷一次页面才开始抓。
+- **网络请求只抓注入之后发生的**：刚装好扩展 / 刚配好项目时，已打开的页面会自动补注入，但注入之前发的请求抓不到——复现 bug 时重新操作一遍（或刷新页面再操作）最稳。
 - **重试队列不接录屏**：录屏太大塞不进本地存储，提交失败的录屏不会自动重试，要手动到「历史」Tab 点重新提交。

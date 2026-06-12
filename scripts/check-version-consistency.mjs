@@ -98,27 +98,30 @@ try {
   // HANDOFF.md 不存在不强制
 }
 
-// ---- 检查 4：⌘⇧B / Ctrl+Shift+B 这种过期快捷键文案不应再出现 ----
+// ---- 检查 4：文档提到 ⌘⇧B / Ctrl+Shift+B 时，content 层实现必须真实存在 ----
 //
-// manifest.json#commands 是 ground truth。v0.3.1 复盘发现 5 处文档/注释还写 ⌘⇧B 没改。
-// v0.4.4 大复盘清干净 — 这里加规则挡住未来复发。
-// CHANGELOG / HANDOFF / *-archive/ 含 ⌘⇧B 是合法的（历史文档，记述当时表述）
-// 只检查活文档 / 代码 / 注释里复发的过期快捷键描述
-// v0.6.1：加 docs/changelog-archive/ 排除（v0.1-v0.3 归档含历史描述）
+// ⌘⇧B 不是 manifest command（manifest 只管 ⌥⇧R / ⌥⇧M），而是 content 世界的页面级
+// 快捷键 —— ground truth 是 src/content/ContentApp.vue 的 onKeydown 处理器。
+// 历史：v0.3.1 复盘时误判「快捷键不存在」清过 5 处文档；其实处理器一直在，只是不在
+// manifest 里。本规则改成双向对账：文档可以提 ⌘⇧B，但 ContentApp.vue 的处理器
+// 哪天被删了，所有还在宣传它的活文档立刻报错（防文档与代码漂移）。
+// CHANGELOG / HANDOFF / *-archive/ 不查（历史文档，记述当时表述）。
 try {
+  const contentApp = readFileSync(resolve(root, 'src/content/ContentApp.vue'), 'utf8')
+  const handlerExists = /e\.key === 'B'/.test(contentApp) && /shiftKey/.test(contentApp)
   const out = execSync(
     `git grep -lE '⌘⇧B|⌘\\+⇧\\+B|Ctrl\\+Shift\\+B|Cmd\\+Shift\\+B' -- ` +
     `':!CHANGELOG.md' ':!HANDOFF.md' ':!docs/handoff-archive/' ':!docs/changelog-archive/' ` +
     `':!scripts/check-version-consistency.mjs' ':!CLAUDE.md' || true`,
     { cwd: root, encoding: 'utf8' }
   ).trim()
-  if (out) {
+  if (out && !handlerExists) {
     errors.push(
-      `活文档 / 代码里还有 ⌘⇧B / Ctrl+Shift+B 文案（manifest.json 实际没注册）：\n  ` +
+      `活文档还在宣传 ⌘⇧B / Ctrl+Shift+B，但 src/content/ContentApp.vue 的 keydown 处理器已不存在：\n  ` +
       out.split('\n').join('\n  ')
     )
   } else {
-    console.log('✓ 无过期 ⌘⇧B 快捷键文案（活文档 + 代码）')
+    console.log('✓ ⌘⇧B 快捷键文案与 ContentApp.vue 实现一致')
   }
 } catch {
   // git 不可用时不检查

@@ -50,13 +50,14 @@ Top MCP Servers:
 ```bash
 pnpm install
 pnpm dev      # vite watch，产物输出到 dist/
-pnpm mock     # 另起一个终端，假后端跑在 http://localhost:8787/bugs
+pnpm mock     # 另起一个终端，假后端跑在 http://localhost:8787/bugs/intake
 ```
 
 1. 打开 `chrome://extensions`，开「开发者模式」，「加载已解压的扩展程序」选 `dist/` 目录。
-2. 随便开一个网页按 F12，找「Moo」面板 → 「环境」Tab → 新建项目，URL 填 `https://*/*`，加一个服务器地址填 `http://localhost:8787/bugs/intake`，token 随便填。
-3. 刷新页面，右下角应该出现 `M` 悬浮球 → 点它截图 → 画一下 → 填标题 → 提交。
-4. 看 `pnpm mock` 终端有没有打印收到的 bug，附件落在 `mock-uploads/` 下。
+2. 点浏览器右上角 Moo 图标 → 弹窗里打开「允许向上报服务器发送请求」开关（不开的话悬浮球不会出现）。
+3. 随便开一个网页按 F12，找「Moo」面板 → 「环境」Tab → 新建项目，URL 填 `https://*/*`，加一个服务器地址填 `http://localhost:8787/bugs/intake`，token 随便填。
+4. 刷新页面，右下角应该出现 `M` 悬浮球 → 点它截图 → 画一下 → 填标题 → 提交。
+5. 看 `pnpm mock` 终端有没有打印收到的 bug，附件落在 `mock-uploads/` 下。
 
 跑通后顺手做一遍：
 

@@ -39,13 +39,13 @@ Moo Dev Tool 是一个面向开发 / QA / 业务测试的 Chrome 扩展，把「
 - 自己截图、再复制粘贴报错、再描述步骤、再找开发对接……
 - 信息散在 4 个地方（截图工具 / 浏览器 console / 网络面板 / IM 文字）
 
-Moo 把这条链路压到 1 次点击：截图 → 自动附带最近 30s 网络请求 + console errors → 你写标题描述 → 提交到禅道 / webhook。
+Moo 把这条链路压到 1 次点击：截图 → 自动附带最近的网络请求（默认 50 条）+ console 报错 → 你写标题描述 → 提交到禅道 / webhook。
 
 ⚙️ 主要功能（v0.7.0+ 起，须先在 DevTools → 环境配项目 URL 匹配，Moo 默认 0 注入）
 
 - 悬浮球截图：在你「事先配置匹配的网页」自动注入悬浮球，点一下截图
 - ⌥⇧R 录屏：MV3 offscreen + tabCapture 录当前标签页
-- 自动抓数据：最近 30s 的 fetch/XHR 请求 + console 错误 / warning + 元素堆栈
+- 自动抓数据：最近的 fetch/XHR 请求（默认 50 条，可配）+ JS 报错（未捕获异常 / Promise rejection）+ 可选的页面元素选取
 - 禅道集成：自动登录 → 提交 bug → 附件上传 → 拿到禅道 bug 链接
 - Webhook 模式：JSON / multipart 模板自定义，发到你自建的 server
 - History tab：失败的提交自动入队 5 分钟重试；提交后跟进禅道侧状态
@@ -83,13 +83,13 @@ When testers hit a bug, the usual reporting flow is:
 - Take a screenshot, paste error logs, write reproduction steps, ping a developer
 - Information scattered across 4 tools (screenshot app / browser console / network panel / IM)
 
-Moo collapses this into one click: screenshot → auto-attach last 30s of network + console errors → write title → submit to Zentao / webhook.
+Moo collapses this into one click: screenshot → auto-attach recent network requests (default: last 50) + console errors → write title → submit to Zentao / webhook.
 
 ⚙️ Features (v0.7.0+: Moo injects 0 scripts by default; configure project URL patterns in DevTools → Environment first)
 
 - Floating ball screenshot on configured URL patterns
 - ⌥⇧R screen recording (MV3 offscreen + tabCapture)
-- Auto-capture last 30s fetch/XHR requests + console errors + element stacks
+- Auto-capture recent fetch/XHR requests (default: last 50, configurable) + JS errors + optional element picking
 - Zentao integration: auto-login → submit → upload attachments → return bug link
 - Webhook mode: customizable JSON / multipart templates
 - History tab: failed submissions auto-queue for retry every 5 min; track Zentao-side status
@@ -151,7 +151,7 @@ Used to inject a content script that captures recent fetch/XHR requests and cons
 ### `alarms`
 
 ```
-Used to schedule periodic background tasks: (1) retry queue health check for failed submissions, running every 5 minutes to retry transient network failures so the user does not lose bug reports; (2) a low-frequency daily health-check task. Both tasks operate entirely locally — no data is sent outside user-configured destinations.
+Used to schedule periodic background tasks: (1) retry queue check for failed submissions, running every 5 minutes to retry transient network failures so the user does not lose bug reports (retries go only to user-configured destinations); (2) a daily update check that performs a read-only fetch of the extension's own public release feed (no user data attached). No user data is ever sent anywhere except the user-configured submission destination.
 ```
 
 ### `offscreen`

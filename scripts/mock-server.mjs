@@ -3,7 +3,8 @@
 // 启动：
 //   node scripts/mock-server.mjs
 // 然后在 Moo DevTools "环境" Tab 把服务器 endpoint 配为：
-//   http://localhost:8787/bugs
+//   http://localhost:8787/bugs/intake
+// （本 mock 任意路径都收；/intake 结尾是正式协议的约定，见 docs/SERVER_INTEGRATION.md）
 //
 // 收到的 JSON 会原样回写控制台，截图保存到 ./mock-uploads/
 
@@ -47,5 +48,5 @@ const server = createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Moo mock server listening on http://localhost:${PORT}`)
-  console.log(`Endpoint: POST http://localhost:${PORT}/bugs`)
+  console.log(`Endpoint: POST http://localhost:${PORT}/bugs/intake （任意路径都收）`)
 })

@@ -177,7 +177,7 @@ return { ok: false, error: 'v2/v1 xxx 响应都不识别' }
 | 改 docs/ZENTAO_SETUP.md / README.md 提到的版本号 | 同步检查所有文档版本号一致（version-consistency 脚本会挡） |
 | 修 bug | **顺手扫同类**（类似函数 / 类似 UI / 类似 message handler） — 这是 v0.4.4 大复盘的核心 lesson |
 | 加新 endpoint / message type | 加单测（fuzz 表 + 正常路径），不要让编排层裸奔（v0.4.4 submit.ts 复盘） |
-| 改文档里的快捷键描述 | manifest.json `commands` 是 ground truth，grep 全仓库不一致就改干净（v0.3.1 漏修 5 处的教训） |
+| 改文档里的快捷键描述 | 全局命令（⌥⇧R / ⌥⇧M）ground truth 是 manifest.json `commands`；页面级 `⌘⇧B` ground truth 是 `src/content/ContentApp.vue` 的 onKeydown（v0.3.1 曾误判它「不存在」清掉正确文档，v0.8.9 文档修订时纠正，check-version-consistency 已改双向对账）。grep 全仓库不一致就改干净 |
 | 改 `normalize*` / 反序列化 / read 边界归一化（`storage/*.ts`、`types/config.ts`）| **对照写入端字段逐个核对：每个写进去的字段 normalizer 都要读回**，漏列 = read 时静默剥光（v0.8.7 history 复盘：写+类型+读三端补了、唯独 normalizer 漏 5 字段 = 等于没修）。单测走公共 read API round-trip，别裸读 storage |
 | 改 `dynamicScripts.ts` / 注入入口（`injected/main-world.ts`、`content/index.ts`）| **注入端必须幂等** —— `executeScript` 不去重，backfill 在 config 变化 / SW spin-up 会对已注入 tab 重复注入（v0.8.7 复盘，见 HANDOFF「动态注入链路复盘速记」）。加 e2e 验「二次注入不双采集 + reload 不破孤儿 host 重建」 |
 | 重构 / 删 unused export | 跑 type-check + 全单测 + grep 引用确认无遗漏 |

@@ -340,7 +340,7 @@ v0.7.x dynamic content_scripts 设计漏：chrome `chrome.scripting.registerCont
 - **SW 端 backfill**：`syncContentScripts` register 成功后 `chrome.tabs.query({url:matches})` + `chrome.scripting.executeScript` 注入已打开 tab（ISOLATED + MAIN world）。chrome:// / chrome-extension:// 自动跳过
 - **content 端孤儿 host 清理**：reload extension 时 chrome 销毁 SW + content script，但 `#__moo_dev_tool_host__` DOM 留着。backfill 再注入时 `getElementById(HOST_ID)` 命中 → 跳过 Vue mount → host 是空壳。修：检测孤儿 host `remove()` 重建（attachShadow 同 host 二次调用 throw 必须 remove）
 
-chrome-devtools MCP 实地验：reload extension（吃新 dist）→ **不刷新 wn.* tab** → 等 3s → 截图看悬浮球真出现 ✓。e2e R3 backfill regression guard 锁住未来回归。
+chrome-devtools MCP 实地验：reload extension（吃新 dist）→ **不刷新业务页 tab** → 等 3s → 截图看悬浮球真出现 ✓。e2e R3 backfill regression guard 锁住未来回归。
 
 ### 🔴 升级闭合 — 「✓ 已升级到 vX.Y.Z」toast（mv3-pro P2 闭环）
 
