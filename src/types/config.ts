@@ -155,6 +155,33 @@ export const DEFAULT_PAYLOAD_TEMPLATE = `{
   }
 }`
 
+/**
+ * 模板「有截图占位但缺多图字段」—— 含 `{{image}}` 但不含 `{{imagesJson}}` = 只发首图。
+ * UI 据此提示自定义模板用户补多图（自动迁移只覆盖默认派生模板，碰不到手改过结构的）。
+ */
+export function templateMissingMultiImage(tpl: string): boolean {
+  if (typeof tpl !== 'string') return false
+  return tpl.includes('{{image}}') && !tpl.includes('{{imagesJson}}')
+}
+
+/**
+ * 在模板的 `"screenshot": "{{image}}",` 标准行后插入 `"screenshots": {{imagesJson}},` 多图字段。
+ * - 已含 `{{imagesJson}}` → 原样返回（幂等）。
+ * - 匹配不到标准行（完全自定义结构 / 无 trailing 逗号）→ 返回 null，调用方提示用户手动加。
+ * 迁移（storage/config.ts）与 UI「补多图字段」按钮共用此函数，保证行为一致。
+ */
+export function insertScreenshotsField(tpl: string): string | null {
+  if (typeof tpl !== 'string') return null
+  if (tpl.includes('{{imagesJson}}')) return tpl
+  const m = tpl.match(/([ \t]*)"screenshot"\s*:\s*"\{\{image\}\}"\s*,/)
+  if (!m) return null
+  const lead = m[1] ?? '  '
+  return tpl.replace(m[0], [
+    `${lead}"screenshot": "{{image}}",`,
+    `${lead}"screenshots": {{imagesJson}},`
+  ].join('\n'))
+}
+
 export function createDefaultProject(name = '新项目'): Project {
   return {
     id: crypto.randomUUID(),

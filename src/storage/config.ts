@@ -1,5 +1,5 @@
 import type { BugServer, MooConfig, Project } from '@/types/config'
-import { normalizeProject, DEFAULT_REDACT } from '@/types/config'
+import { normalizeProject, DEFAULT_REDACT, insertScreenshotsField } from '@/types/config'
 
 const CONFIG_KEY = 'mooConfig'
 
@@ -48,17 +48,9 @@ function migrateServerTemplate(tpl: string): string {
   }
 
   // 迁移 2（v0.8.11 多图）：缺 {{imagesJson}} → screenshot 行后补 "screenshots" 数组字段。
-  // 守卫 includes('{{imagesJson}}')：用户手动加过（哪怕换名 "shots": {{imagesJson}}）则不重复插。
-  if (!out.includes('{{imagesJson}}')) {
-    const m = out.match(screenshotLine)
-    if (m) {
-      const lead = m[1] ?? '  '
-      out = out.replace(m[0], [
-        `${lead}"screenshot": "{{image}}",`,
-        `${lead}"screenshots": {{imagesJson}},`
-      ].join('\n'))
-    }
-  }
+  // 复用 insertScreenshotsField（与 UI「补多图字段」按钮同一套逻辑）：已含 imagesJson（哪怕
+  // 换名 "shots": {{imagesJson}}）或匹配不到标准行 → 返回 null/原样，out 不变。
+  out = insertScreenshotsField(out) ?? out
 
   return out
 }

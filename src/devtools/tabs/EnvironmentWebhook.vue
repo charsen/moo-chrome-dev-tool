@@ -103,6 +103,12 @@
         </button>
       </div>
       <textarea v-model="s.payloadTemplate" class="template" rows="8" />
+      <!-- v0.8.11：模板只发首图（缺 {{imagesJson}}）时提示 + 一键补多图字段。
+           默认模板已自带；这条只对手改过结构、自动迁移碰不到的模板显示。 -->
+      <div v-if="templateMissingMultiImage(s.payloadTemplate)" class="tpl-multiimage-warn">
+        <span>⚠ 此模板只会发送<b>第一张</b>截图。要发多图，需加 <code v-pre>{{imagesJson}}</code> 字段。</span>
+        <button class="moo-btn moo-btn--sm" type="button" @click="addMultiImageField(s)">补上多图字段</button>
+      </div>
       <div class="tpl-hint">
         可用变量：
         <code v-pre>{{title}}</code>
@@ -112,6 +118,7 @@
         <code v-pre>{{viewport}}</code>
         <code v-pre>{{timestamp}}</code>
         <code v-pre>{{image}}</code>
+        <code v-pre>{{imagesJson}}</code><span class="tpl-hint-tag">多图</span>
         <code v-pre>{{requestsJson}}</code>
         <code v-pre>{{errorsJson}}</code>
       </div>
@@ -128,7 +135,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { Project } from '@/types/config'
+import type { BugServer, Project } from '@/types/config'
+import { templateMissingMultiImage, insertScreenshotsField } from '@/types/config'
 import { useServerCrud } from '@/composables/useServerCrud'
 import { confirmDialog } from '../components/confirm'
 import PayloadEditorModal from '../components/PayloadEditorModal.vue'
@@ -160,6 +168,31 @@ const {
   addHeader,
   removeHeader
 } = useServerCrud({ activeProject, confirmDialog })
+
+/** 「补上多图字段」：在 screenshot 行后插入 "screenshots": {{imagesJson}}。
+ *  完全自定义结构（匹配不到标准行）→ insertScreenshotsField 返 null，
+ *  弹确认引导用户手动加（避免在不确定位置乱插破坏 JSON）。 */
+async function addMultiImageField(s: BugServer): Promise<void> {
+  const next = insertScreenshotsField(s.payloadTemplate)
+  if (next && next !== s.payloadTemplate) {
+    s.payloadTemplate = next
+    return
+  }
+  // 匹配不到标准 screenshot 行：不擅自插，引导手动
+  await confirmDialog({
+    title: '需要手动添加',
+    message: [
+      '没能在你的模板里找到标准的截图行（形如 "screenshot": "{{image}}",），',
+      '不敢擅自插入以免破坏你的 JSON 结构。',
+      '',
+      '请在模板里加一行（放在任意顶层字段位置即可）：',
+      '  "screenshots": {{imagesJson}},',
+      '',
+      '后端读这个数组就能拿到全部截图（含首图）。'
+    ].join('\n'),
+    confirmText: '知道了'
+  })
+}
 </script>
 
 <style scoped>
@@ -252,6 +285,38 @@ const {
 }
 .token-toggle:hover { background: var(--moo-c-bg-soft); border-color: var(--moo-c-text-faint); }
 
+.tpl-multiimage-warn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  padding: 7px 10px;
+  font-size: var(--moo-fs-xs);
+  color: var(--moo-c-warn-fg);
+  background: var(--moo-c-warn-soft);
+  border: 1px solid var(--moo-c-warn);
+  border-radius: var(--moo-r-sm);
+  line-height: 1.5;
+}
+.tpl-multiimage-warn span { flex: 1; min-width: 0; }
+.tpl-multiimage-warn code {
+  background: var(--moo-c-bg-elev);
+  padding: 1px 5px;
+  border-radius: var(--moo-r-sm);
+  font-family: var(--moo-ff-mono);
+  font-size: 10px;
+}
+.tpl-hint-tag {
+  display: inline-block;
+  font-size: 9px;
+  color: var(--moo-c-warn-fg);
+  background: var(--moo-c-warn-soft);
+  padding: 0 4px;
+  border-radius: var(--moo-r-sm);
+  margin-right: 4px;
+  vertical-align: middle;
+}
 .tpl-hint {
   font-size: var(--moo-fs-xs);
   color: var(--moo-c-text-muted);
