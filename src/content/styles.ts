@@ -1321,8 +1321,13 @@ export const SHADOW_CSS = `
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column;
+  /* v0.8.11：多图横向铺开（flex-wrap）—— 之前 column 竖排把右侧空间全浪费了。
+   * 缩略图从左往右排，放满一行再换行；align-content/align-items flex-start
+   * 让缩略图顶对齐、不被拉伸。 */
+  flex-direction: row;
+  flex-wrap: wrap;
   align-items: flex-start;
+  align-content: flex-start;
   gap: 8px;
 }
 /* 盖在截图右上角的删除 ×：截图底色任意（可能很深/很浅），跟 .moo-thumb-action
