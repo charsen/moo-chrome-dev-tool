@@ -28,7 +28,8 @@
           <div class="head-actions">
             <button class="moo-btn moo-btn--sm" title="新建项目" @click="addProject">+</button>
             <button class="moo-btn moo-btn--sm" title="导入配置" @click="importConfig">↓</button>
-            <button class="moo-btn moo-btn--sm" title="导出配置" @click="exportConfig">↑</button>
+            <button class="moo-btn moo-btn--sm" title="导出配置（不含密钥，可分享/上 git）" @click="exportConfig()">↑</button>
+            <button class="moo-btn moo-btn--sm" title="导出含密钥（token/密码明文，仅自己备份/换机用，勿分享）" @click="exportConfig({ withSecrets: true })">🔑</button>
           </div>
         </div>
         <!-- 项目数 > 6 才显示搜索框：少量项目时一眼能看完，搜索反而占空间 -->

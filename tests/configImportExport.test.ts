@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi, afterEach } from 'vitest'
+import { ref } from 'vue'
 import {
   collectEndpoints,
   countProjectsWithToken,
-  countProjectsWithZentaoPassword
+  countProjectsWithZentaoPassword,
+  useConfigImportExport
 } from '@/composables/useConfigImportExport'
+import type { MooConfig } from '@/types/config'
 
 /**
  * v0.5.3 P1 第一步：Environment.vue 拆分。导入安全提示用的 3 个纯函数
@@ -105,5 +108,83 @@ describe('countProjectsWithZentaoPassword', () => {
   it('password 非字符串（数字）→ 不算', () => {
     const projects = [{ zentao: { password: 123 as unknown } }]
     expect(countProjectsWithZentaoPassword(projects)).toBe(0)
+  })
+})
+
+// ── exportConfig 含密钥开关（v0.8.11，「自己多机/重装备份」痛点）──────────────
+// environment=node 无 DOM：stub Blob 截获 JSON 文本、stub URL/createElement 走完下载链路。
+describe('exportConfig · 含密钥开关', () => {
+  let captured = ''
+  let downloadName = ''
+
+  function harness(confirmReturns = true) {
+    captured = ''
+    downloadName = ''
+    vi.stubGlobal('Blob', class { constructor(parts: string[]) { captured = parts.join('') } })
+    vi.stubGlobal('URL', { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} })
+    vi.stubGlobal('document', {
+      createElement: () => ({ set href(_v: string) {}, set download(v: string) { downloadName = v }, click() {} })
+    })
+    const draft = ref<MooConfig>({
+      globalEnabled: true,
+      projects: [
+        {
+          id: 'p1', name: 'wh', matchPatterns: [], kind: 'webhook',
+          token: 'SECRET_TOKEN_123',
+          servers: [{
+            id: 's1', name: 'svr', endpoint: 'https://x.com/intake', method: 'POST',
+            headers: { Authorization: 'Bearer SECRET_HDR', 'X-Foo': 'keep' },
+            payloadTemplate: '{}', imageField: 'image', imageFormat: 'base64'
+          }],
+          defaultServerId: 's1',
+          capture: { requests: true, consoleErrors: true, storageKeys: [], requestBufferSize: 50 },
+          redact: { headerKeys: [], bodyKeys: [], maskPasswordInputs: false }, enabled: true
+        },
+        {
+          id: 'p2', name: 'zt', matchPatterns: [], kind: 'zentao',
+          zentao: { baseUrl: 'https://z.example.com', account: 'u', password: 'SECRET_PWD', projectId: 1, moduleId: 0 },
+          servers: [], defaultServerId: '',
+          capture: { requests: true, consoleErrors: true, storageKeys: [], requestBufferSize: 50 },
+          redact: { headerKeys: [], bodyKeys: [], maskPasswordInputs: false }, enabled: true
+        }
+      ]
+    } as unknown as MooConfig)
+    const confirmDialog = vi.fn(async () => confirmReturns)
+    const { exportConfig } = useConfigImportExport({
+      draft, activeId: ref(''), showToast: () => {}, confirmDialog
+    })
+    return { exportConfig, confirmDialog }
+  }
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('默认导出 → token / 禅道密码 / 敏感 header 全剥空，文件名不带 -with-secrets', async () => {
+    const { exportConfig, confirmDialog } = harness()
+    await exportConfig()
+    expect(confirmDialog).not.toHaveBeenCalled()   // 默认导出不弹确认
+    const out = JSON.parse(captured) as MooConfig
+    expect(out.projects[0]!.token).toBe('')
+    expect(out.projects[1]!.zentao!.password).toBe('')
+    expect(out.projects[0]!.servers[0]!.headers.Authorization).toBe('')
+    expect(out.projects[0]!.servers[0]!.headers['X-Foo']).toBe('keep')   // 非敏感 header 保留
+    expect(downloadName).not.toContain('with-secrets')
+  })
+
+  it('含密钥导出（确认通过）→ token / 密码 / header 明文保留，文件名标 -with-secrets', async () => {
+    const { exportConfig, confirmDialog } = harness(true)
+    await exportConfig({ withSecrets: true })
+    expect(confirmDialog).toHaveBeenCalledOnce()
+    const out = JSON.parse(captured) as MooConfig
+    expect(out.projects[0]!.token).toBe('SECRET_TOKEN_123')
+    expect(out.projects[1]!.zentao!.password).toBe('SECRET_PWD')
+    expect(out.projects[0]!.servers[0]!.headers.Authorization).toBe('Bearer SECRET_HDR')
+    expect(downloadName).toContain('with-secrets')
+  })
+
+  it('含密钥导出但用户取消确认 → 不下载（无 Blob 产出）', async () => {
+    const { exportConfig } = harness(false)
+    await exportConfig({ withSecrets: true })
+    expect(captured).toBe('')      // 没走到 Blob
+    expect(downloadName).toBe('')
   })
 })

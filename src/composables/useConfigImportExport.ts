@@ -28,20 +28,41 @@ export interface UseConfigImportExportParams {
 const IMPORT_MAX_BYTES = 1024 * 1024
 
 export function useConfigImportExport(params: UseConfigImportExportParams) {
-  async function exportConfig(): Promise<void> {
-    // 剥所有 zentao.password 字段 —— 导出文件可能流给同事 / 上 git，
-    // 密码绝对不能跟着走。同时保留 zentao 其他字段（地址 / projectId 等），
-    // 接收方导入后只需补自己的密码即可。
-    const stripped: MooConfig = {
-      ...params.draft.value,
-      projects: params.draft.value.projects.map(stripSensitiveProjectFields)
+  /**
+   * 导出配置 JSON。
+   * - 默认（`withSecrets` 省略/false）：剥 token / 禅道密码 / 敏感 header —— 导出文件可能流给
+   *   同事 / 上 git，密钥绝不能跟着走。接收方导入后补自己的密钥即可。
+   * - `withSecrets: true`：完整导出（含密钥明文），仅供**自己**备份 / 换机迁移。导出前强制
+   *   二次确认（danger）+ 文件名标 `-with-secrets` 警示，避免误分享。
+   */
+  async function exportConfig(opts: { withSecrets?: boolean } = {}): Promise<void> {
+    if (opts.withSecrets) {
+      const ok = await params.confirmDialog({
+        title: '导出（含密钥）',
+        message: [
+          '此文件将含 token / 禅道密码 / 敏感 header 的**明文**，仅供你自己备份或换机迁移用。',
+          '',
+          '⚠ 千万别分享给别人、别 commit 进 git —— 拿到的人能用你的身份提交 bug。',
+          '',
+          '确认导出含密钥的完整配置？'
+        ].join('\n'),
+        danger: true,
+        confirmText: '导出含密钥'
+      })
+      if (!ok) return
     }
-    const data = JSON.stringify(stripped, null, 2)
+    const projects = opts.withSecrets
+      ? params.draft.value.projects
+      : params.draft.value.projects.map(stripSensitiveProjectFields)
+    const config: MooConfig = { ...params.draft.value, projects }
+    const data = JSON.stringify(config, null, 2)
     const blob = new Blob([data], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `moo-config-${Date.now()}.json`
+    a.download = opts.withSecrets
+      ? `moo-config-with-secrets-${Date.now()}.json`
+      : `moo-config-${Date.now()}.json`
     a.click()
     URL.revokeObjectURL(url)
   }
