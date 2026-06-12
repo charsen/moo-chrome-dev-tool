@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.8.10 已发**（2026-06-12）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.10/moo-chrome-dev-tool-0.8.10.zip)（sha256 待回填）。无 BREAKING — ✨ 提交弹窗 UX 三件（轻遮罩 0.18 / 标题栏可拖拽防出视口 / 缩小成右下角药丸）+ 多图截图（上限 5 张，单张重截/重标/删，提交端全链路）；🔴 表单草稿跨重挂真保留（`dialogDraft` 模块级单例，修旧 confirm「保留」实际全丢的撒谎）+ focusTrap 恢复焦点从未生效（nextTick + 双守卫）；📝 全量文档脱敏修订。808 单测 + 176 e2e 两遍零 flake。**dogfood 不足，用户明示放行；留观：多图+草稿真禅道链路、拖拽/缩小在重 CSS 站点。** 详情见 CHANGELOG v0.8.10 段。
+**v0.8.10 已发**（2026-06-12）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.10/moo-chrome-dev-tool-0.8.10.zip)（sha256 `50eaeb6a23b11693546ff5f993d44ebea8d9b9d47000180a7bb0e2193667635c`）。无 BREAKING — ✨ 提交弹窗 UX 三件（轻遮罩 0.18 / 标题栏可拖拽防出视口 / 缩小成右下角药丸）+ 多图截图（上限 5 张，单张重截/重标/删，提交端全链路）；🔴 表单草稿跨重挂真保留（`dialogDraft` 模块级单例，修旧 confirm「保留」实际全丢的撒谎）+ focusTrap 恢复焦点从未生效（nextTick + 双守卫）；📝 全量文档脱敏修订。808 单测 + 176 e2e 两遍零 flake。**dogfood 不足，用户明示放行；留观：多图+草稿真禅道链路、拖拽/缩小在重 CSS 站点。** 详情见 CHANGELOG v0.8.10 段。
 
 **v0.8.9 已发**（2026-06-11）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.9/moo-chrome-dev-tool-0.8.9.zip)（sha256 `65eeb6c6a2ba3df09ca6e4f5cd2ccd94c66837e1030c39774f453b1e170e43ac`）。无 BREAKING — 🔴 **dogfood 真修：普通账号禅道指派人/模块拉不到**（users/modules API 是管理员权限端点，新增 tier-3「建单页视图数据」兜底，v2→v1→tier-3 只加层不换轨）；✨ 历史 Tab 自动同步放宽到所有有单号记录（webhook/cloud 不用手动点）+ inflight 锁/60s 冷却/force 三保护；🟠 五轮 review 记账 8 项全清（multipart 大小写 / Settings 队列跨上下文锁 / cookie 复查空转 / urlMatches Chrome 语义 / useConfig 回声泄漏 / ElementPicker HOST_ID / recorder.start 裸抛 / BodyViewer 劈实体）+ 审计 2 项。+71 单测/+3 e2e 全红→绿，768 单测 + 155 e2e 零 flake。**手测点留 dogfood：普通账号指派人下拉 + 元素选取 hover。** 详情见 CHANGELOG v0.8.9 段。
 
