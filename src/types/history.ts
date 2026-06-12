@@ -10,7 +10,9 @@ export interface BugHistoryEntry {
   serverName: string
   title: string
   description: string
-  image: string              // base64 dataURL
+  image: string              // base64 dataURL（多图时 = images[0]）
+  /** v0.8.10 多张截图（缩略后入库）。缺省 = 单图老 entry */
+  images?: string[]
   hasVideo?: boolean         // 仅记录是否带视频，不存 webm dataURL（storage.local 10MB 限制）
   videoDuration?: number     // 秒
   url: string

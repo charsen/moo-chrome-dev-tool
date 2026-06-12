@@ -90,10 +90,14 @@ export async function uploadZentaoAttachments(
     else failed.push({ kind, displayName, error: r.error })
   }
 
-  // 截图
-  if (req.image) {
-    const blob = dataUrlToBlobLocal(req.image)
-    await upload('screenshot', 'moo-screenshot.png', blob)
+  // 截图（v0.8.10 多图：逐张上传，文件名带序号；单图老调用方走 image 字段不变）
+  const shots = req.images?.length ? req.images : (req.image ? [req.image] : [])
+  for (let i = 0; i < shots.length; i++) {
+    const dataUrl = shots[i]
+    if (!dataUrl) continue
+    const blob = dataUrlToBlobLocal(dataUrl)
+    const name = shots.length > 1 ? `moo-screenshot-${i + 1}.png` : 'moo-screenshot.png'
+    await upload('screenshot', name, blob)
   }
 
   // 视频
@@ -164,14 +168,16 @@ export function buildZentaoStepsHtml(
     parts.push(`<p>${escapeHtml(req.description).replace(/\n/g, '<br>')}</p>`)
   }
 
-  // 截图 inline
-  const screenshot = uploaded.find(f => f.kind === 'screenshot')
-  if (screenshot) {
+  // 截图 inline（v0.8.10 多图全部内联，按上传顺序）
+  const screenshots = uploaded.filter(f => f.kind === 'screenshot')
+  if (screenshots.length) {
     parts.push('<h3>📸 截图</h3>')
-    parts.push(
-      `<p><img src="${screenshot.url}" alt="${escapeHtml(screenshot.displayName)}" `
-      + `style="max-width:100%;border:1px solid #ddd;border-radius:4px;" /></p>`
-    )
+    for (const shot of screenshots) {
+      parts.push(
+        `<p><img src="${shot.url}" alt="${escapeHtml(shot.displayName)}" `
+        + `style="max-width:100%;border:1px solid #ddd;border-radius:4px;" /></p>`
+      )
+    }
   }
 
   // 录像（链接形式 —— sanitizer 剥 <video>，只能给下载链接）

@@ -323,6 +323,7 @@ async function resubmit(e: BugHistoryEntry) {
       title: e.title,
       description: e.description,
       image: e.image,
+      images: e.images,  // v0.8.10 多图重提（老 entry undefined，单图行为不变）
       url: e.url,
       userAgent: e.userAgent,
       viewport: e.viewport,

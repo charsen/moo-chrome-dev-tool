@@ -18,15 +18,15 @@
     </div>
 
     <Annotator
-      v-if="state === 'annotating' && rawImage"
-      :image="rawImage"
+      v-if="state === 'annotating' && pendingRaw"
+      :image="pendingRaw"
       @finish="onAnnotated"
       @cancel="onAnnotatorCancel"
     />
     <SubmitDialog
       v-if="state === 'submitting' && project"
       :project="project"
-      :image="annotatedImage"
+      :images="shots.map((s) => s.annotated)"
       :video="recordedVideo"
       :requests="capturedRequests"
       :errors="capturedErrors"
@@ -34,6 +34,8 @@
       @submitted="onSubmitted"
       @reannotate="onReannotate"
       @recapture="onRecapture"
+      @add-shot="onAddShot"
+      @remove-shot="onRemoveShot"
       @async-load-failed="(msg: string) => showToast(msg, 'error')"
     />
     <div v-if="toast" :class="['moo-toast', toastKind]" :role="toastKind === 'error' ? 'alert' : 'status'" aria-live="polite">{{ toast }}</div>
@@ -46,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import FloatingBall from './FloatingBall.vue'
 import { maskPasswordInputs } from './passwordMask'
 import { useRecorder, type RecordingResult } from './useRecorder'
@@ -59,6 +61,7 @@ import { guardFocusForHost } from '@/utils/stealPageFocus'
 import { useRequests } from './useRequests'
 import { useErrors, setErrorsEnabled } from './useErrors'
 import { HOST_ID } from './styles'
+import { clearDialogDraft, MAX_SHOTS } from './dialogDraft'
 
 type State = 'idle' | 'capturing' | 'annotating' | 'recording' | 'submitting'
 
@@ -80,8 +83,14 @@ async function refreshHostHidden(): Promise<void> {
 }
 /** 当前 active 项目：唯一匹配时即 matches[0]；多匹配时由用户在悬浮球里点选确认 */
 const project = ref<Project | null>(null)
-const rawImage = ref('')
-const annotatedImage = ref('')
+/** 多张截图（v0.8.10）：raw = 原始截屏（重新标注用），annotated = 标注完成图（提交用） */
+interface Shot { raw: string; annotated: string }
+const shots = ref<Shot[]>([])
+/** 正在标注中的原图：append/replace 是刚截到的；reannotate 是 shots[i].raw 回放 */
+const pendingRaw = ref('')
+/** 当前截图动作的落点：append=再截一张（含首张）/ replace=重截第 i 张 / reannotate=重标第 i 张。
+ *  只在 onAnnotated 读取，每轮结束（完成/取消/失败）都复位回 append。 */
+let captureTarget: { mode: 'append' } | { mode: 'replace'; index: number } | { mode: 'reannotate'; index: number } = { mode: 'append' }
 const recordedVideo = ref<RecordingResult | null>(null)
 // 这处 kind 多一个 '' 空态——模板里直接把 toastKind 当 class 写（不带前缀），
 // hide 时需要把 kind 重置成 '' 清掉残留 class
@@ -403,7 +412,7 @@ async function startCapture() {
     })) as CaptureScreenshotRes
   } catch (err) {
     showToast(`没截到图：${(err as Error).message}。请刷新页面后重试`, 'error')
-    state.value = 'idle'
+    bailCaptureFailure()
     return
   } finally {
     unmask()
@@ -417,24 +426,57 @@ async function startCapture() {
       ? '截图太频繁了（chrome 限 ≤ 2 次/秒），等 1 秒再试'
       : '可能 chrome.tabs 权限没开，或当前是 chrome:// / 应用商店 / 跨域 iframe 等保护页'
     showToast(`没截到图：${errMsg}。${hint}`, 'error')
-    state.value = 'idle'
+    bailCaptureFailure()
     return
   }
-  rawImage.value = res.dataUrl
+  pendingRaw.value = res.dataUrl
   state.value = 'annotating'
 }
 
+/** 截图失败的退路：已有 shots / 录像（「再截一张 / 重截第 i 张」路径）→ 回弹窗，
+ *  草稿还在、已截内容不丢；首张失败（什么都没有）才退回 idle。 */
+function bailCaptureFailure() {
+  captureTarget = { mode: 'append' }
+  state.value = (shots.value.length || recordedVideo.value) ? 'submitting' : 'idle'
+}
+
 // v0.7.6 mv3-pro 业务深扫 P2：Annotator emit cancel(reason?) — 'error' 是截图 dataUrl
-// 加载失败（不是用户主动取消），告知用户重试不要静默退到 idle 让用户摸不着头脑
+// 加载失败（不是用户主动取消），告知用户重试不要静默退到 idle 让用户摸不着头脑。
+// 多图（v0.8.10）：已有 shots / 录像时取消只放弃「这一张」，回弹窗别把全部丢光；
+// 零内容时才整体退 idle（reset 顺带清草稿 —— 用户主动放弃整个流程的语义）。
 function onAnnotatorCancel(reason?: 'error') {
-  reset()
+  pendingRaw.value = ''
+  captureTarget = { mode: 'append' }
+  if (shots.value.length || recordedVideo.value) {
+    state.value = 'submitting'
+  } else {
+    reset()
+  }
   if (reason === 'error') {
     showToast('截图加载失败，请重试。可能是 dataUrl 损坏 / 跨域 / 宿主页 CSP 阻塞', 'error')
   }
 }
 
 function onAnnotated(dataUrl: string) {
-  annotatedImage.value = dataUrl
+  const t = captureTarget
+  if (t.mode === 'append') {
+    // 上限守卫：SubmitDialog 按钮已 disable，这里兜底防极端时序双触发
+    if (shots.value.length < MAX_SHOTS) {
+      shots.value.push({ raw: pendingRaw.value, annotated: dataUrl })
+    }
+  } else if (t.mode === 'replace') {
+    if (shots.value[t.index]) {
+      shots.value.splice(t.index, 1, { raw: pendingRaw.value, annotated: dataUrl })
+    } else {
+      // index 失效兜底（理论上不会发生：重截期间弹窗已卸载没人能动 shots）
+      shots.value.push({ raw: pendingRaw.value, annotated: dataUrl })
+    }
+  } else {
+    const shot = shots.value[t.index]
+    if (shot) shots.value.splice(t.index, 1, { raw: shot.raw, annotated: dataUrl })
+  }
+  pendingRaw.value = ''
+  captureTarget = { mode: 'append' }
   state.value = 'submitting'
 }
 
@@ -488,33 +530,53 @@ function onSubmitted(ok: boolean, message: string) {
   }
 }
 
-// 用户在 SubmitDialog 上点"重新标注"：退回 Annotator 用 rawImage 重画一遍。
-// 已经标好的内容会丢失（Annotator 内部状态不跨 mount 保留），录屏和已选请求/错误保留。
-function onReannotate() {
-  if (!rawImage.value) {
-    showToast('原始截图找不到了（可能扩展刚被重新加载）。请关闭这个提交框，重新截一张', 'error')
+// 用户在 SubmitDialog 上点某张缩略的"重新标注"：退回 Annotator 用该张 raw 重画一遍。
+// 该张已标好的内容会丢（Annotator 内部状态不跨 mount 保留），其余截图/录屏/表单草稿保留。
+function onReannotate(index: number) {
+  const shot = shots.value[index]
+  if (!shot?.raw) {
+    showToast('原始截图找不到了（可能扩展刚被重新加载）。请删掉这张缩略图，重新截一张', 'error')
     return
   }
-  annotatedImage.value = ''
+  captureTarget = { mode: 'reannotate', index }
+  pendingRaw.value = shot.raw
   state.value = 'annotating'
 }
 
-// 用户在 SubmitDialog 上点"重新截图"：清掉旧截图重新触发屏幕捕获。
-// 录屏 / 已收集的请求/错误保留——只重做画面这一项。
-async function onRecapture() {
-  rawImage.value = ''
-  annotatedImage.value = ''
+// 用户在 SubmitDialog 上点某张缩略的"重新截图"：重走截屏 → 标注，替换该张。
+// 其余截图/录屏/已收集请求/错误保留；表单内容靠 dialogDraft 跨弹窗卸载摆渡。
+async function onRecapture(index: number) {
+  captureTarget = { mode: 'replace', index }
   state.value = 'idle'
   // 等 Vue 卸载 SubmitDialog 一帧，再走 startCapture 的"等悬浮球隐藏 → 截屏"流程
   await new Promise((r) => requestAnimationFrame(r))
   void startCapture()
 }
 
+// 「+ 再截一张」：append 新 shot。弹窗卸载（草稿已由 SubmitDialog onBeforeUnmount 存好）
+// → 截屏 → 标注 → onAnnotated push → 回 submitting 重挂弹窗恢复草稿。
+async function onAddShot() {
+  if (shots.value.length >= MAX_SHOTS) return
+  captureTarget = { mode: 'append' }
+  state.value = 'idle'
+  await new Promise((r) => requestAnimationFrame(r))
+  void startCapture()
+}
+
+// 删除第 i 张：弹窗开着原地 splice，不切状态。删到 0 张允许 —— 无图提交本就合法
+function onRemoveShot(index: number) {
+  shots.value.splice(index, 1)
+}
+
 function reset() {
   state.value = 'idle'
-  rawImage.value = ''
-  annotatedImage.value = ''
+  shots.value = []
+  pendingRaw.value = ''
+  captureTarget = { mode: 'append' }
   recordedVideo.value = null
+  // 流程真正结束（取消 / 提交成功 / 出错退回 idle）才清草稿；
+  // 「再截一张 / 重新截图 / 重新标注」的中途状态切换不走 reset，草稿存活
+  clearDialogDraft()
 }
 
 function showToast(msg: string, kind: 'success' | 'error' | 'info') {
@@ -532,12 +594,14 @@ function showToast(msg: string, kind: 'success' | 'error' | 'info') {
 // 用户什么都看不到（截图卡死）。重试一次防偶发网络抖动，再失败就 toast 让用户刷新页。
 // 必须在 setup 里调（不能放模块顶层），否则闭包不到 state / showToast。
 // 不加 loadingComponent —— 用户按截图键是同步动作，秒开是常态，加 loading 反而 UI 闪烁。
-function makeAsyncWithFallback(
-  loader: () => Promise<unknown>,
+// 泛型保住各组件自己的 props 类型（曾 hardcode 成 Annotator 的类型 → SubmitDialog
+// 模板上的 props 校验全错位，v0.8.10 改 images prop 时暴露）
+function makeAsyncWithFallback<T extends Component>(
+  loader: () => Promise<{ default: T }>,
   what: string
 ) {
-  return defineAsyncComponent({
-    loader: loader as () => Promise<typeof import('./Annotator.vue')>,
+  return defineAsyncComponent<T>({
+    loader,
     timeout: 10000,
     onError(err, retry, fail, attempts) {
       if (attempts <= 1) {

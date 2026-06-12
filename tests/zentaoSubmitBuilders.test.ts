@@ -140,6 +140,30 @@ describe('buildZentaoStepsHtml · steps HTML 拼装', () => {
     expect(html).toContain('alt="moo-screenshot.png"')
   })
 
+  // v0.8.10 多图：steps 必须内联**全部** screenshot kind 附件（之前 find 只取第一张）
+  it('多张截图上传成功 → 全部 inline，按上传顺序 3 个 <img>', () => {
+    const html = buildZentaoStepsHtml(
+      { ...baseReq, image: 'data:image/png;base64,a', images: ['data:image/png;base64,a', 'data:image/png;base64,b', 'data:image/png;base64,c'] },
+      baseProject,
+      [
+        { kind: 'screenshot', displayName: 'moo-screenshot-1.png', url: '/file-read-1.png', bytes: 100 },
+        { kind: 'screenshot', displayName: 'moo-screenshot-2.png', url: '/file-read-2.png', bytes: 100 },
+        { kind: 'screenshot', displayName: 'moo-screenshot-3.png', url: '/file-read-3.png', bytes: 100 }
+      ],
+      []
+    )
+    expect(html).toContain('<h3>📸 截图</h3>')
+    expect(html.match(/<img /g)?.length).toBe(3)
+    // 顺序保持上传顺序（1 → 2 → 3）
+    const i1 = html.indexOf('/file-read-1.png')
+    const i2 = html.indexOf('/file-read-2.png')
+    const i3 = html.indexOf('/file-read-3.png')
+    expect(i1).toBeGreaterThan(-1)
+    expect(i2).toBeGreaterThan(i1)
+    expect(i3).toBeGreaterThan(i2)
+    expect(html).toContain('alt="moo-screenshot-2.png"')
+  })
+
   it('录像上传成功 → 下载链接 + 字节大小', () => {
     const html = buildZentaoStepsHtml(
       { ...baseReq },

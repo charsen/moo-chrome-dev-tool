@@ -50,4 +50,18 @@ describe('renderTemplate', () => {
   it('多次替换不互相影响', () => {
     expect(renderTemplate('{{a}}{{a}}{{a}}', { a: 'x' })).toBe('xxx')
   })
+
+  // v0.8.10 多图：webhookAdapter renderCtx 暴露 images 数组，模板 {{imagesJson}}
+  // 必须注入**合法 JSON 数组**（服务端拿 body 直接 JSON.parse，整体不能变形）
+  it('{{imagesJson}} 注入 dataUrl 数组 → 整体是合法 JSON，round-trip 不变形', () => {
+    const images = ['data:image/png;base64,aaa+/=', 'data:image/png;base64,bbb']
+    const out = renderTemplate('{"shots":{{imagesJson}},"n":{{n}}}', { images, n: 2 })
+    const parsed = JSON.parse(out) as { shots: string[]; n: number }
+    expect(parsed.shots).toEqual(images)
+    expect(parsed.n).toBe(2)
+  })
+
+  it('{{imagesJson}} 空数组 → []（无图也不破坏宿主 JSON）', () => {
+    expect(renderTemplate('{{imagesJson}}', { images: [] })).toBe('[]')
+  })
 })

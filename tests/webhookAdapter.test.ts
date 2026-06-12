@@ -317,6 +317,113 @@ describe('webhookAdapter.submit — multipart Content-Type 大小写无关删除
   })
 })
 
+// ─────────────────── v0.8.10 多张截图 ───────────────────
+// 契约：
+//   ① multipart：第 1 张仍是 `imageField`（screenshot.png）；第 2 张起追加
+//     `${imageField}_N`（screenshot_N.png，N 从 2 起）。老服务端语义不变（不认识的
+//     字段被忽略）—— 无 images 时只有 imageField，一个多余字段都不能出现。
+//   ② renderCtx 暴露 images → 模板 {{imagesJson}} 免费可用（inline JSON 数组）。
+describe('webhookAdapter.submit — v0.8.10 多图', () => {
+  // 各 tag 长度不同，便于按 blob.size 区分三张图：'QQ=='→1字节 'QUE='→2 'QUFB'→3
+  const SHOT_A = 'data:image/png;base64,QQ=='
+  const SHOT_B = 'data:image/png;base64,QUE='
+  const SHOT_C = 'data:image/png;base64,QUFB'
+
+  const multipartProject = (): Project => {
+    const p = baseProject()
+    p.servers[0]!.imageFormat = 'multipart'
+    p.servers[0]!.imageField = 'image'
+    return p
+  }
+
+  /** 跑一次 submit，把 fetch 收到的 FormData body 抓出来 */
+  async function submittedForm(req: SubmitBugReq): Promise<FormData> {
+    let captured: FormData | null = null
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      captured = init?.body as FormData
+      return jsonRes({ id: 'bug-1' })
+    }))
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.submit(req, multipartProject(), {})
+    expect(r.ok).toBe(true)
+    if (!captured) throw new Error('fetch body not captured')
+    return captured
+  }
+
+  it('ctx.images 3 张 → FormData 含 image + image_2 + image_3（文件名 screenshot_2/3.png）', async () => {
+    const form = await submittedForm(baseReq({ image: SHOT_A, images: [SHOT_A, SHOT_B, SHOT_C] }))
+    const f1 = form.get('image') as File
+    const f2 = form.get('image_2') as File
+    const f3 = form.get('image_3') as File
+    expect(f1?.name).toBe('screenshot.png')
+    expect(f2?.name).toBe('screenshot_2.png')
+    expect(f3?.name).toBe('screenshot_3.png')
+    // 内容对得上张序（按 base64 解码后字节数区分：A=1 B=2 C=3）
+    expect(f1.size).toBe(1)
+    expect(f2.size).toBe(2)
+    expect(f3.size).toBe(3)
+    // 没有越界字段
+    expect(form.get('image_4')).toBeNull()
+    expect(form.get('image_1')).toBeNull()
+  })
+
+  it('老服务端语义：无 images（单图老调用方）→ 只有 imageField，无任何 _N 字段', async () => {
+    const form = await submittedForm(baseReq({ image: SHOT_A }))
+    expect((form.get('image') as File)?.name).toBe('screenshot.png')
+    const extraKeys = [...form.keys()].filter((k) => /^image_\d+$/.test(k))
+    expect(extraKeys).toEqual([])
+  })
+
+  it('images 恰 1 张 → 同单图：只有 imageField', async () => {
+    const form = await submittedForm(baseReq({ image: SHOT_A, images: [SHOT_A] }))
+    expect((form.get('image') as File)?.name).toBe('screenshot.png')
+    expect(form.get('image_2')).toBeNull()
+  })
+
+  it('inline 模板 {{imagesJson}} → 渲染出合法 JSON 数组（renderCtx.images 接通）', async () => {
+    let capturedBody = ''
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      capturedBody = String(init?.body ?? '')
+      return jsonRes({ id: 'bug-2' })
+    }))
+    const project = baseProject()  // imageFormat: 'inline'
+    project.servers[0]!.payloadTemplate = '{"title":"{{title}}","shots":{{imagesJson}}}'
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.submit(
+      baseReq({ image: SHOT_A, images: [SHOT_A, SHOT_B] }), project, {}
+    )
+    expect(r.ok).toBe(true)
+    const parsed = JSON.parse(capturedBody) as { shots: string[] }
+    expect(parsed.shots).toEqual([SHOT_A, SHOT_B])
+  })
+
+  it('inline {{imagesJson}} + 无 images → 单图归一成 [image]（老调用方模板也能用）', async () => {
+    let capturedBody = ''
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      capturedBody = String(init?.body ?? '')
+      return jsonRes({ id: 'bug-3' })
+    }))
+    const project = baseProject()
+    project.servers[0]!.payloadTemplate = '{"shots":{{imagesJson}}}'
+    const { webhookAdapter } = await importAdapter()
+    await webhookAdapter.submit(baseReq({ image: SHOT_A }), project, {})
+    expect((JSON.parse(capturedBody) as { shots: string[] }).shots).toEqual([SHOT_A])
+  })
+
+  it('inline {{imagesJson}} + 无图 → 空数组 []', async () => {
+    let capturedBody = ''
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      capturedBody = String(init?.body ?? '')
+      return jsonRes({ id: 'bug-4' })
+    }))
+    const project = baseProject()
+    project.servers[0]!.payloadTemplate = '{"shots":{{imagesJson}}}'
+    const { webhookAdapter } = await importAdapter()
+    await webhookAdapter.submit(baseReq(), project, {})
+    expect((JSON.parse(capturedBody) as { shots: string[] }).shots).toEqual([])
+  })
+})
+
 describe('webhookAdapter.retryFromPayload', () => {
   const payload = () => ({
     kind: 'webhook' as const,

@@ -78,6 +78,9 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
       video: req.video ? req.video.dataUrl : '',
       videoBytes: req.video?.bytes ?? 0,
       videoDuration: req.video?.duration ?? 0,
+      // v0.8.10 多图：模板可用 {{imagesJson}} 注入 JSON 数组（renderTemplate 的 xxxJson
+      // 后缀自动 JSON.stringify）。不引用则零影响 —— 老模板/老服务端完全兼容。
+      images: req.images ?? (req.image ? [req.image] : []),
       // 让模板可以用 {{token}} 把项目 token 写进 body。
       // 后端只读 body 字段做鉴权时（不走 Authorization header）必须有这个。
       token: project.token ?? ''
@@ -288,6 +291,13 @@ function buildRequestBody(
       form.append('payload', rendered)
     }
     form.append(server.imageField, dataUrlToBlob(String(ctx.image)), 'screenshot.png')
+    // v0.8.10 多图：第 2 张起追加 `${imageField}_N` 字段（screenshot_2.png …）。
+    // 不认识这些字段的老服务端会忽略 —— 非 BREAKING；要收多图的服务端按字段名约定取
+    const extraShots = Array.isArray(ctx.images) ? (ctx.images as string[]).slice(1) : []
+    extraShots.forEach((dataUrl, i) => {
+      if (typeof dataUrl !== 'string' || !dataUrl) return
+      form.append(`${server.imageField}_${i + 2}`, dataUrlToBlob(dataUrl), `screenshot_${i + 2}.png`)
+    })
     const headers = { ...server.headers }
     // 大小写无关删除 —— 用户手敲的 `Content-type` / `CONTENT-TYPE` 变体若存活，
     // fetch 不再给 FormData 注入 boundary，服务端 multipart 解析直接失败（附件/字段全收不到）

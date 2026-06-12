@@ -35,7 +35,10 @@ export interface SubmitBugReq {
   projectId: string
   title: string
   description: string
-  image: string            // base64 dataUrl
+  image: string            // base64 dataUrl（多图时约定 = images[0]，老消费方兼容）
+  /** v0.8.10 多张截图：全部标注后的图，约定 images[0] === image。
+   *  缺省 = 单图老调用方；所有读方用 `req.images ?? (req.image ? [req.image] : [])` 归一 */
+  images?: string[]
   url: string
   userAgent: string
   viewport: string

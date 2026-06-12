@@ -1,4 +1,4 @@
-import { onBeforeUnmount, watch, type Ref } from 'vue'
+import { nextTick, onBeforeUnmount, watch, type Ref } from 'vue'
 
 /**
  * 模态弹层焦点陷阱 + ESC 回调。
@@ -30,6 +30,12 @@ export interface UseFocusTrapOptions {
    *     组件已经自管初始焦点（比如 SubmitDialog 在 onMounted 里手动 focus 标题输入框）
    */
   initialFocus?: 'first' | 'container'
+  /**
+   * 暂停开关（可选，响应式）。true 期间 trap 释放：摘掉 keydown 监听，Tab / Esc 全部
+   * 还给宿主页 —— 场景是 MooDialog 缩小成 pill 时页面必须完全可交互。复位 false 时
+   * 重挂监听并按 initialFocus 策略把焦点送回容器。不影响 unmount 时「还原原焦点」语义。
+   */
+  paused?: Ref<boolean>
 }
 
 /**
@@ -82,7 +88,7 @@ export function useFocusTrap(
   rootRef: Ref<HTMLElement | undefined>,
   opts: UseFocusTrapOptions = {}
 ): void {
-  const { onEscape, initialFocus = 'first' } = opts
+  const { onEscape, initialFocus = 'first', paused } = opts
   // 当前已激活的 root（已挂 listener / 已记录原焦点的那个）。
   // 用 watch 跟踪 rootRef 变化以支持 v-if 切换的 dialog（Annotator cancel-guard）。
   let activeRoot: HTMLElement | null = null
@@ -127,11 +133,8 @@ export function useFocusTrap(
     }
   }
 
-  function activate(root: HTMLElement) {
-    // 记录原焦点（沿 shadow 下钻拿真实活跃元素）
-    previouslyFocused = getActiveInShadowOrDoc(root)
-
-    // 初始焦点
+  /** 按 initialFocus 策略给焦点（activate 初次 + paused 复位两处共用） */
+  function focusInitial(root: HTMLElement) {
     if (initialFocus === 'container') {
       root.focus()
     } else {
@@ -139,11 +142,22 @@ export function useFocusTrap(
       if (focusable.length) focusable[0]!.focus()
       else root.focus()
     }
+  }
+
+  function activate(root: HTMLElement) {
+    // 记录原焦点（沿 shadow 下钻拿真实活跃元素）
+    previouslyFocused = getActiveInShadowOrDoc(root)
+    activeRoot = root
+
+    // 暂停期激活（罕见：挂载瞬间就是 paused）：只记录 root / 原焦点，
+    // 不抢焦点不挂监听，等 paused 复位 false 再补
+    if (paused?.value) return
+
+    focusInitial(root)
 
     // listener 挂 root 自身（不挂 document）—— 事件 path 里能拿到，
     // 不污染宿主页其他键盘监听
     root.addEventListener('keydown', onKeydown)
-    activeRoot = root
   }
 
   function deactivate() {
@@ -169,6 +183,35 @@ export function useFocusTrap(
     },
     { immediate: true, flush: 'post' }
   )
+
+  // paused 切换：true → 摘监听（页面键盘交互全放行）；false → 重挂监听 + 焦点回容器。
+  // removeEventListener 重复调无害，跟 deactivate 不冲突。焦点恢复另走 nextTick
+  // （见下方注释 —— flush:'post' 不够，v-show 的 display 更新同在 post 队列且更晚）。
+  if (paused) {
+    watch(
+      paused,
+      (p) => {
+        const root = activeRoot
+        if (!root) return
+        if (p) {
+          root.removeEventListener('keydown', onKeydown)
+        } else {
+          root.addEventListener('keydown', onKeydown)
+          // ⚠ 不能在本 watcher 里同步 focusInitial：v-show 的 display 恢复走
+          // queuePostRenderEffect（也是 post 队列），而本 watcher 在 setup 期创建、
+          // effect id 更小 → 排在 v-show 更新**前面**跑。此刻容器子树还是
+          // display:none，focus() 对 hidden 元素是静默 no-op（e2e dialog-ux UX7
+          // 实测焦点留在 body）。推迟到 nextTick —— 本轮 flush 的全部 post cb
+          // （含 v-show display 翻转）跑完后再给焦点。
+          // 防御：tick 间隙内又被 pause / root 已换（卸载/重挂）则放弃这次焦点。
+          void nextTick(() => {
+            if (!paused.value && activeRoot === root) focusInitial(root)
+          })
+        }
+      },
+      { flush: 'post' }
+    )
+  }
 
   onBeforeUnmount(() => {
     deactivate()

@@ -111,13 +111,22 @@ export const zentaoAdapter: IssueAdapter<'zentao'> = {
  * 异步预处理由 router 调，结果再传给 serializeForRetry。
  */
 export async function preprocessZentaoForRetry(req: SubmitBugReq): Promise<SubmitBugReq> {
+  if (req.images?.length) {
+    // 多图逐张缩略；保持 images[0] === image 约定
+    const images = await Promise.all(req.images.map((i) => thumbnailize(i)))
+    return { ...req, images, image: images[0] ?? req.image }
+  }
   return req.image ? { ...req, image: await thumbnailize(req.image) } : req
 }
 
 /** 估算 zentao retry item 序列化后大小（字符数≈字节数）。retryQueue 入队大小兜底也复用此函数。 */
 export function estimateZentaoSize(req: SubmitBugReq): number {
   // image / video 是 base64 字符串，length 已经接近字节数（base64 约 4/3 倍原始）
-  let n = (req.image?.length ?? 0)
+  // 多图时按 images 全量算（images[0]===image 不重复计），单图老路径按 image
+  const imgLen = req.images?.length
+    ? req.images.reduce((sum, i) => sum + i.length, 0)
+    : (req.image?.length ?? 0)
+  let n = imgLen
     + (req.video?.dataUrl.length ?? 0)
     + (req.description?.length ?? 0)
     + (req.title?.length ?? 0)

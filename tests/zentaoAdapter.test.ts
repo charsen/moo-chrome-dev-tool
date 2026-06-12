@@ -2,6 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Project } from '@/types/config'
 import type { SubmitBugReq } from '@/types/messages'
 
+// thumbnailize 用 OffscreenCanvas（浏览器 only），node 里 mock 成带标记的转换 ——
+// preprocessZentaoForRetry 测试要能区分「真缩略过」vs「原样透传」
+vi.mock('@/utils/image', () => ({
+  thumbnailize: vi.fn(async (s: string) => 'T:' + s)
+}))
+
 /**
  * zentaoAdapter 单测 — 实装 IssueAdapter<'zentao'> 的核心路径。
  *
@@ -200,5 +206,73 @@ describe('isPermanentFailure', () => {
   it('「Unauthorized」keyword → true', async () => {
     const { isPermanentFailure } = await importAdapter()
     expect(isPermanentFailure('HTTP 401 Unauthorized')).toBe(true)
+  })
+})
+
+// ─────────────────── v0.8.10 多张截图：estimate / preprocess ───────────────────
+// 契约：
+//   ① estimateZentaoSize 多图按 images 全量求和，且**不与 image 重复计**
+//     （约定 images[0] === image —— 双计会让 1MB 上限提前误触发，少计会超配额）
+//   ② preprocessZentaoForRetry 多图逐张缩略，且缩略后 images[0] === image 约定保持
+describe('v0.8.10 多图 estimateZentaoSize', () => {
+  it('多图 estimate ≈ images 三张长度和（与单图差值 = 增量长度，不双计 image）', async () => {
+    const { estimateZentaoSize } = await importAdapter()
+    const A = 'aaa'        // len 3
+    const B = 'bbbb'       // len 4
+    const C = 'ccccc'      // len 5
+    const single = baseReq(); single.image = A
+    const multi = baseReq(); multi.image = A; multi.images = [A, B, C]
+    const eSingle = estimateZentaoSize(single)
+    const eMulti = estimateZentaoSize(multi)
+    // 若双计 image：差值 = 12；若仍只算 image（回归）：差值 = 0。正确：12 - 3 = 9
+    expect(eMulti - eSingle).toBe(B.length + C.length)
+  })
+
+  it('images 单张（=== image）→ 与单图老路径估算完全一致（不双计）', async () => {
+    const { estimateZentaoSize } = await importAdapter()
+    const single = baseReq(); single.image = 'xxxxxxx'
+    const multi = baseReq(); multi.image = 'xxxxxxx'; multi.images = ['xxxxxxx']
+    expect(estimateZentaoSize(multi)).toBe(estimateZentaoSize(single))
+  })
+
+  it('serializeForRetry：3 张 400KB 图合计超 1MB → 返 null（多图全量计入上限）', async () => {
+    const big = 'data:image/png;base64,' + 'A'.repeat(400_000)
+    const req = baseReq()
+    req.image = big
+    req.images = [big, big, big]   // 合计 1.2MB+
+    const { zentaoAdapter } = await importAdapter()
+    expect(zentaoAdapter.serializeForRetry(req, zentaoProject())).toBeNull()
+  })
+})
+
+describe('v0.8.10 多图 preprocessZentaoForRetry', () => {
+  it('多图逐张缩略，且 images[0] === image 约定保持', async () => {
+    const { preprocessZentaoForRetry } = await importAdapter()
+    const req = baseReq()
+    req.image = 'imgA'
+    req.images = ['imgA', 'imgB', 'imgC']
+    const out = await preprocessZentaoForRetry(req)
+    expect(out.images).toEqual(['T:imgA', 'T:imgB', 'T:imgC'])
+    expect(out.image).toBe('T:imgA')
+    expect(out.image).toBe(out.images![0])
+    // 原 req 不被原地改（spread 出新对象）
+    expect(req.images).toEqual(['imgA', 'imgB', 'imgC'])
+  })
+
+  it('单图老路径（无 images）→ 只缩 image，images 仍 undefined（不回归）', async () => {
+    const { preprocessZentaoForRetry } = await importAdapter()
+    const req = baseReq()
+    req.image = 'imgA'
+    const out = await preprocessZentaoForRetry(req)
+    expect(out.image).toBe('T:imgA')
+    expect(out.images).toBeUndefined()
+  })
+
+  it('无图 → 原样返回不调 thumbnailize 路径', async () => {
+    const { preprocessZentaoForRetry } = await importAdapter()
+    const req = baseReq()
+    const out = await preprocessZentaoForRetry(req)
+    expect(out.image).toBe('')
+    expect(out.images).toBeUndefined()
   })
 })

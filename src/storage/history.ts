@@ -34,6 +34,10 @@ function normalizeHistoryEntry(raw: unknown): BugHistoryEntry {
     title: str(e.title, '(无标题)'),
     description: str(e.description),
     image: str(e.image),
+    // v0.8.10 多图必须读回 —— normalizer 漏列 = read 时静默剥光（v0.8.7 禅道 5 字段同款教训）
+    images: Array.isArray(e.images)
+      ? (e.images as unknown[]).filter((x): x is string => typeof x === 'string')
+      : undefined,
     hasVideo: bool(e.hasVideo),
     videoDuration: num(e.videoDuration),
     url: str(e.url),
@@ -115,9 +119,13 @@ export async function addHistoryEntry(entry: BugHistoryEntry): Promise<WriteResu
   // 入库前把截图压成缩略图。原始全分辨率早就 POST 给后端了，本地只为
   // 用户回顾用，没必要存 800KB 的 PNG base64 —— 否则 30 条历史轻松爆
   // chrome.storage.local 10MB 配额（实测能存的只有 5-8 条）。
-  const shrunk: BugHistoryEntry = entry.image
+  let shrunk: BugHistoryEntry = entry.image
     ? { ...entry, image: await thumbnailize(entry.image) }
     : entry
+  // v0.8.10 多图同样逐张缩略 —— 5 张全分辨率 PNG dataUrl 轻松爆 10MB 配额
+  if (entry.images?.length) {
+    shrunk = { ...shrunk, images: await Promise.all(entry.images.map((i) => thumbnailize(i))) }
+  }
   // v0.4.9：包 withWriteMutex（v0.4.8 修了 remove/clear/update 漏了 add）→ 防 tab A 提交时
   // tab B 删 entry，A 的 snapshot 写回让 X 复活。v0.4.7 4 个月 bug 路径之一仍开
   return withWriteMutex(async () => {

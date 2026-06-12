@@ -680,6 +680,11 @@ export const SHADOW_CSS = `
 /* ============================================
    提交对话框
 ============================================ */
+/* MooDialog 的单根包装：组件内部是 mask + 缩小态 pill 两个平级节点，包一层 contents
+   让 SubmitDialog 写在组件上的 v-show="!picking" 有单根可落（v-show 不支持 fragment 根）。
+   contents 不参与布局，inline display:none（v-show 注入）优先级高于它，照常整体隐藏。 */
+.moo-dialog-shell { display: contents; }
+
 .moo-dialog-mask {
   position: fixed;
   inset: 0;
@@ -692,6 +697,20 @@ export const SHADOW_CSS = `
   animation: moo-mask-in .18s;
 }
 @keyframes moo-mask-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* light variant（SubmitDialog 用）：录 bug 要对照看页面内容 —— 去掉 blur、scrim 调到很淡。
+   tokens.css 没有「淡 scrim」token；shadow 叠任意宿主页属 drift override 同款例外
+   （见文件头 --moo-c-warn-fg 注释），硬编码 + 注释。色值是 --moo-c-scrim 同源
+   slate-900 底，仅透明度 .5 → .18。 */
+.moo-dialog-mask--light {
+  background: rgba(15, 23, 42, .18);
+  backdrop-filter: none;
+}
+/* 深色页（系统深色启发，跟悬浮球玻璃反相同一判定）：深 scrim 叠深页几乎不可见，
+   翻成极淡浅雾，保留「上面有弹层」的感知。不动 tokens（content 不带 dark :root）。 */
+@media (prefers-color-scheme: dark) {
+  .moo-dialog-mask--light { background: rgba(226, 232, 240, .12); }
+}
 
 .moo-dialog {
   background: var(--c-bg);
@@ -715,13 +734,75 @@ export const SHADOW_CSS = `
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* header 是拖拽手柄（标题/空白处，按钮在 MooDialog onHeadDown 里排除）：
+     grab 提示可拖；user-select 防拖动时选中标题；touch-action 让触摸设备拖拽不滚页 */
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
 }
+.moo-dialog--dragging .moo-dialog-head { cursor: grabbing; }
+/* 拖过 / 重挂还原位置后：translate 走内联 style。同时干掉入场动画 ——
+   moo-dialog-in 的 keyframes transform 在播放期会盖过内联 translate，
+   重挂还原时会先「居中入场 0.2s」再跳到记忆位置，闪跳。 */
+.moo-dialog--moved { animation: none; }
 .moo-dialog-head h3 {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
   letter-spacing: -.005em;
   color: var(--c-text);
+}
+.moo-dialog-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+/* 缩小按钮：视觉对齐旁边的 .moo-close-btn（同 header 内并排的图标按钮） */
+.moo-dialog-min-btn {
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--c-text-dim);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--r-sm);
+  transition: color .12s, background .12s, box-shadow .12s;
+}
+.moo-dialog-min-btn:hover {
+  color: var(--c-text);
+  background: var(--c-bg-soft);
+}
+.moo-dialog-min-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
+}
+/* 缩小态右下角恢复 pill。bottom 96px：悬浮球习惯趴在右下角 bottom~24px（缩小期间
+   state=submitting 球本来就藏着，但用户肌肉记忆会往那找），往上避让一段。 */
+.moo-dialog-restore-pill {
+  position: fixed;
+  right: 16px;
+  bottom: 96px;
+  z-index: 2147483645;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--c-brand);
+  color: var(--c-brand-fg);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--sh-lg);
+  animation: moo-dialog-in .2s cubic-bezier(.4, 0, .2, 1);
+}
+.moo-dialog-restore-pill:hover { background: var(--c-brand-hover); }
+.moo-dialog-restore-pill:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--moo-c-focus-ring), var(--sh-lg);
 }
 .moo-dialog-body {
   padding: 16px 18px;
@@ -1231,6 +1312,36 @@ export const SHADOW_CSS = `
   outline: none;
   background: #fff;
   box-shadow: 0 0 0 3px var(--moo-c-focus-ring);
+}
+
+/* ── 多张截图列表（v0.8.10）────────────────────────────────────────────
+ * SubmitDialog 截图区：竖排缩略卡（每张沿用 .moo-thumb-wrap hover overlay 的
+ * 「重新标注 / 重新截图」入口）+ 右上角常显 × 删除 + 底部「+ 再截一张」按钮。 */
+.moo-shots {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+/* 盖在截图右上角的删除 ×：截图底色任意（可能很深/很浅），跟 .moo-thumb-action
+ * 同款取舍 —— 不透明白底玻璃卡 + 强阴影，不走 token（token 跟系统深浅色走，
+ * 叠在截图上反而可能没对比度）。常显不进 overlay：删除入口要可发现，
+ * 不能藏在 hover 后面（触屏用户找不到）。 */
+.moo-thumb-wrap .moo-close-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid rgba(15, 23, 42, .15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
+  line-height: 1;
+}
+.moo-thumb-wrap .moo-close-btn:hover {
+  background: #fff;
+  color: #b91c1c; /* 删除语义：hover 转红提示破坏性，红色固定值（白底上对比度恒定） */
 }
 
 /* Ghost 按钮：用于 dev/debug 二级动作（如"预览请求体"），视觉弱化避免和主提交按钮抢焦点 */

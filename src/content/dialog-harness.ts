@@ -145,6 +145,10 @@ async function bootstrap(): Promise<void> {
   } else {
     // submit case
     const SubmitDialog = (await import('./SubmitDialog.vue')).default
+    // ?shots=N → 生成 N 张小占位图作 images prop（多图 UI 用例）；缺省 0 = 无图
+    const shotCount = Number(params.get('shots') ?? '0') || 0
+    const shotImages: string[] = []
+    for (let i = 0; i < shotCount; i++) shotImages.push(await makeTinyPng(120, 80))
     // 注入 mock requests，方便测试展开 row / 复制按钮 / 收起全部
     // ?requests=N → 生成 N 条 mock 请求，requestBody 是一段长文本（用于断言复制原文）
     const reqCount = Number(params.get('requests') ?? '0') || 0
@@ -226,14 +230,18 @@ async function bootstrap(): Promise<void> {
         return () =>
           h(SubmitDialog as unknown as ReturnType<typeof defineComponent>, {
             project,
-            image: '',
+            // v0.8.10 多图：image 单值 prop 改 images 数组（空数组 = 无图，同旧 image:''）。
+            // ?shots=N 生成 N 张占位缩略，供测试断言多图 UI（重标/重截/删除/再截一张）
+            images: shotImages,
             video: null,
             requests: reqProp.value,
             errors: errProp.value,
             onCancel: () => logEmit('cancel'),
             onSubmitted: (ok: boolean, message: string) => logEmit('submitted', ok, message),
-            onReannotate: () => logEmit('reannotate'),
-            onRecapture: () => logEmit('recapture'),
+            onReannotate: (i: number) => logEmit('reannotate', i),
+            onRecapture: (i: number) => logEmit('recapture', i),
+            onAddShot: () => logEmit('add-shot'),
+            onRemoveShot: (i: number) => logEmit('remove-shot', i),
             onAsyncLoadFailed: (m: string) => logEmit('async-load-failed', m)
           })
       }

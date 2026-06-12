@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 // thumbnailize 用 OffscreenCanvas（浏览器 only），node 里 mock 成 pass-through
 vi.mock('@/utils/image', () => ({
@@ -312,5 +312,70 @@ describe('markHistoryEntryRetrySuccess', () => {
     const list = await listHistory()
     expect(list[0]?.result.ok).toBe(true)
     expect(list[0]?.remoteId).toBe('old-id')
+  })
+})
+
+// ─────────────────── v0.8.10 多张截图 round-trip ───────────────────
+// v0.8.7 同款教训回归锁：write（addHistoryEntry）+ 类型（BugHistoryEntry.images）补了，
+// normalizeHistoryEntry 漏列 images = read 时静默剥光、写回还会抹掉磁盘。
+// 这里走公共 API round-trip（add → list），不裸读 storage —— normalizer 漏列必红。
+import { thumbnailize } from '@/utils/image'
+
+describe('history.ts — v0.8.10 多张截图 images round-trip', () => {
+  beforeEach(() => {
+    makeChrome()
+    // 带标记的 thumbnailize：既验证「逐张缩略」真发生，又验证缩略结果（非原图）被写库。
+    // 先 mockClear —— vitest 没开 clearMocks，前面 describe 的调用次数会串台
+    vi.mocked(thumbnailize).mockClear()
+    vi.mocked(thumbnailize).mockImplementation(async (s: string) => 'thumb:' + s)
+  })
+  afterEach(() => {
+    // 还原 pass-through，别污染本文件其他 describe
+    vi.mocked(thumbnailize).mockImplementation(async (s: string) => s)
+  })
+
+  const IMGS = ['data:image/png;base64,one', 'data:image/png;base64,two', 'data:image/png;base64,three']
+
+  it('add(images 3 张) → list 读回仍 3 张，且每张都经 thumbnailize', async () => {
+    const e = entry('m1', IMGS[0])
+    e.images = [...IMGS]
+    await addHistoryEntry(e)
+
+    const list = await listHistory()
+    expect(list).toHaveLength(1)
+    // 关键断言：normalizeHistoryEntry 必须把 images 读回来（漏列 → undefined → 红）
+    expect(list[0]?.images).toEqual(IMGS.map((i) => 'thumb:' + i))
+    // 逐张缩略：3 张 images + 1 张 image（images[0] 同源），共 4 次
+    expect(vi.mocked(thumbnailize)).toHaveBeenCalledTimes(4)
+    for (const i of IMGS) expect(vi.mocked(thumbnailize)).toHaveBeenCalledWith(i)
+    // images[0] === image 约定在缩略后仍成立
+    expect(list[0]?.image).toBe(list[0]?.images?.[0])
+  })
+
+  it('单图老 entry（无 images）→ 读回 images undefined（不回归）', async () => {
+    await addHistoryEntry(entry('s1'))
+    const list = await listHistory()
+    expect(list[0]?.images).toBeUndefined()
+    expect(list[0]?.image).toBe('thumb:data:image/png;base64,x')
+  })
+
+  it('storage 里 images 混入非 string 杂质 → normalize 过滤只留 string', async () => {
+    const raw = {
+      id: 'dirty', title: 'D', timestamp: 1,
+      image: 'data:image/png;base64,x',
+      images: ['data:a', 42, null, { evil: 1 }, 'data:b']
+    }
+    ;(globalThis as { chrome: { storage: { local: { set: (o: unknown) => Promise<void> } } } })
+      .chrome.storage.local.set({ mooHistory: [raw] })
+    const list = await listHistory()
+    expect(list[0]?.images).toEqual(['data:a', 'data:b'])
+  })
+
+  it('storage 里 images 是非数组（损坏）→ undefined 不 crash', async () => {
+    const raw = { id: 'bad', title: 'B', timestamp: 1, images: 'not-an-array' }
+    ;(globalThis as { chrome: { storage: { local: { set: (o: unknown) => Promise<void> } } } })
+      .chrome.storage.local.set({ mooHistory: [raw] })
+    const list = await listHistory()
+    expect(list[0]?.images).toBeUndefined()
   })
 })

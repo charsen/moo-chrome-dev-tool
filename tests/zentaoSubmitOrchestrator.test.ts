@@ -23,7 +23,7 @@ vi.mock('@/background/zentao/client', () => ({
 }))
 
 import { ensureCookieSession, submitBug, uploadEditorFile } from '@/background/zentao/client'
-import { submitToZentao } from '@/background/zentao/submit'
+import { submitToZentao, uploadZentaoAttachments } from '@/background/zentao/submit'
 
 const mockedEnsure = vi.mocked(ensureCookieSession)
 const mockedSubmit = vi.mocked(submitBug)
@@ -192,5 +192,76 @@ describe('submitToZentao · submitBug 三路径', () => {
     expect(fields.pri).toBe(1)
     expect(fields.type).toBe('feature')
     expect(fields.assignedTo).toBe('bob')
+  })
+})
+
+// ─────────────────── v0.8.10 多张截图：uploadZentaoAttachments ───────────────────
+// 契约：req.images 多图逐张上传（文件名 moo-screenshot-N.png）；单图老调用方
+// （只有 req.image）仍是 moo-screenshot.png 不变（接收端按文件名识别截图，不能回归）。
+describe('uploadZentaoAttachments · v0.8.10 多图', () => {
+  // 'QUFB' = base64('AAA')，3 字节，过 blob.size===0 的跳过守卫
+  const shot = (tag: string) => `data:image/png;base64,QUFB${tag}`
+
+  /** 取所有 uploadEditorFile 调用里 displayName 形如 moo-screenshot*.png 的列表（过滤掉 context 附件） */
+  function screenshotNames(): string[] {
+    return mockedUpload.mock.calls
+      .map((c) => c[2] as string)
+      .filter((n) => n.startsWith('moo-screenshot'))
+  }
+
+  it('req.images 3 张 → uploadEditorFile 截图调 3 次，名字 -1/-2/-3.png', async () => {
+    mockedUpload.mockResolvedValue({ ok: true, data: { url: '/file-read-1.png' } })
+    const req: SubmitBugReq = {
+      ...baseReq,
+      image: shot('A'),
+      images: [shot('A'), shot('B'), shot('C')]
+    }
+    const { uploaded } = await uploadZentaoAttachments(req, project, 'https://z.example.com')
+    expect(screenshotNames()).toEqual([
+      'moo-screenshot-1.png',
+      'moo-screenshot-2.png',
+      'moo-screenshot-3.png'
+    ])
+    expect(uploaded.filter((f) => f.kind === 'screenshot')).toHaveLength(3)
+  })
+
+  it('单图老调用方（无 images）→ 仍 1 次 moo-screenshot.png（不回归）', async () => {
+    mockedUpload.mockResolvedValue({ ok: true, data: { url: '/file-read-2.png' } })
+    const req: SubmitBugReq = { ...baseReq, image: shot('A') }
+    await uploadZentaoAttachments(req, project, 'https://z.example.com')
+    expect(screenshotNames()).toEqual(['moo-screenshot.png'])
+  })
+
+  it('images 恰 1 张 → 不带序号（跟单图语义一致）', async () => {
+    mockedUpload.mockResolvedValue({ ok: true, data: { url: '/file-read-3.png' } })
+    const req: SubmitBugReq = { ...baseReq, image: shot('A'), images: [shot('A')] }
+    await uploadZentaoAttachments(req, project, 'https://z.example.com')
+    expect(screenshotNames()).toEqual(['moo-screenshot.png'])
+  })
+
+  it('无 image 无 images → 0 次截图上传', async () => {
+    mockedUpload.mockResolvedValue({ ok: true, data: { url: '/file-read-4.png' } })
+    await uploadZentaoAttachments({ ...baseReq }, project, 'https://z.example.com')
+    expect(screenshotNames()).toEqual([])
+  })
+
+  it('多图中第 2 张上传失败 → best-effort：1/3 进 failed，其余 2 张照传', async () => {
+    let call = 0
+    mockedUpload.mockImplementation(async (_base: string, _blob: Blob, name: string) => {
+      if (!name.startsWith('moo-screenshot')) return { ok: true as const, data: { url: '/file-read-x.txt' } }
+      call++
+      return call === 2
+        ? { ok: false as const, error: '503' }
+        : { ok: true as const, data: { url: `/file-read-${call}.png` } }
+    })
+    const req: SubmitBugReq = {
+      ...baseReq,
+      image: shot('A'),
+      images: [shot('A'), shot('B'), shot('C')]
+    }
+    const { uploaded, failed } = await uploadZentaoAttachments(req, project, 'https://z.example.com')
+    expect(uploaded.filter((f) => f.kind === 'screenshot')).toHaveLength(2)
+    expect(failed.filter((f) => f.kind === 'screenshot').map((f) => f.displayName))
+      .toEqual(['moo-screenshot-2.png'])
   })
 })

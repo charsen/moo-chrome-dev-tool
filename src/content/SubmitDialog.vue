@@ -3,6 +3,10 @@
 
   <MooDialog
     v-show="!picking"
+    variant="light"
+    minimizable
+    v-model:pos="dialogPos"
+    v-model:minimized="dialogMinimized"
     :title="`提交 Bug — ${project.name}`"
     labelled-by="moo-submit-title"
     initial-focus="container"
@@ -45,19 +49,30 @@
           <textarea id="moo-desc" v-model="description" rows="3" placeholder="复现步骤、预期、实际…" />
         </div>
 
-        <!-- ③ 截图缩略 -->
-        <div class="moo-form-row" v-if="image">
+        <!-- ③ 截图缩略列表（v0.8.10 多图，上限 MAX_SHOTS 张；0 张也显示「再截一张」入口，
+             录屏流程 / 删光后仍可补截图） -->
+        <div class="moo-form-row">
           <label>截图</label>
-          <div class="moo-thumb-wrap">
-            <img class="moo-thumb moo-thumb--sm" :src="image" alt="截图预览" />
-            <div class="moo-thumb-overlay">
-              <button class="moo-thumb-action" type="button" @click="onReannotate">
-                <span aria-hidden="true">✎</span> 重新标注
-              </button>
-              <button class="moo-thumb-action" type="button" @click="onRecapture">
-                <span aria-hidden="true">🔄</span> 重新截图
-              </button>
+          <div class="moo-shots">
+            <div v-for="(img, i) in images" :key="i" class="moo-thumb-wrap">
+              <img class="moo-thumb moo-thumb--sm" :src="img" :alt="`截图 ${i + 1} 预览`" />
+              <div class="moo-thumb-overlay">
+                <button class="moo-thumb-action" type="button" @click="onReannotate(i)">
+                  <span aria-hidden="true">✎</span> 重新标注
+                </button>
+                <button class="moo-thumb-action" type="button" @click="onRecapture(i)">
+                  <span aria-hidden="true">🔄</span> 重新截图
+                </button>
+              </div>
+              <MooCloseBtn :aria-label="`删除第 ${i + 1} 张截图`" @click="onRemoveShot(i)" />
             </div>
+            <button
+              class="moo-btn small"
+              type="button"
+              :disabled="images.length >= MAX_SHOTS"
+              :title="images.length >= MAX_SHOTS ? `最多附 ${MAX_SHOTS} 张截图，删掉一张才能再截` : '重走截图 → 标注，追加一张（表单已填内容保留）'"
+              @click="onAddShot"
+            >＋ 再截一张（{{ images.length }}/{{ MAX_SHOTS }}）</button>
           </div>
         </div>
 
@@ -275,7 +290,7 @@
         </div>
       </div>
       <footer v-if="!successInfo" class="moo-dialog-foot">
-        <button class="moo-btn" @click="emit('cancel')">取消 <span class="kbd-hint">Esc</span></button>
+        <button class="moo-btn" @click="onCancelClick">取消 <span class="kbd-hint">Esc</span></button>
         <button v-if="kind === 'webhook'" class="moo-btn ghost" :disabled="!canPreview || previewing" @click="onPreview">
           {{ previewing ? '预览中…' : '预览请求体' }}
         </button>
@@ -311,13 +326,16 @@ import type { ZentaoFormFields } from './components/SubmitFormZentao.types'
 // PickedElement 类型仍按 type-only 静态导入，避免编译时依赖触发 chunk 合并。
 // 真正的 defineAsyncComponent 放在 setup 内（onError 需要闭包 picking + emit）。
 import type { PickedElement } from './ElementPicker.vue'
+import { MAX_SHOTS, saveDialogDraft, takeDialogDraft } from './dialogDraft'
 import MooCloseBtn from '@/components/MooCloseBtn.vue'
 import MooDialog from './components/MooDialog.vue'
 import type { RecordingResult } from './useRecorder'
 
 const props = defineProps<{
   project: Project
-  image?: string
+  /** 标注完成的截图列表（v0.8.10 多图）：空数组 = 无图（录屏流程 / 删光）。
+   *  提交时约定 images[0] === SubmitBugReq.image（老消费方兼容）。 */
+  images: string[]
   video?: RecordingResult | null
   requests: CapturedRequest[]
   errors: ConsoleError[]
@@ -325,17 +343,26 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'cancel'): void
   (e: 'submitted', ok: boolean, message: string): void
-  /** 退回 Annotator 用原始截图重新画一遍（ContentApp 负责切状态） */
-  (e: 'reannotate'): void
-  /** 丢弃当前截图，重新触发屏幕捕获（ContentApp 负责切状态） */
-  (e: 'recapture'): void
+  /** 退回 Annotator 用第 index 张的原始截图重新画一遍（ContentApp 负责切状态） */
+  (e: 'reannotate', index: number): void
+  /** 重截第 index 张：重走截屏 → 标注替换该张（ContentApp 负责切状态） */
+  (e: 'recapture', index: number): void
+  /** 「+ 再截一张」：append 新截图（< MAX_SHOTS 时；ContentApp 负责切状态） */
+  (e: 'add-shot'): void
+  /** 删除第 index 张缩略图（弹窗不卸载，ContentApp 原地 splice） */
+  (e: 'remove-shot', index: number): void
   /** 异步子组件（ElementPicker）chunk 加载失败：扩展重载后老 hash 文件 404。
    *  自己没 toast，让 ContentApp 提示用户刷页。 */
   (e: 'async-load-failed', message: string): void
 }>()
 
-const title = ref('')
-const description = ref('')
+// ── 表单草稿恢复（v0.8.10）───────────────────────────────────────────────
+// 「再截一张 / 重新截图 / 重新标注」都会让本组件经 v-if 卸载重挂；模块级草稿
+// 跨卸载摆渡已填内容。读后不清（同一流程可能多次重挂）；ContentApp.reset() 才清。
+const restoredDraft = takeDialogDraft()
+
+const title = ref(restoredDraft?.title ?? '')
+const description = ref(restoredDraft?.description ?? '')
 
 // video src 用 blob URL 代替 dataUrl：Chrome 给 <video src="data:...base64,..."> 有
 // ~2MB 大小上限，1.9MB 的 webm 录像 base64 后 ~2.5MB 直接超限，video 元素显示
@@ -388,7 +415,13 @@ onBeforeUnmount(() => {
     URL.revokeObjectURL(videoBlobUrl.value)
   }
 })
-const serverId = ref(props.project.defaultServerId || props.project.servers[0]?.id || '')
+const serverId = ref(restoredDraft?.serverId || props.project.defaultServerId || props.project.servers[0]?.id || '')
+
+// 弹窗拖拽位置（MooDialog v-model:pos）：进 dialogDraft，「再截一张/重截/重标」重挂后
+// 回到用户挪过的位置（用户特意挪开挡住的页面区域，重挂跳回居中等于又挡一遍）。
+// 缩小态（v-model:minimized）不进草稿 —— 缩小时触发重挂的按钮全藏着，状态跨不出去。
+const dialogPos = ref<{ x: number; y: number } | null>(restoredDraft?.dialogPos ?? null)
+const dialogMinimized = ref(false)
 const preview = ref('')
 const submitting = ref(false)
 const titleInput = ref<HTMLInputElement | null>(null)
@@ -408,8 +441,9 @@ const failureInfo = ref<{ message: string; cannotAutoRetry: boolean; queued?: bo
 const windowMs = ref(30000)
 const urlFilter = ref('')
 const openedAt = performance.now()
-const selectedIds = ref<Set<string>>(new Set())
-const selectedErrIds = ref<Set<string>>(new Set())
+// 草稿恢复时直接还原选中集合；首挂时空集，由下方 watch 首轮「只勾最新一条」
+const selectedIds = ref<Set<string>>(new Set(restoredDraft?.selectedReqIds ?? []))
+const selectedErrIds = ref<Set<string>>(new Set(restoredDraft?.selectedErrIds ?? []))
 // 同事 dogfood 反馈：「光通过 url 来分辨有点难，我的使用习惯还要看请求和返回，用来对照字段情况」
 // → 每个请求 row 可单独展开看 request/response body 详情卡片，不影响 checkbox 操作
 const expandedReqIds = ref<Set<string>>(new Set())
@@ -462,9 +496,9 @@ async function copyBody(text: string, id: string, kind: 'req' | 'res') {
   }, 1500)
 }
 
-// element picker
+// element picker（草稿恢复时还原已挑元素 —— 挑元素成本高，跨重挂必须保住）
 const picking = ref(false)
-const pickedElements = ref<PickedElement[]>([])
+const pickedElements = ref<PickedElement[]>([...(restoredDraft?.pickedElements ?? [])])
 
 // onError 兜底：扩展刚被重载后，老 tab 里的 ElementPicker chunk URL 已 404。
 // 不接 onError 的话 picking 卡 true，全屏 overlay 又没渲染，用户看着 SubmitDialog
@@ -551,9 +585,12 @@ watch(
   () => props.requests.slice(),
   (arr) => {
     if (isFirstRequestWatch) {
-      // 首次：只勾最新一条（props.requests 末尾是最新）
-      const latest = arr[arr.length - 1]
-      if (latest) selectedIds.value = new Set([latest.id])
+      // 首次：只勾最新一条（props.requests 末尾是最新）。
+      // 草稿恢复（截图循环重挂）时跳过 —— 用户上一轮的勾选就是答案，别覆盖
+      if (!restoredDraft) {
+        const latest = arr[arr.length - 1]
+        if (latest) selectedIds.value = new Set([latest.id])
+      }
       prevRequestIds = new Set(arr.map((r) => r.id))
       isFirstRequestWatch = false
       return
@@ -577,8 +614,11 @@ watch(
   () => props.errors.slice(),
   (arr) => {
     if (isFirstErrorWatch) {
-      const latestErr = arr[arr.length - 1]
-      if (latestErr) selectedErrIds.value = new Set([latestErr.id])
+      // 同 requests：草稿恢复时不覆盖用户上一轮的勾选
+      if (!restoredDraft) {
+        const latestErr = arr[arr.length - 1]
+        if (latestErr) selectedErrIds.value = new Set([latestErr.id])
+      }
       prevErrorIds = new Set(arr.map((e) => e.id))
       isFirstErrorWatch = false
       return
@@ -619,16 +659,21 @@ const kind = computed(() => props.project.kind ?? 'webhook')
 // 下拉显示空，提交可能被禅道服务端拒。fallback 到第一个合法 option
 const zentaoTypeInitial = props.project.zentao?.defaultType || 'codeerror'
 /** 每条 bug 可改的禅道字段集合 —— 用 v-model 整体传给 SubmitFormZentao。
- *  指派给：每条 bug 由用户在 SubmitDialog 单独选；moduleId 初值取项目级默认。 */
-const zentaoFields = ref<ZentaoFormFields>({
-  zentaoType: ZENTAO_TYPE_OPTIONS.some(o => o.value === zentaoTypeInitial)
-    ? zentaoTypeInitial
-    : (ZENTAO_TYPE_OPTIONS[0]?.value ?? 'codeerror'),
-  zentaoSeverity: (props.project.zentao?.defaultSeverity ?? 3) as 1 | 2 | 3 | 4,
-  zentaoPri: (props.project.zentao?.defaultPri ?? 3) as 1 | 2 | 3 | 4,
-  zentaoAssignedTo: '',
-  zentaoModuleId: props.project.zentao?.moduleId ?? 0
-})
+ *  指派给：每条 bug 由用户在 SubmitDialog 单独选；moduleId 初值取项目级默认。
+ *  草稿恢复（截图循环重挂）优先于项目默认值 —— 用户已经改过的选择不能被打回默认。 */
+const zentaoFields = ref<ZentaoFormFields>(
+  restoredDraft?.zentaoFields
+    ? { ...restoredDraft.zentaoFields }
+    : {
+        zentaoType: ZENTAO_TYPE_OPTIONS.some(o => o.value === zentaoTypeInitial)
+          ? zentaoTypeInitial
+          : (ZENTAO_TYPE_OPTIONS[0]?.value ?? 'codeerror'),
+        zentaoSeverity: (props.project.zentao?.defaultSeverity ?? 3) as 1 | 2 | 3 | 4,
+        zentaoPri: (props.project.zentao?.defaultPri ?? 3) as 1 | 2 | 3 | 4,
+        zentaoAssignedTo: '',
+        zentaoModuleId: props.project.zentao?.moduleId ?? 0
+      }
+)
 
 // cookie 预检状态：拉取/复查逻辑都在 SubmitFormZentao 子组件里，父只接收 update:cookie-state
 // 用来 gate canSubmit（'unknown' / 'fail' 期间禁用提交）。
@@ -693,7 +738,8 @@ function buildContext() {
   return {
     title: title.value,
     description: description.value,
-    image: props.image ?? '',
+    // 多图约定：image = images[0]（老消费方兼容），完整列表走 images
+    image: props.images[0] ?? '',
     url: safeUrl,
     userAgent: navigator.userAgent,
     viewport: `${window.innerWidth}x${window.innerHeight}`,
@@ -743,7 +789,9 @@ async function onSubmit() {
       projectId: props.project.id,
       title: title.value,
       description: description.value,
-      image: props.image ?? '',
+      // 约定 images[0] === image（types/messages.ts SubmitBugReq 注释）；单图也带 images
+      image: props.images[0] ?? '',
+      images: props.images.length ? [...props.images] : undefined,
       url: ctx.url,
       userAgent: ctx.userAgent,
       viewport: ctx.viewport,
@@ -795,31 +843,55 @@ async function onSubmit() {
   }
 }
 
+/** 用户主动退出（Esc / mask / 取消按钮）→ 不存草稿（ContentApp reset 会 clear，
+ *  「主动退出丢草稿」是设计语义）。其他卸载路径（再截一张/重截/重标）才存。 */
+let userCancelled = false
+
 /** 成功面板期间禁止点遮罩取消，避免误关。失败/正常表单态 mask 点击仍走取消。 */
 function onMaskClick() {
   if (successInfo.value) return
+  userCancelled = true
   emit('cancel')
 }
 
-function onReannotate() {
-  if (submitting.value || successInfo.value) return
-  emit('reannotate')
+function onCancelClick() {
+  userCancelled = true
+  emit('cancel')
 }
 
-function onRecapture() {
+function onReannotate(index: number) {
   if (submitting.value || successInfo.value) return
-  // v0.4.8：已填字段时加二次确认（标注虽不在 SubmitDialog 但 ContentApp 会清整个流程）。
+  emit('reannotate', index)
+}
+
+function onRecapture(index: number) {
+  if (submitting.value || successInfo.value) return
+  // v0.4.8：已填字段时加二次确认。v0.8.10 文案改"真话"：表单内容靠 dialogDraft
+  // 跨弹窗卸载真保留了（之前承诺保留实际全丢）；丢的只有该张已画的标注。
   // 用 window.confirm 是 closed shadow 内的简洁方案；其他二次确认走 MooAlert（如 Annotator cancel-guard）
   const hasContent = title.value.trim() || description.value.trim()
   if (hasContent) {
-    const ok = window.confirm('重新截图会重走「截图 → 标注」流程，当前已画的标注会丢（已填的标题/描述/选项保留）。继续？')
+    const ok = window.confirm('重新截这张会重走「截图 → 标注」流程，该张已画的标注会丢（其余截图与已填内容保留）。继续？')
     if (!ok) return
   }
-  emit('recapture')
+  emit('recapture', index)
+}
+
+function onAddShot() {
+  if (submitting.value || successInfo.value) return
+  if (props.images.length >= MAX_SHOTS) return
+  emit('add-shot')
+}
+
+function onRemoveShot(index: number) {
+  if (submitting.value || successInfo.value) return
+  // 单张删除不做两步确认：重截一张成本低（对比「清空附带元素」要逐个重选 DOM）
+  emit('remove-shot', index)
 }
 
 // 键盘快捷键：⌘/Ctrl+Enter 提交（Esc 走 MooDialog → onMaskClick 路径）
 function onKeydown(e: KeyboardEvent) {
+  if (dialogMinimized.value) return // 缩小态：键盘全还给宿主页（Esc=恢复由 MooDialog 自管）
   if (picking.value) return // 选元素状态由 ElementPicker 自己接管
   if (successInfo.value) return // 成功视图期间快捷键全部禁用，等待自动关闭
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -852,5 +924,21 @@ onBeforeUnmount(() => {
   if (successTimer) clearTimeout(successTimer)
   if (clearElementsConfirmTimer) clearTimeout(clearElementsConfirmTimer)
   if (copyHintTimer) clearTimeout(copyHintTimer)
+  // 表单草稿（v0.8.10）：「再截一张/重截/重标」触发的卸载要把已填内容摆渡到下次重挂。
+  // 两个例外不存：① 提交成功（流程结束）② 用户主动取消（Esc/mask/取消按钮 —— 主动
+  // 退出丢草稿是设计语义；且 ContentApp.reset 的 clearDialogDraft 先于本钩子跑，
+  // 这里再存会把刚清掉的草稿写回去，下次全新流程会诈尸恢复旧内容）。
+  if (!successInfo.value && !userCancelled) {
+    saveDialogDraft({
+      title: title.value,
+      description: description.value,
+      serverId: serverId.value,
+      zentaoFields: kind.value === 'zentao' ? { ...zentaoFields.value } : null,
+      selectedReqIds: [...selectedIds.value],
+      selectedErrIds: [...selectedErrIds.value],
+      pickedElements: [...pickedElements.value],
+      dialogPos: dialogPos.value ? { ...dialogPos.value } : null
+    })
+  }
 })
 </script>
