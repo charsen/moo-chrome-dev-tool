@@ -4,15 +4,15 @@
 
 ## 一句话现状
 
+**v0.8.11 已发**（2026-06-12）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.11/moo-chrome-dev-tool-0.8.11.zip)（sha256 `（发版后回填）`）。无 BREAKING（向后兼容）— 🔴 **修 v0.8.10 多图数据丢失**：默认 base64/JSON 模板（含 cloud intake）漏 `{{imagesJson}}`，开箱截多张只发首图。默认模板补 `screenshots` 数组 + `migrateServerTemplate` 自动升级老配置（修「已含 video 即提前返回」吞 screenshots 的陷阱）；⚠ 模板缺多图字段时 Environment 显警告条 + 一键补按钮（自定义模板迁移碰不到的兜底）；🔑 配置导出加「含密钥」选项（自己多机/重装备份免再找 token）；📐 多图缩略图横向铺开（flex-wrap）。826 单测 + 多图/横向布局/警告条 e2e 全绿。**dogfood 不足，用户明示放行；留观：默认模板多图在真禅道/cloud 实发多张、老配置自动升级（v0.4.7~v0.8.10 有 video 缺 screenshots 存量）。** 服务端 moo-scaffold-cloud 不在本次发版范围。详情见 CHANGELOG v0.8.11 段。
+
 **v0.8.10 已发**（2026-06-12）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.10/moo-chrome-dev-tool-0.8.10.zip)（sha256 `50eaeb6a23b11693546ff5f993d44ebea8d9b9d47000180a7bb0e2193667635c`）。无 BREAKING — ✨ 提交弹窗 UX 三件（轻遮罩 0.18 / 标题栏可拖拽防出视口 / 缩小成右下角药丸）+ 多图截图（上限 5 张，单张重截/重标/删，提交端全链路）；🔴 表单草稿跨重挂真保留（`dialogDraft` 模块级单例，修旧 confirm「保留」实际全丢的撒谎）+ focusTrap 恢复焦点从未生效（nextTick + 双守卫）；📝 全量文档脱敏修订。808 单测 + 176 e2e 两遍零 flake。**dogfood 不足，用户明示放行；留观：多图+草稿真禅道链路、拖拽/缩小在重 CSS 站点。** 详情见 CHANGELOG v0.8.10 段。
 
 **v0.8.9 已发**（2026-06-11）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.9/moo-chrome-dev-tool-0.8.9.zip)（sha256 `65eeb6c6a2ba3df09ca6e4f5cd2ccd94c66837e1030c39774f453b1e170e43ac`）。无 BREAKING — 🔴 **dogfood 真修：普通账号禅道指派人/模块拉不到**（users/modules API 是管理员权限端点，新增 tier-3「建单页视图数据」兜底，v2→v1→tier-3 只加层不换轨）；✨ 历史 Tab 自动同步放宽到所有有单号记录（webhook/cloud 不用手动点）+ inflight 锁/60s 冷却/force 三保护；🟠 五轮 review 记账 8 项全清（multipart 大小写 / Settings 队列跨上下文锁 / cookie 复查空转 / urlMatches Chrome 语义 / useConfig 回声泄漏 / ElementPicker HOST_ID / recorder.start 裸抛 / BodyViewer 劈实体）+ 审计 2 项。+71 单测/+3 e2e 全红→绿，768 单测 + 155 e2e 零 flake。**手测点留 dogfood：普通账号指派人下拉 + 元素选取 hover。** 详情见 CHANGELOG v0.8.9 段。
 
 **v0.8.8 已发**（2026-06-10）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.8/moo-chrome-dev-tool-0.8.8.zip)（sha256 `46604ff803c5756e8ccbcbdacfd7a07c2c0d7d45f00921093c62176b67ba85e9`）。无 BREAKING — **三轮主动 review 累计 9 个真 bug 全修**：🔴 录屏数据丢失三连（双 START 销毁文档 / 30s 自动停 interval 重复发 STOP 丢视频 / tripwire 残留 timer 掐死重录）；🟠 重试成功不回填 history+badge（看着失败手动重提 = 重复单）+ flush 三态结果（cooldown/无权限跳过不再谎报「都还在失败」）；🟠 提交弹窗开着时保存配置致表单丢+tab 卡死（refreshProject 非 idle 推迟）+ History 双订阅泄漏；🟠 禅道 v2 建单 id 字符串判失败致重复单（宽容解析 + success 必按成功收）+ 用户清空脱敏 keys 被迁移打回。+29 红→绿 case，697 单测 + 152 e2e 全绿。**用户明示放行。** 详情见 CHANGELOG v0.8.8 段。
 
-**v0.8.7 已发**（2026-06-09）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.7/moo-chrome-dev-tool-0.8.7.zip)（sha256 `be4fd72dcad3a65bfb23cbc8c8117221e4eb6941b1890f2f7a07a1d1c03fe0dd`）。无 BREAKING — **两轮主动 review 抓出 6 个真 bug 全修**：🔴 历史重提丢禅道 5 字段（normalizeHistoryEntry 漏列，v0.7.6 P1-1 修不全 + 状态回查写回抹磁盘）；🔴 redactBody 非 JSON 体贪婪 key 漏脱敏（隐私）；🟠 retryQueue 无共享写锁致 flush 期间入队条被吞；🟠 header 改名撞键丢数据；🟠 backfill 重注入双 patch 致请求重复采集（MAIN world 加 window flag 守卫 + ISOLATED 句柄清旧，reload 不破 v0.7.6）；status 回查 GET→POST 注释。+9 红→绿 case，664 单测 + 151 e2e 全绿。**当天提交未 dogfood，用户明示放行。** 详情见 CHANGELOG v0.8.7 段。
-
-> **v0.8.6 及更早「一句话段」已批量归档**：v0.5.0 → v0.8.6 见 [docs/handoff-archive/v0.5.x-v0.8.x.md](docs/handoff-archive/v0.5.x-v0.8.x.md)；更早 v0.1.x → v0.4.x 见下方「早期版本简介」。本文「一句话现状」只保留最近 4 个发版（v0.8.7 → v0.8.10）。
+> **v0.8.7 及更早「一句话段」已批量归档**：v0.5.0 → v0.8.7 见 [docs/handoff-archive/v0.5.x-v0.8.x.md](docs/handoff-archive/v0.5.x-v0.8.x.md)；更早 v0.1.x → v0.4.x 见下方「早期版本简介」。本文「一句话现状」只保留最近 4 个发版（v0.8.8 → v0.8.11）。
 
 **早期版本简介**：v0.1.x → v0.4.3 见 [docs/handoff-archive/v0.1.x.md](docs/handoff-archive/v0.1.x.md)；v0.4.4 → v0.4.9 见 [docs/handoff-archive/v0.4.4-v0.4.9.md](docs/handoff-archive/v0.4.4-v0.4.9.md)。
 
@@ -26,7 +26,7 @@
 
 ## Playwright E2E
 
-> **最新 case 数看顶部「一句话现状」**（v0.8.10 时 176 case），本段只讲结构和原因，不再回填具体数字。
+> **最新 case 数看顶部「一句话现状」**（v0.8.11 时 176 case），本段只讲结构和原因，不再回填具体数字。
 
 **真起 chromium、真加载 dist 当 extension、真跑 SW**。跑法：`pnpm test:e2e`（先 build，全量约 2min）；首次要先 `pnpm exec playwright install chromium`（本机已装）。
 
@@ -105,7 +105,9 @@
 
 ## 现在最值得做的下一件事
 
-v0.8.10 已发完。**当前没有强迫性 todo**。本版弹窗 UX 三件 + 多图 + 草稿是这两天新做的、dogfood 不足（用户明示放行跳 checklist，理由见 CHANGELOG v0.8.10「发版决策小记」）。**留观的手测点**：① 多图 + 草稿在真禅道实例提交链路 ② 弹窗拖拽/缩小在重 CSS 站点表现 ③ 沿袭 v0.8.9 的普通账号禅道指派人下拉 + 元素选取 hover。等用户继续真实 dogfood 反馈，再决定 hotfix 还是新 feature。
+v0.8.11 已发完。**当前没有强迫性 todo**。本版主体是修 v0.8.10 多图丢数据 P0（默认模板漏 `{{imagesJson}}` 致开箱只发首图）+ 模板缺字段可见引导 + 含密钥导出 + 横向布局，dogfood 不足（用户明示放行跳 checklist，理由见 CHANGELOG v0.8.11「发版决策小记」）。**留观的手测点**：① 默认模板多图在真禅道 / cloud intake 链路实发多张（别只发首图）② 老配置 `migrateServerTemplate` 自动升级，尤其 v0.4.7~v0.8.10 期间「有 video、缺 screenshots」的存量配置 ③ 沿袭 v0.8.10 的弹窗拖拽/缩小在重 CSS 站点 + 草稿真禅道链路。等用户继续真实 dogfood 反馈，再决定 hotfix 还是新 feature。
+
+> **webhook 默认模板字段复盘速记**（v0.8.11 这次踩，碰多图/模板先看）：v0.8.10 加多图截图，但 `DEFAULT_PAYLOAD_TEMPLATE` 只写了 `"screenshot": "{{image}}"`（首图），**漏了 `{{imagesJson}}`** —— 所有用默认配置的 base64/JSON webhook（含 cloud intake，最常见路径）不管截几张都只发第一张且无提示。**为什么测试没抓到**：多图单测/e2e 全用手写特制模板 `{"images":{{imagesJson}}}`，没一个用真实 `DEFAULT_PAYLOAD_TEMPLATE` = 测了没人会用的配置。核心 lesson：**回归守卫必须用真实默认模板断言，别用手写 mock 模板自欺**。另一个陷阱：`migrateServerTemplate` 照搬 v0.4.7 video 迁移时「已含 video 即提前返回」会吞 screenshots 迁移 —— 多个迁移项必须各自独立判断，不能一个命中就 early return。
 
 > **版本检查链路复盘速记**（这块连撞两次，下次改先看）：v0.8.1 hotfix 修「fetch fail 谎报已是最新」（三态返值），v0.8.5 修「stale flag 谎报旧版当新版」（读取时 live 重比）。核心 lesson：**版本检查 flag 写入时刻缓存的 current 不可信，必须读取时刻用 live manifest 重比** —— 因为用户实际升到的版本未必等于当初被提示的版本。`src/utils/versionCheck.ts` 的 `readValidStoredVersionInfo()` 是唯一收口点，任何「读 VERSION_CHECK_FLAG 判断要不要弹 banner」都该走它，别再内联 `age < 7d` 裸判定。
 

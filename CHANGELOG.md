@@ -20,7 +20,23 @@ v0.8.10 做了多图截图，但 `DEFAULT_PAYLOAD_TEMPLATE` 只有 `"screenshot"
 - **mock-server + SERVER_INTEGRATION.md** 同步认 `screenshots` 数组。
 - **服务端（moo-scaffold-cloud）`TodoIntakeController` 同步**：`saveScreenshots` 逐张落 `screenshots[]`（含首图去重）+ multipart `screenshot_2/_3` + 单图 fallback + MAX_SHOTS 截断；新增 5 条多图 intake 测试。
 
-**813 单测 + 多图 e2e（11 条含 F1 真机默认协议 + F2 multipart）全绿；服务端 97 测试全绿（SVG 安全 / video 重构无回归）。**
+### ⚠️ 模板缺多图字段的可见引导
+
+自动迁移只覆盖默认派生模板，碰不到手改过结构的。给 Environment 模板编辑区加：变量提示补 `{{imagesJson}}`（带「多图」标签）；模板有 `{{image}}` 但缺 `{{imagesJson}}` 时显警告条 + **「补上多图字段」一键按钮**（标准行直接插入，完全自定义结构则弹手动引导不乱插）。迁移与按钮共用 `insertScreenshotsField`/`templateMissingMultiImage` 纯函数。
+
+### 🔑 配置导出加「含密钥」选项
+
+默认导出仍剥 token/禅道密码（可分享/上 git）。新增 🔑 含密钥导出：带 token + 禅道密码 + 敏感 header 明文，文件名标 `-with-secrets` + 二次确认警示，仅供自己多机/重装备份用 —— 导入即完整，不用再回后台找 token。
+
+### 📐 多图缩略图横向铺开
+
+`.moo-shots` 从竖排（`column`）改 `flex-wrap` 横向 —— 之前缩略图竖着堆、右侧空间全浪费；现在并排放、满行换行，「再截一张」按钮自然填到右边空位。
+
+**826 单测 + 多图 e2e（含 F1 真机默认协议 + F2 multipart）+ 横向布局/警告条/panel-dark e2e 全绿；服务端 397 测试全绿（SVG 安全 / video 重构无回归）。**
+
+### 发版决策小记（跳 RELEASE_TEST_CHECKLIST 理由）
+
+非 BREAKING（向后兼容，四种新旧模板组合全覆盖）+ 全绿（826 单测 + 多图/横向布局/警告条/panel-dark e2e）+ 用户明示「发版」放行。dogfood 不足（多图修复 / 含密钥导出 / 横向布局是这两天新做的）—— 但本版主体是修 v0.8.10 多图丢数据 P0，每条有红→绿单测/e2e 锁回归（webhookAdapter 改用真实 DEFAULT_PAYLOAD_TEMPLATE、F1 真机走默认协议）。留 dogfood 观察点：① 默认模板多图在真禅道 / cloud intake 链路实发多张 ② 老配置 migrateServerTemplate 自动升级（尤其 v0.4.7~v0.8.10 有 video 缺 screenshots 的存量配置）。服务端 moo-scaffold-cloud 不在本次发版范围（独立 repo 自行 deploy）。
 
 ## v0.8.10
 
