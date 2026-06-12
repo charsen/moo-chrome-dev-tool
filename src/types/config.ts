@@ -143,6 +143,7 @@ export const DEFAULT_PAYLOAD_TEMPLATE = `{
   "title": "{{title}}",
   "description": "{{description}}\\n\\n页面: {{url}}\\nUA: {{userAgent}}\\n视口: {{viewport}}\\n时间: {{timestamp}}",
   "screenshot": "{{image}}",
+  "screenshots": {{imagesJson}},
   "video": "{{video}}",
   "video_duration": {{videoDuration}},
   "video_bytes": {{videoBytes}},

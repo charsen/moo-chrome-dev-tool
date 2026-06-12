@@ -2,6 +2,26 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.8.11
+
+2026-06-12。无 BREAKING（向后兼容）—— **修 v0.8.10 多图数据丢失 bug：base64/JSON webhook（含 cloud）开箱只发首图**。
+
+### 🔴 根因：默认模板漏了多图字段
+
+v0.8.10 做了多图截图，但 `DEFAULT_PAYLOAD_TEMPLATE` 只有 `"screenshot": "{{image}}"`（首图），**漏了 `{{imagesJson}}`**。所有用默认配置的 base64/JSON webhook 用户（最常见路径，含 cloud intake），不管截几张都只发第一张，且无任何提示。multipart 路径（`screenshot_2/_3`）和手写带 `{{imagesJson}}` 的模板不受影响。
+
+**为什么 v0.8.10 测试没抓到**：多图单测/e2e 全用**手写特制模板** `{"images":{{imagesJson}}}`，没有一个用真实 `DEFAULT_PAYLOAD_TEMPLATE` —— 等于测了没人会用的配置。
+
+### 🛠 修复（向后兼容，四种新旧组合全兼容）
+
+- **默认模板补 `"screenshots": {{imagesJson}}`**（全部图含首图）；`"screenshot"` 保留为首图兼容字段。
+- **`migrateServerTemplate` 自动升级老配置**：照搬 v0.4.7 video 迁移。**关键修掉「已含 video 即提前返回」的陷阱** —— v0.4.7~v0.8.10 期间配置的用户（有 video、缺 screenshots）以前永远拿不到多图迁移，现在两个迁移独立判断。
+- **回归守卫**：webhookAdapter 单测改用**真实 DEFAULT_PAYLOAD_TEMPLATE** 断言 `screenshots` 含全部图；F1 真机 e2e 改用默认字段协议 `screenshots`（不再手写 `images`）；configMigration 补迁移用例。
+- **mock-server + SERVER_INTEGRATION.md** 同步认 `screenshots` 数组。
+- **服务端（moo-scaffold-cloud）`TodoIntakeController` 同步**：`saveScreenshots` 逐张落 `screenshots[]`（含首图去重）+ multipart `screenshot_2/_3` + 单图 fallback + MAX_SHOTS 截断；新增 5 条多图 intake 测试。
+
+**813 单测 + 多图 e2e（11 条含 F1 真机默认协议 + F2 multipart）全绿；服务端 97 测试全绿（SVG 安全 / video 重构无回归）。**
+
 ## v0.8.10
 
 2026-06-12 发版。无 BREAKING —— **提交弹窗 UX 三件（轻遮罩/可拖拽/可缩小）+ 多图截图 + 表单草稿跨重挂真保留 + focusTrap 恢复焦点修复 + 全量文档脱敏修订**。**808 单测 + 176 e2e（跑两遍零 flake，含 CDP 真扩展驱动）+ type-check + build 全绿。用户明示放行**。

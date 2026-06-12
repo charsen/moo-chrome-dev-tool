@@ -31,12 +31,23 @@ const server = createServer((req, res) => {
     let parsed
     try { parsed = JSON.parse(body) } catch { parsed = null }
 
-    if (parsed && typeof parsed.screenshot === 'string' && parsed.screenshot.startsWith('data:image')) {
-      const [, b64] = parsed.screenshot.split(',')
-      const filename = `bug-${Date.now()}.png`
+    // v0.8.11 多图：优先存 screenshots 数组（含全部图，约定 screenshots[0] === screenshot）；
+    // 无 screenshots 时回退老的单 screenshot 字段（老扩展/老模板兼容）。
+    const saveShot = (dataUrl, i) => {
+      if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) return null
+      const [, b64] = dataUrl.split(',')
+      const filename = `bug-${Date.now()}-${i}.png`
       writeFileSync(join(UPLOAD_DIR, filename), Buffer.from(b64, 'base64'))
-      console.log(`📷 截图已保存: ${UPLOAD_DIR}/${filename}`)
-      parsed.screenshot = `<saved as ${filename}, ${b64.length} bytes>`
+      console.log(`📷 截图 ${i + 1} 已保存: ${UPLOAD_DIR}/${filename}`)
+      return `<saved as ${filename}, ${b64.length} bytes>`
+    }
+    if (parsed && Array.isArray(parsed.screenshots) && parsed.screenshots.length) {
+      parsed.screenshots = parsed.screenshots.map((s, i) => saveShot(s, i) ?? s)
+      console.log(`📷 共收到多图 ${parsed.screenshots.length} 张`)
+      if (typeof parsed.screenshot === 'string') parsed.screenshot = '<= screenshots[0]（已随数组保存）>'
+    } else if (parsed && typeof parsed.screenshot === 'string') {
+      const saved = saveShot(parsed.screenshot, 0)
+      if (saved) parsed.screenshot = saved
     }
     console.log('Body:', parsed ?? body)
 

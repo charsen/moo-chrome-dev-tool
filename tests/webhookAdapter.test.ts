@@ -422,6 +422,42 @@ describe('webhookAdapter.submit — v0.8.10 多图', () => {
     await webhookAdapter.submit(baseReq(), project, {})
     expect((JSON.parse(capturedBody) as { shots: string[] }).shots).toEqual([])
   })
+
+  // ★ v0.8.11 核心回归守卫：用**真实 DEFAULT_PAYLOAD_TEMPLATE**（不是手写特制模板）提交多图。
+  //   v0.8.10 的 bug 就是默认模板只有 {{image}}、漏了 {{imagesJson}}，开箱用户多图只发首图，
+  //   而当时多图测试全用手写模板掩盖了它。这条锁住「开箱默认配置真发全部图」。
+  it('★ 真实默认模板 DEFAULT_PAYLOAD_TEMPLATE → screenshots 字段含全部多图（开箱即多图）', async () => {
+    let capturedBody = ''
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      capturedBody = String(init?.body ?? '')
+      return jsonRes({ id: 'bug-default' })
+    }))
+    const { DEFAULT_PAYLOAD_TEMPLATE } = await import('@/types/config')
+    const project = baseProject()
+    project.servers[0]!.payloadTemplate = DEFAULT_PAYLOAD_TEMPLATE
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.submit(
+      baseReq({ image: SHOT_A, images: [SHOT_A, SHOT_B] }), project, {}
+    )
+    expect(r.ok).toBe(true)
+    const parsed = JSON.parse(capturedBody) as { screenshot: string; screenshots: string[] }
+    expect(parsed.screenshots).toEqual([SHOT_A, SHOT_B])   // 全部图
+    expect(parsed.screenshot).toBe(SHOT_A)                 // 首图兼容字段不变
+  })
+
+  it('★ 真实默认模板 + 单图老调用方 → screenshots 归一成 [image]（不回归）', async () => {
+    let capturedBody = ''
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      capturedBody = String(init?.body ?? '')
+      return jsonRes({ id: 'bug-default-1' })
+    }))
+    const { DEFAULT_PAYLOAD_TEMPLATE } = await import('@/types/config')
+    const project = baseProject()
+    project.servers[0]!.payloadTemplate = DEFAULT_PAYLOAD_TEMPLATE
+    const { webhookAdapter } = await importAdapter()
+    await webhookAdapter.submit(baseReq({ image: SHOT_A }), project, {})
+    expect((JSON.parse(capturedBody) as { screenshots: string[] }).screenshots).toEqual([SHOT_A])
+  })
 })
 
 describe('webhookAdapter.retryFromPayload', () => {

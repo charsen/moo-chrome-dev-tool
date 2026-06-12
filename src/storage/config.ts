@@ -19,24 +19,48 @@ function normalizeConfig(raw: Partial<MooConfig> | undefined | null): MooConfig 
 }
 
 /**
- * 迁移：旧版 payloadTemplate 没有 video 占位符，自动追加。
- * 只处理形如 `"screenshot": "{{image}}",`（即默认模板派生、带 trailing 逗号）的 server；
- * 用户完全自定义的模板（已含 {{video}}、或不含 {{image}}、或 image 行无 trailing 逗号）一律不动，
- * 避免破坏其 JSON 结构。
+ * 迁移默认派生模板：自动补 v0.4.7 的 {{video}} 三件 + v0.8.11 的多图 "screenshots" 字段。
+ * 两个迁移**各自独立判断**——只处理形如 `"screenshot": "{{image}}",`（默认模板派生、带 trailing
+ * 逗号）的 server；用户完全自定义的模板（不含该行、或 image 行无 trailing 逗号）一律不动。
+ *
+ * ⚠ v0.8.11 关键修复：旧实现 `if (includes('{{video}}')) return` 会让「已有 video 但缺
+ * screenshots」的模板（v0.4.7~v0.8.10 期间配置的用户，正是多图发不出去那批）提前返回、永远
+ * 拿不到 screenshots 迁移。改成两段独立跑：video 迁移后 screenshot 行仍在，screenshots 迁移
+ * 继续匹配它插在其后，最终结构与新 DEFAULT_PAYLOAD_TEMPLATE 对齐。
  */
 function migrateServerTemplate(tpl: string): string {
   if (typeof tpl !== 'string' || tpl === '') return tpl
-  if (tpl.includes('{{video}}')) return tpl
-  const m = tpl.match(/([ \t]*)"screenshot"\s*:\s*"\{\{image\}\}"\s*,/)
-  if (!m) return tpl
-  const lead = m[1] ?? '  '
-  const insertion = [
-    `${lead}"screenshot": "{{image}}",`,
-    `${lead}"video": "{{video}}",`,
-    `${lead}"video_duration": {{videoDuration}},`,
-    `${lead}"video_bytes": {{videoBytes}},`
-  ].join('\n')
-  return tpl.replace(m[0], insertion)
+  let out = tpl
+  const screenshotLine = /([ \t]*)"screenshot"\s*:\s*"\{\{image\}\}"\s*,/
+
+  // 迁移 1（v0.4.7）：缺 {{video}} → screenshot 行后补 video 三件
+  if (!out.includes('{{video}}')) {
+    const m = out.match(screenshotLine)
+    if (m) {
+      const lead = m[1] ?? '  '
+      out = out.replace(m[0], [
+        `${lead}"screenshot": "{{image}}",`,
+        `${lead}"video": "{{video}}",`,
+        `${lead}"video_duration": {{videoDuration}},`,
+        `${lead}"video_bytes": {{videoBytes}},`
+      ].join('\n'))
+    }
+  }
+
+  // 迁移 2（v0.8.11 多图）：缺 {{imagesJson}} → screenshot 行后补 "screenshots" 数组字段。
+  // 守卫 includes('{{imagesJson}}')：用户手动加过（哪怕换名 "shots": {{imagesJson}}）则不重复插。
+  if (!out.includes('{{imagesJson}}')) {
+    const m = out.match(screenshotLine)
+    if (m) {
+      const lead = m[1] ?? '  '
+      out = out.replace(m[0], [
+        `${lead}"screenshot": "{{image}}",`,
+        `${lead}"screenshots": {{imagesJson}},`
+      ].join('\n'))
+    }
+  }
+
+  return out
 }
 
 /** v0.4.7：检测「自定义模板但缺 video 占位」的 server —— migrate 不动它（保留用户结构），
@@ -130,7 +154,7 @@ export async function loadConfig(): Promise<MooConfig> {
   const cfg = normalizeConfig(result[CONFIG_KEY] as Partial<MooConfig> | undefined)
   const { config, changed } = applyMigrations(cfg)
   if (changed) {
-    if (import.meta.env.DEV) console.log('[Moo:config] migrated payloadTemplate(s) to include video fields')
+    if (import.meta.env.DEV) console.log('[Moo:config] migrated payloadTemplate(s) to include video + screenshots(多图) fields')
     // v0.7.3 P2：migration 落盘 fire-and-forget 失败会 silent → 每次 loadConfig 重做
     // migration（noise 但非 data loss）。至少 warn 让 DevTools 能看到
     void saveConfig(config).catch(e =>

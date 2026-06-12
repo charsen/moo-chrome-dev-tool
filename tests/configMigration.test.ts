@@ -105,8 +105,90 @@ describe('applyMigrations · payloadTemplate 加 video 字段', () => {
     expect(newTpl).toContain('"video_bytes": {{videoBytes}}')
   })
 
-  it('已含 {{video}} 的模板 → 不动（idempotent）', async () => {
-    const template = `{ "screenshot": "{{image}}", "video": "{{video}}" }`
+  it('已含 {{video}} + {{imagesJson}} 的模板 → 不动（真 idempotent）', async () => {
+    const template = `{ "screenshot": "{{image}}", "screenshots": {{imagesJson}}, "video": "{{video}}" }`
+    storage.data.mooConfig = {
+      projects: [{
+        id: 'p1', name: 'x', matchPatterns: [],
+        kind: 'webhook',
+        servers: [{
+          id: 's1', name: 'srv', endpoint: 'https://x.com/r', method: 'POST',
+          headers: {}, payloadTemplate: template, imageField: 'image', imageFormat: 'base64'
+        }],
+        defaultServerId: 's1',
+        capture: { requests: true, consoleErrors: true, storageKeys: [], requestBufferSize: 50 },
+        redact: { headerKeys: [], bodyKeys: [], maskPasswordInputs: false },
+        enabled: true
+      }]
+    }
+    const { loadConfig } = await import('@/storage/config')
+    const cfg = await loadConfig()
+    expect(cfg.projects[0]!.servers[0]!.payloadTemplate).toBe(template)
+  })
+
+  // ── v0.8.11 多图迁移：关键修复 —— 旧实现「已含 video 即提前返回」会让 v0.4.7~v0.8.10
+  //    期间配置的用户（有 video、缺 screenshots，正是多图发不出去那批）永远拿不到 screenshots ──
+  it('v0.8.11 核心修复：已含 {{video}} 但缺 screenshots → 仍补 screenshots（不被 video 提前返回吞掉）', async () => {
+    const template = `{
+  "screenshot": "{{image}}",
+  "video": "{{video}}"
+}`
+    storage.data.mooConfig = {
+      projects: [{
+        id: 'p1', name: 'x', matchPatterns: [],
+        kind: 'webhook',
+        servers: [{
+          id: 's1', name: 'srv', endpoint: 'https://x.com/r', method: 'POST',
+          headers: {}, payloadTemplate: template, imageField: 'image', imageFormat: 'base64'
+        }],
+        defaultServerId: 's1',
+        capture: { requests: true, consoleErrors: true, storageKeys: [], requestBufferSize: 50 },
+        redact: { headerKeys: [], bodyKeys: [], maskPasswordInputs: false },
+        enabled: true
+      }]
+    }
+    const { loadConfig } = await import('@/storage/config')
+    const cfg = await loadConfig()
+    const newTpl = cfg.projects[0]!.servers[0]!.payloadTemplate
+    expect(newTpl).toContain('"screenshots": {{imagesJson}}')
+    // screenshots 必须插在 screenshot 之后、video 之前（与默认模板结构对齐）
+    expect(newTpl.indexOf('"screenshot": "{{image}}"')).toBeLessThan(newTpl.indexOf('"screenshots"'))
+    expect(newTpl.indexOf('"screenshots"')).toBeLessThan(newTpl.indexOf('"video"'))
+  })
+
+  it('v0.8.11：纯老默认模板（缺 video + 缺 screenshots）→ 两个迁移都补，结构匹配新默认模板', async () => {
+    const template = `{
+  "screenshot": "{{image}}",
+  "url": "{{url}}"
+}`
+    storage.data.mooConfig = {
+      projects: [{
+        id: 'p1', name: 'x', matchPatterns: [],
+        kind: 'webhook',
+        servers: [{
+          id: 's1', name: 'srv', endpoint: 'https://x.com/r', method: 'POST',
+          headers: {}, payloadTemplate: template, imageField: 'image', imageFormat: 'base64'
+        }],
+        defaultServerId: 's1',
+        capture: { requests: true, consoleErrors: true, storageKeys: [], requestBufferSize: 50 },
+        redact: { headerKeys: [], bodyKeys: [], maskPasswordInputs: false },
+        enabled: true
+      }]
+    }
+    const { loadConfig } = await import('@/storage/config')
+    const cfg = await loadConfig()
+    const newTpl = cfg.projects[0]!.servers[0]!.payloadTemplate
+    expect(newTpl).toContain('"screenshots": {{imagesJson}}')
+    expect(newTpl).toContain('"video": "{{video}}"')
+    // 渲染后整体仍是合法 JSON（迁移没破坏结构）
+    const { renderTemplate } = await import('@/utils/template')
+    const rendered = renderTemplate(newTpl, { image: 'data:1', images: ['data:1', 'data:2'], video: '', videoDuration: 0, videoBytes: 0, url: 'u' })
+    const parsed = JSON.parse(rendered)
+    expect(parsed.screenshots).toEqual(['data:1', 'data:2'])
+  })
+
+  it('v0.8.11：用户手动用过 {{imagesJson}}（哪怕换名 shots）→ 不重复插 screenshots', async () => {
+    const template = `{ "screenshot": "{{image}}", "shots": {{imagesJson}}, "video": "{{video}}" }`
     storage.data.mooConfig = {
       projects: [{
         id: 'p1', name: 'x', matchPatterns: [],
