@@ -13,9 +13,21 @@
     <div v-if="state === 'recording'" class="moo-rec-bar" :style="recBarStyle">
       <span class="rec-dot" />
       <span class="rec-time">{{ fmtDuration(recordElapsed) }}</span>
+      <!-- 多匹配时录屏路径会静默 default 到首个项目，用户全程没提示。录制中就把目标项目
+           显示出来：发现提错可当场「取消」重来，免得录完才发现提到了别的项目。
+           单匹配无歧义不显示。 -->
+      <span v-if="matches.length > 1 && project" class="rec-target" :title="`本页命中 ${matches.length} 个项目，录屏目标：${project.name}`">→ {{ project.name }}</span>
       <button class="moo-btn small" aria-label="停止录屏" @click="stopRecording">⏹ 停止</button>
       <button class="moo-btn small" aria-label="取消录屏（丢弃已录内容）" @click="cancelRecording">取消</button>
     </div>
+
+    <!-- 「再截一张」延迟触发器（v0.8.12）：arming 态浮起，用户操作好页面再点「现在截图」。
+         点截图走 onArmedCapture（隐藏 UI → captureVisibleTab）；取消退回弹窗不加图。 -->
+    <ArmShotTrigger
+      v-if="state === 'arming'"
+      @shoot="onArmedCapture"
+      @cancel="onArmCancel"
+    />
 
     <Annotator
       v-if="state === 'annotating' && pendingRaw"
@@ -26,6 +38,7 @@
     <SubmitDialog
       v-if="state === 'submitting' && project"
       :project="project"
+      :match-count="matches.length"
       :images="shots.map((s) => s.annotated)"
       :video="recordedVideo"
       :requests="capturedRequests"
@@ -50,6 +63,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import FloatingBall from './FloatingBall.vue'
+import ArmShotTrigger from './ArmShotTrigger.vue'
 import { maskPasswordInputs } from './passwordMask'
 import { useRecorder, type RecordingResult } from './useRecorder'
 import type { Project } from '@/types/config'
@@ -63,7 +77,10 @@ import { useErrors, setErrorsEnabled } from './useErrors'
 import { HOST_ID } from './styles'
 import { clearDialogDraft, MAX_SHOTS } from './dialogDraft'
 
-type State = 'idle' | 'capturing' | 'annotating' | 'recording' | 'submitting'
+// 'arming'（v0.8.12）：点弹窗「＋ 再截一张」后的待截图态。弹窗已卸载（草稿存好），
+// 屏上浮起可拖动的「📷 现在截图」触发器，用户可先操作页面（切 SPA tab / 滚动 / 展开）
+// 再主动触发截图。区别于初次截图（悬浮球 / 快捷键）的「点了马上截」。
+type State = 'idle' | 'capturing' | 'annotating' | 'recording' | 'submitting' | 'arming'
 
 const state = ref<State>('idle')
 /** 当前页面匹配到的所有项目（>=0 个；空数组时悬浮球不显示） */
@@ -553,14 +570,32 @@ async function onRecapture(index: number) {
   void startCapture()
 }
 
-// 「+ 再截一张」：append 新 shot。弹窗卸载（草稿已由 SubmitDialog onBeforeUnmount 存好）
-// → 截屏 → 标注 → onAnnotated push → 回 submitting 重挂弹窗恢复草稿。
-async function onAddShot() {
+// 「+ 再截一张」（v0.8.12 改延迟触发）：不再点了马上截，而是进 'arming' 待截图态。
+// 弹窗卸载（草稿已由 SubmitDialog onBeforeUnmount 存好）→ 浮起「现在截图」触发器，
+// 用户可先切 SPA tab / 滚动 / 展开面板，准备好再点触发器走 onArmedCapture。
+function onAddShot() {
   if (shots.value.length >= MAX_SHOTS) return
+  captureTarget = { mode: 'append' }
+  state.value = 'arming'
+}
+
+// 用户在 'arming' 态点「现在截图」：走 startCapture 现有流程（state='capturing' 让触发器
+// 随 v-if 卸载、等 2 帧悬浮球/触发器隐藏后再截，确保不进截图）→ 标注 → onAnnotated push。
+// startCapture 要求 state==='idle' 起手，故先切 idle 再等一帧让触发器卸载（同 onRecapture）。
+async function onArmedCapture() {
+  if (state.value !== 'arming') return
+  if (shots.value.length >= MAX_SHOTS) { onArmCancel(); return }  // 极端时序兜底：已满退回弹窗
   captureTarget = { mode: 'append' }
   state.value = 'idle'
   await new Promise((r) => requestAnimationFrame(r))
   void startCapture()
+}
+
+// 'arming' 态点「取消」：退回弹窗、不加图、草稿仍在（同 onAnnotatorCancel 的「有 shots
+// 回 submitting」语义）。零内容理论上不会发生（再截一张前必有 ≥1 张 / 录像），兜底退 idle。
+function onArmCancel() {
+  captureTarget = { mode: 'append' }
+  state.value = (shots.value.length || recordedVideo.value) ? 'submitting' : 'idle'
 }
 
 // 删除第 i 张：弹窗开着原地 splice，不切状态。删到 0 张允许 —— 无图提交本就合法

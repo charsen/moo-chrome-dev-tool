@@ -32,6 +32,17 @@
       </div>
 
       <div v-else class="moo-dialog-body">
+        <!-- ⓪ 多匹配警告条：一个页面 URL 可能命中多个 Moo 项目（matchPatterns 重叠）。
+             快捷键 / 录屏 / 远程接管路径多匹配时静默 default 到首个，用户提交前看不到
+             「提到哪」→ 容易提错。这里显式把目标项目亮出来（禅道再带上 projectId 供核对），
+             提错能当场发现。matchCount <= 1（唯一匹配，无歧义）→ 不显示，零打扰。 -->
+        <div v-if="matchTotal > 1" class="moo-match-warn" role="status">
+          <span class="moo-match-warn-icon" aria-hidden="true">⚠</span>
+          <span class="moo-match-warn-text">
+            本页命中 <b>{{ matchTotal }}</b> 个项目，当前提交到「<b>{{ project.name }}</b>」<template v-if="kind === 'zentao'"> · 禅道 #{{ project.zentao?.projectId }}</template>。提错可在悬浮球切换项目后重提。
+          </span>
+        </div>
+
         <!-- ① 标题（必填，置顶） -->
         <div class="moo-form-row">
           <label for="moo-title">标题 *</label>
@@ -333,6 +344,10 @@ import type { RecordingResult } from './useRecorder'
 
 const props = defineProps<{
   project: Project
+  /** 本页 URL 命中的项目总数（matchProjects 结果长度）。> 1 时说明多匹配下当前
+   *  project 可能是静默 default 的首个 → body 顶部弹警告条让用户核对目标，提错可发现。
+   *  <= 1（唯一匹配，无歧义）不显示。默认 1 兼容 harness / 老调用方不传的情况。 */
+  matchCount?: number
   /** 标注完成的截图列表（v0.8.10 多图）：空数组 = 无图（录屏流程 / 删光）。
    *  提交时约定 images[0] === SubmitBugReq.image（老消费方兼容）。 */
   images: string[]
@@ -653,6 +668,10 @@ function selectNone() {
 import { shortUrl, statusClass, failClass, durClass, errLevelLabel, errLevelTitle } from '@/utils/requestRowFormat'
 
 const kind = computed(() => props.project.kind ?? 'webhook')
+
+// matchCount 归一化：prop 可选（harness / 老调用方不传），缺省按 1（唯一匹配，无歧义）。
+// > 1 触发 body 顶部多匹配警告条。用单独命名避免跟 prop 名撞（模板里引 matchTotal）。
+const matchTotal = computed(() => props.matchCount ?? 1)
 
 // === zentao 提交字段：每条 bug 可改，初值取 project.zentao default ===
 // v0.4.7：兜底 default 不在 ZENTAO_TYPE_OPTIONS 里时（schema 漂移 / 用户配了禅道侧自定义 type）

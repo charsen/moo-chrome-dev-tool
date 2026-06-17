@@ -99,6 +99,7 @@ export const SHADOW_CSS = `
   --c-danger:       var(--moo-c-danger);
   --c-danger-soft:  var(--moo-c-danger-soft);
   --c-danger-fg:    var(--moo-c-danger-fg);
+  --c-warn:         var(--moo-c-warn);
   --c-warn-soft:    var(--moo-c-warn-soft);
   --c-warn-fg:      var(--moo-c-warn-fg);
   --c-warn-halo:    var(--moo-c-warn-halo);
@@ -887,6 +888,32 @@ export const SHADOW_CSS = `
   color: var(--c-warn-fg);
 }
 .server-warn b { color: var(--c-text); font-weight: 600; }
+
+/* 多匹配警告条（SubmitDialog body 顶部）：一个 URL 命中多个 Moo 项目时，快捷键/录屏路径
+   静默 default 到首个，用户提交前看不到提到哪。亮黄警告条把目标项目显式标出来供核对。
+   只用 tokens.css 的 warn token（短名经 .moo-root alias 桥到 --moo-c-warn-*），不引新 token。
+   --c-warn-fg 在 shadow 里有 drift override（styles.ts 顶部 #b45309），叠任意宿主页需更狠对比度。 */
+.moo-match-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 8px 11px;
+  border: 1px solid var(--c-warn);
+  background: var(--c-warn-soft);
+  border-radius: var(--r-md);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--c-warn-fg);
+}
+.moo-match-warn-icon {
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.moo-match-warn-text { min-width: 0; }
+.moo-match-warn-text b { font-weight: 600; color: var(--c-warn-fg); }
+
 .zentao-target {
   display: flex;
   align-items: center;
@@ -1726,6 +1753,18 @@ export const SHADOW_CSS = `
   min-width: 78px;
   text-align: center;
 }
+/* 多匹配录屏目标项目标识：rec-bar 是 slate-900 暗底，文字用半透白；窄宿主页省略号兜底。
+   单匹配不渲染（ContentApp v-if），所以这里不需要无歧义态样式。 */
+.rec-target {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, .82);
+  font-weight: 500;
+  flex-shrink: 1;
+  min-width: 0;
+}
 /* rec-bar 内部按钮：在 slate-900 暗底上的白色叠加按钮，跟主题无关 */
 .moo-rec-bar .moo-btn {
   background: rgba(255, 255, 255, .12);
@@ -1765,6 +1804,108 @@ export const SHADOW_CSS = `
   0%   { transform: scale(.4); opacity: 0; }
   20%  { opacity: .95; }
   100% { transform: scale(2); opacity: 0; }
+}
+
+/* ============================================
+   「再截一张」延迟触发器（v0.8.12）
+   --------------------------------------------
+   arming 态浮起的可拖动「现在截图 / 取消」条。跟悬浮球同款玻璃反相规则：
+   浅页深玻璃 + 浅文字，深页（@media dark）翻成浅玻璃 + 深文字，保证叠任意
+   宿主页都高对比。z-index 跟悬浮球同档（比 rec-bar / toast 低，让提示能盖上）。
+============================================ */
+.moo-arm-wrap {
+  position: fixed;
+  z-index: 2147483600;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.moo-arm-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--g-bg-deep);
+  border: 1px solid var(--g-border-deep);
+  border-radius: var(--r-pill);
+  box-shadow: var(--g-sh-deep);
+  backdrop-filter: blur(8px);
+  user-select: none;
+  touch-action: none;
+  cursor: grab;
+  transition: box-shadow .15s, transform .15s;
+}
+.moo-arm-row:hover { box-shadow: var(--g-sh-deep-hover); transform: translateY(-1px); }
+.moo-arm-row.dragging { cursor: grabbing; transition: none; box-shadow: var(--g-sh-deep-drag); }
+
+.moo-arm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  border: none;
+  border-radius: var(--r-pill);
+  font-family: var(--moo-ff-sans);
+  font-size: var(--moo-fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color .12s, color .12s, transform .12s;
+}
+.moo-arm-btn svg.ic { width: 16px; height: 16px; display: block; }
+.moo-arm-btn:active { transform: scale(.96); }
+
+/* 主操作「现在截图」：品牌实心，最显眼 */
+.moo-arm-btn--shoot {
+  padding: 0 14px 0 12px;
+  background: var(--c-brand);
+  color: var(--moo-c-brand-fg);
+}
+.moo-arm-btn--shoot:hover { background: var(--c-brand-hover); }
+
+/* 「取消」：玻璃条上的浅色幽灵按钮（深 ball 默认浅文字） */
+.moo-arm-btn--cancel {
+  padding: 0 12px;
+  background: rgba(255, 255, 255, .1);
+  color: rgba(241, 245, 249, .9);
+}
+.moo-arm-btn--cancel:hover { background: rgba(255, 255, 255, .2); }
+
+/* 操作提示：玻璃条下方一行小字。深 ball 默认浅色半透。 */
+.moo-arm-hint {
+  font-size: var(--moo-fs-xs);
+  font-weight: 500;
+  color: rgba(241, 245, 249, .92);
+  background: var(--g-bg-deep);
+  border: 1px solid var(--g-border-deep);
+  border-radius: var(--r-md);
+  padding: 3px 8px;
+  box-shadow: var(--g-sh-deep);
+  backdrop-filter: blur(8px);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* === 深色页 → 浅玻璃 + 深字（同 .moo-ball-row 反相规则） === */
+@media (prefers-color-scheme: dark) {
+  .moo-arm-row {
+    background: var(--g-bg-light);
+    border-color: var(--g-border-light);
+    box-shadow: var(--g-sh-light);
+  }
+  .moo-arm-row:hover { box-shadow: var(--g-sh-light-hover); }
+  .moo-arm-row.dragging { box-shadow: var(--g-sh-light-drag); }
+  .moo-arm-btn--cancel {
+    background: rgba(15, 23, 42, .06);
+    color: var(--c-text-muted);
+  }
+  .moo-arm-btn--cancel:hover { background: rgba(15, 23, 42, .12); }
+  .moo-arm-hint {
+    background: var(--g-bg-light);
+    border-color: var(--g-border-light);
+    box-shadow: var(--g-sh-light);
+    color: var(--c-text-muted);
+  }
 }
 
 /* v0.7.3：前庭敏感用户 / 系统级减动效设置 — content world 自有 @keyframes 全部退化。
