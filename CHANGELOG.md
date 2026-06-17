@@ -25,6 +25,10 @@
 
 **826 单测 + e2e（multi-shot 5 含 arming 取消保留草稿 + 多匹配警告 4 + dialog-multi-shot 7）+ type-check + build 全绿。**
 
+### 发版决策小记（跳 RELEASE_TEST_CHECKLIST 理由）
+
+非 BREAKING（不碰匹配引擎 / 存储 schema / 悬浮球强制选逻辑，零迁移）+ 全绿（826 单测 + 181 e2e，本版新增 multi-shot 5 含 arming 取消、多匹配警告 4、dialog-multi-shot 7 锁回归）+ 用户明示「publish 0.8.12」放行。dogfood 不足（多匹配可见 / arming 延迟触发是刚做的）—— 跳过 checklist。留 dogfood 观察点：① 多匹配警告条在真录屏/快捷键路径准确显「命中 N 个 · 当前提交到 X · 禅道 #id」② arming「现在截图」在真 SPA 切 tab/滚动后截到的是切后页面 + 取消能保留草稿 + 拖拽 listener 不泄漏。
+
 ## v0.8.11
 
 2026-06-12。无 BREAKING（向后兼容）—— **修 v0.8.10 多图数据丢失 bug：base64/JSON webhook（含 cloud）开箱只发首图**。
