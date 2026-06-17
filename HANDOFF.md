@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.8.12 已发**（2026-06-17）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.12/moo-chrome-dev-tool-0.8.12.zip)（sha256 待回填）。无 BREAKING — 提交弹窗两件：⚠ **多匹配时目标项目可见**（一页命中多个 Moo 项目时，弹窗顶显「命中 N 个项目 · 当前提交到 X · 禅道 #id」+ 录制条目标标识；修快捷键/录屏静默 default 提错项目看不见，用户反馈「提报到无项目」根因之一，唯一匹配零打扰）；✨ **「再截一张」改延迟触发**（点「＋ 再截一张」收起弹窗 + 右下角浮可拖「现在截图」，先切 SPA tab/滚动再截；新增 `arming` 状态 + `ArmShotTrigger.vue`，拖拽照搬悬浮球 pointer-capture、listener idempotent 收口）。826 单测 + 181 e2e（multi-shot 5 含 arming 取消 + 多匹配警告 4 + dialog-multi-shot 7）全绿。**dogfood 不足（刚做），用户明示放行；留观：真录屏/快捷键路径警告条准确、arming 切页后截到切后页面 + 取消保留草稿 + 拖拽不泄漏。** 不碰匹配引擎/存储 schema/悬浮球强制选逻辑，零迁移。详情见 CHANGELOG v0.8.12 段。
+**v0.8.12 已发**（2026-06-17）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.12/moo-chrome-dev-tool-0.8.12.zip)（sha256 `14087a802b10826180e4f89b5438a5e80661b7248c131b88184970e346e135df`）。无 BREAKING — 提交弹窗两件：⚠ **多匹配时目标项目可见**（一页命中多个 Moo 项目时，弹窗顶显「命中 N 个项目 · 当前提交到 X · 禅道 #id」+ 录制条目标标识；修快捷键/录屏静默 default 提错项目看不见，用户反馈「提报到无项目」根因之一，唯一匹配零打扰）；✨ **「再截一张」改延迟触发**（点「＋ 再截一张」收起弹窗 + 右下角浮可拖「现在截图」，先切 SPA tab/滚动再截；新增 `arming` 状态 + `ArmShotTrigger.vue`，拖拽照搬悬浮球 pointer-capture、listener idempotent 收口）。826 单测 + 181 e2e（multi-shot 5 含 arming 取消 + 多匹配警告 4 + dialog-multi-shot 7）全绿。**dogfood 不足（刚做），用户明示放行；留观：真录屏/快捷键路径警告条准确、arming 切页后截到切后页面 + 取消保留草稿 + 拖拽不泄漏。** 不碰匹配引擎/存储 schema/悬浮球强制选逻辑，零迁移。详情见 CHANGELOG v0.8.12 段。
 
 **v0.8.11 已发**（2026-06-12）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.11/moo-chrome-dev-tool-0.8.11.zip)（sha256 `ee29b694da3cfc3167a9641316b65b26b2093935b321ff03e38bb7d3adc4ece6`）。无 BREAKING（向后兼容）— 🔴 **修 v0.8.10 多图数据丢失**：默认 base64/JSON 模板（含 cloud intake）漏 `{{imagesJson}}`，开箱截多张只发首图。默认模板补 `screenshots` 数组 + `migrateServerTemplate` 自动升级老配置（修「已含 video 即提前返回」吞 screenshots 的陷阱）；⚠ 模板缺多图字段时 Environment 显警告条 + 一键补按钮（自定义模板迁移碰不到的兜底）；🔑 配置导出加「含密钥」选项（自己多机/重装备份免再找 token）；📐 多图缩略图横向铺开（flex-wrap）。826 单测 + 多图/横向布局/警告条 e2e 全绿。**dogfood 不足，用户明示放行；留观：默认模板多图在真禅道/cloud 实发多张、老配置自动升级（v0.4.7~v0.8.10 有 video 缺 screenshots 存量）。** 服务端 moo-scaffold-cloud 不在本次发版范围。详情见 CHANGELOG v0.8.11 段。
 
@@ -26,7 +26,7 @@
 
 ## Playwright E2E
 
-> **最新 case 数看顶部「一句话现状」**（v0.8.11 时 176 case），本段只讲结构和原因，不再回填具体数字。
+> **最新 case 数看顶部「一句话现状」**（v0.8.12 时 181 case），本段只讲结构和原因，不再回填具体数字。
 
 **真起 chromium、真加载 dist 当 extension、真跑 SW**。跑法：`pnpm test:e2e`（先 build，全量约 2min）；首次要先 `pnpm exec playwright install chromium`（本机已装）。
 
@@ -105,7 +105,9 @@
 
 ## 现在最值得做的下一件事
 
-v0.8.11 已发完。**当前没有强迫性 todo**。本版主体是修 v0.8.10 多图丢数据 P0（默认模板漏 `{{imagesJson}}` 致开箱只发首图）+ 模板缺字段可见引导 + 含密钥导出 + 横向布局，dogfood 不足（用户明示放行跳 checklist，理由见 CHANGELOG v0.8.11「发版决策小记」）。**留观的手测点**：① 默认模板多图在真禅道 / cloud intake 链路实发多张（别只发首图）② 老配置 `migrateServerTemplate` 自动升级，尤其 v0.4.7~v0.8.10 期间「有 video、缺 screenshots」的存量配置 ③ 沿袭 v0.8.10 的弹窗拖拽/缩小在重 CSS 站点 + 草稿真禅道链路。等用户继续真实 dogfood 反馈，再决定 hotfix 还是新 feature。
+v0.8.12 已发完。**当前没有强迫性 todo**。本版主体是提交弹窗两件：⚠ 多匹配时目标项目可见（一页命中多个 Moo 项目时弹窗顶显「命中 N 个 · 当前提交到 X · 禅道 #id」+ 录制条目标标识，修快捷键/录屏静默 default 提错项目看不见）+ ✨「再截一张」改延迟触发（收起弹窗 + 右下角可拖「现在截图」，先切 SPA tab/滚动再截；新增 `arming` 状态 + `ArmShotTrigger.vue`）。非 BREAKING、零迁移，dogfood 不足（用户明示放行跳 checklist，理由见 CHANGELOG v0.8.12「发版决策小记」）。**留观的手测点**：① 多匹配警告条在真录屏/快捷键路径准确显「命中 N 个 · 当前提交到 X · 禅道 #id」② arming「现在截图」在真 SPA 切 tab/滚动后截到的是切后页面 + 取消能保留草稿 + 拖拽 listener 不泄漏。等用户继续真实 dogfood 反馈，再决定 hotfix 还是新 feature。
+
+> **发版踩坑速记**（v0.8.12 这次踩，下次发版必看）：`pnpm release --publish` 会**重新 build + 重打 zip**，而 vite 产物文件名带 content-hash → 两次构建字节不同 → **zip sha256 会变**。若上一会话已 bump/tag/push 留下旧 zip，这次 publish 重打的新 zip sha256 跟旧的对不上。**回填 HANDOFF 的 sha256 一律以「Gitee release 页面实际挂着的产物」为准**（curl 下来 `shasum -a 256` 核对），不是任何缓存/口头给的旧值 —— 否则用户下载 `shasum -c` 必失败。另：e2e 全量 181 条单 worker 串行偶发 1 条 flake（本次 MS7 `dialog-multi-shot:138` ESC cancel 时序），单独 `--repeat-each=3` 重跑 + 全量复跑均全绿确认非回归后再发。
 
 > **webhook 默认模板字段复盘速记**（v0.8.11 这次踩，碰多图/模板先看）：v0.8.10 加多图截图，但 `DEFAULT_PAYLOAD_TEMPLATE` 只写了 `"screenshot": "{{image}}"`（首图），**漏了 `{{imagesJson}}`** —— 所有用默认配置的 base64/JSON webhook（含 cloud intake，最常见路径）不管截几张都只发第一张且无提示。**为什么测试没抓到**：多图单测/e2e 全用手写特制模板 `{"images":{{imagesJson}}}`，没一个用真实 `DEFAULT_PAYLOAD_TEMPLATE` = 测了没人会用的配置。核心 lesson：**回归守卫必须用真实默认模板断言，别用手写 mock 模板自欺**。另一个陷阱：`migrateServerTemplate` 照搬 v0.4.7 video 迁移时「已含 video 即提前返回」会吞 screenshots 迁移 —— 多个迁移项必须各自独立判断，不能一个命中就 early return。
 
