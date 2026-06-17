@@ -10,6 +10,8 @@
 //   ?case=submit                 — 挂 SubmitDialog（初始空表单）
 //   ?case=submit&fail=true       — 挂 SubmitDialog 并 mock sendMessage 返回失败
 //   ?case=submit&success=true    — 挂 SubmitDialog 并 mock sendMessage 返回成功（用于测 1.5s 保护期）
+//   ?case=submit&matchCount=N    — 模拟本页命中 N 个项目；> 1 时 body 顶部出多匹配警告条
+//   ?case=submit&kind=zentao     — 用禅道项目（警告条带「· 禅道 #projectId」）
 //   ?case=annotator              — 挂 Annotator（小占位图）；测试侧通过 mouse 画 2 笔触发 cancel-guard
 //
 // 跟 panel-harness 同样的姿势：mock chrome.* API + shadow root 内挂载 + 不动业务代码。
@@ -203,33 +205,63 @@ async function bootstrap(): Promise<void> {
       errRef.value.push(e)  // in-place，不重赋值
       return e.id
     }
-    const project = {
-      id: 'p1',
-      name: '示例项目',
-      matchPatterns: ['<all_urls>'],
-      servers: [
-        {
-          id: 's1',
-          name: '主上报',
-          endpoint: 'https://intake.example.com/api/bugs',
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          payloadTemplate: '{"title":"{{title}}"}',
-          imageField: 'screenshot',
-          imageFormat: 'base64' as const
+    // ?kind=zentao → 用禅道项目（多匹配警告条要带「· 禅道 #projectId」核对信息）；
+    // 缺省 webhook。禅道 projectId 固定 42，e2e 断言警告条含 #42。
+    const isZentao = params.get('kind') === 'zentao'
+    const project = isZentao
+      ? {
+          id: 'pz',
+          name: '禅道示例项目',
+          matchPatterns: ['<all_urls>'],
+          servers: [],
+          defaultServerId: '',
+          kind: 'zentao' as const,
+          zentao: {
+            baseUrl: 'https://zentao.example.com',
+            account: 'tester',
+            password: 'pw',
+            projectId: 42,
+            defaultType: 'codeerror',
+            defaultSeverity: 3 as const,
+            defaultPri: 3 as const,
+            moduleId: 0
+          },
+          capture: { requests: true, consoleErrors: true, storageKeys: [], requestBufferSize: 50 },
+          redact: { headerKeys: [], bodyKeys: [], maskPasswordInputs: false },
+          enabled: true,
+          token: 'tok'
         }
-      ],
-      defaultServerId: 's1',
-      capture: { requests: true, consoleErrors: true, storageKeys: [], requestBufferSize: 50 },
-      redact: { headerKeys: [], bodyKeys: [], maskPasswordInputs: false },
-      enabled: true,
-      token: 'tok'
-    }
+      : {
+          id: 'p1',
+          name: '示例项目',
+          matchPatterns: ['<all_urls>'],
+          servers: [
+            {
+              id: 's1',
+              name: '主上报',
+              endpoint: 'https://intake.example.com/api/bugs',
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              payloadTemplate: '{"title":"{{title}}"}',
+              imageField: 'screenshot',
+              imageFormat: 'base64' as const
+            }
+          ],
+          defaultServerId: 's1',
+          capture: { requests: true, consoleErrors: true, storageKeys: [], requestBufferSize: 50 },
+          redact: { headerKeys: [], bodyKeys: [], maskPasswordInputs: false },
+          enabled: true,
+          token: 'tok'
+        }
+    // ?matchCount=N → 模拟本页命中 N 个 Moo 项目。> 1 触发 body 顶部多匹配警告条。
+    // 缺省 1（唯一匹配，无歧义）→ 不显示。
+    const matchCount = Number(params.get('matchCount') ?? '1') || 1
     const Root = defineComponent({
       setup() {
         return () =>
           h(SubmitDialog as unknown as ReturnType<typeof defineComponent>, {
             project,
+            matchCount,
             // v0.8.10 多图：image 单值 prop 改 images 数组（空数组 = 无图，同旧 image:''）。
             // ?shots=N 生成 N 张占位缩略，供测试断言多图 UI（重标/重截/删除/再截一张）
             images: shotImages,
