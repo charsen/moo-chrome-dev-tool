@@ -16,6 +16,10 @@
 
 **834 单测（含 8 条降采样：缩放数学/只缩不放/格式保留/失败兜底）+ 截图 e2e + type-check + build 全绿。**
 
+### 发版决策小记（跳 RELEASE_TEST_CHECKLIST 理由）
+
+非 BREAKING（向后兼容，只缩不放：≤2560 原样返回、保留格式、失败返原图，不碰存储 schema / 上传协议）+ 全绿（834 单测含 8 条降采样 + 181 e2e + type-check + build）+ 用户明示「发版」放行。dogfood 不足（降采样刚做）—— 跳过 checklist。留 dogfood 观察点：① 真高 DPI 屏截图上传后体积明显变小、标注/预览/history 拿到的都是缩好的图；② PNG 文字清晰 + alpha 保留、JPEG 格式不变；③ 已 ≤2560 的截图不被多余处理；④ 解码失败兜底返原图、不丢截图。服务端 moo-scaffold-cloud 不在本次发版范围（独立 repo，测试已 push，用户自行 deploy）。
+
 ## v0.8.12
 
 2026-06-17。无 BREAKING —— **提交弹窗两件：多匹配目标可见 + 「再截一张」延迟到主动触发**。
