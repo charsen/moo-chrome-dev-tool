@@ -13,6 +13,7 @@ import type {
 import type { BugServer } from '@/types/config'
 import { loadConfig, matchProjects } from '@/storage/config'
 import { renderTemplate } from '@/utils/template'
+import { downscaleToMaxWidth } from '@/utils/image'
 import { t } from '@/i18n'
 
 export async function handleCaptureScreenshot(windowId?: number): Promise<CaptureScreenshotRes> {
@@ -21,7 +22,10 @@ export async function handleCaptureScreenshot(windowId?: number): Promise<Captur
       windowId ?? chrome.windows.WINDOW_ID_CURRENT,
       { format: 'png' }
     )
-    return { ok: true, dataUrl }
+    // 上传前降采样到 ≤ 2560 宽（高 DPI 截图物理像素 3840px+/5–6MB）—— 标注/预览/上传/history
+    // 全拿到这张缩好的图，单一收口点。失败内部兜底返原图，不影响截图成功。
+    const downscaled = await downscaleToMaxWidth(dataUrl)
+    return { ok: true, dataUrl: downscaled }
   } catch (err) {
     // v0.4.5：Promise 版 captureVisibleTab 失败时 reject Error，理论上不会留 lastError。
     // 但 chrome 109-115 实现历史上有版本两条都设，防御性 read 一下避免 unchecked 警告
