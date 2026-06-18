@@ -11,7 +11,7 @@
  *   ④ orphan hint 拼装（uploaded > 0 时附 hint）
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Project } from '@/types/config'
 import type { SubmitBugReq } from '@/types/messages'
 
@@ -196,21 +196,29 @@ describe('submitToZentao · submitBug 三路径', () => {
 })
 
 // ─────────────────── v0.8.10 多张截图：uploadZentaoAttachments ───────────────────
-// 契约：req.images 多图逐张上传（文件名 moo-screenshot-N.png）；单图老调用方
-// （只有 req.image）仍是 moo-screenshot.png 不变（接收端按文件名识别截图，不能回归）。
+// 契约：req.images 多图逐张上传；单图老调用方（只有 req.image）走单文件名（不回归）。
+// v0.8.14：截图上传前有损重编码成 JPEG 压体积，文件名同步 .jpg（禅道 inline img 扩展名
+// 要跟内容一致）。下面断言用 .jpg。
 describe('uploadZentaoAttachments · v0.8.10 多图', () => {
   // 'QUFB' = base64('AAA')，3 字节，过 blob.size===0 的跳过守卫
   const shot = (tag: string) => `data:image/png;base64,QUFB${tag}`
 
-  /** 取所有 uploadEditorFile 调用里 displayName 形如 moo-screenshot*.png 的列表（过滤掉 context 附件） */
+  // 这些用例只验文件名 / best-effort，不验重编码内容。stub fetch 同步抛让 reencodeImage
+  // 快速走兜底（返原 PNG dataUrl），避免走 node 真 fetch（慢 + 不确定）。
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('no network in test') }))
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  /** 取所有 uploadEditorFile 调用里 displayName 形如 moo-screenshot*.jpg 的列表（过滤掉 context 附件） */
   function screenshotNames(): string[] {
     return mockedUpload.mock.calls
       .map((c) => c[2] as string)
       .filter((n) => n.startsWith('moo-screenshot'))
   }
 
-  it('req.images 3 张 → uploadEditorFile 截图调 3 次，名字 -1/-2/-3.png', async () => {
-    mockedUpload.mockResolvedValue({ ok: true, data: { url: '/file-read-1.png' } })
+  it('req.images 3 张 → uploadEditorFile 截图调 3 次，名字 -1/-2/-3.jpg', async () => {
+    mockedUpload.mockResolvedValue({ ok: true, data: { url: '/file-read-1.jpg' } })
     const req: SubmitBugReq = {
       ...baseReq,
       image: shot('A'),
@@ -218,29 +226,29 @@ describe('uploadZentaoAttachments · v0.8.10 多图', () => {
     }
     const { uploaded } = await uploadZentaoAttachments(req, project, 'https://z.example.com')
     expect(screenshotNames()).toEqual([
-      'moo-screenshot-1.png',
-      'moo-screenshot-2.png',
-      'moo-screenshot-3.png'
+      'moo-screenshot-1.jpg',
+      'moo-screenshot-2.jpg',
+      'moo-screenshot-3.jpg'
     ])
     expect(uploaded.filter((f) => f.kind === 'screenshot')).toHaveLength(3)
   })
 
-  it('单图老调用方（无 images）→ 仍 1 次 moo-screenshot.png（不回归）', async () => {
-    mockedUpload.mockResolvedValue({ ok: true, data: { url: '/file-read-2.png' } })
+  it('单图老调用方（无 images）→ 仍 1 次 moo-screenshot.jpg（不回归）', async () => {
+    mockedUpload.mockResolvedValue({ ok: true, data: { url: '/file-read-2.jpg' } })
     const req: SubmitBugReq = { ...baseReq, image: shot('A') }
     await uploadZentaoAttachments(req, project, 'https://z.example.com')
-    expect(screenshotNames()).toEqual(['moo-screenshot.png'])
+    expect(screenshotNames()).toEqual(['moo-screenshot.jpg'])
   })
 
   it('images 恰 1 张 → 不带序号（跟单图语义一致）', async () => {
-    mockedUpload.mockResolvedValue({ ok: true, data: { url: '/file-read-3.png' } })
+    mockedUpload.mockResolvedValue({ ok: true, data: { url: '/file-read-3.jpg' } })
     const req: SubmitBugReq = { ...baseReq, image: shot('A'), images: [shot('A')] }
     await uploadZentaoAttachments(req, project, 'https://z.example.com')
-    expect(screenshotNames()).toEqual(['moo-screenshot.png'])
+    expect(screenshotNames()).toEqual(['moo-screenshot.jpg'])
   })
 
   it('无 image 无 images → 0 次截图上传', async () => {
-    mockedUpload.mockResolvedValue({ ok: true, data: { url: '/file-read-4.png' } })
+    mockedUpload.mockResolvedValue({ ok: true, data: { url: '/file-read-4.jpg' } })
     await uploadZentaoAttachments({ ...baseReq }, project, 'https://z.example.com')
     expect(screenshotNames()).toEqual([])
   })
@@ -252,7 +260,7 @@ describe('uploadZentaoAttachments · v0.8.10 多图', () => {
       call++
       return call === 2
         ? { ok: false as const, error: '503' }
-        : { ok: true as const, data: { url: `/file-read-${call}.png` } }
+        : { ok: true as const, data: { url: `/file-read-${call}.jpg` } }
     })
     const req: SubmitBugReq = {
       ...baseReq,
@@ -262,6 +270,60 @@ describe('uploadZentaoAttachments · v0.8.10 多图', () => {
     const { uploaded, failed } = await uploadZentaoAttachments(req, project, 'https://z.example.com')
     expect(uploaded.filter((f) => f.kind === 'screenshot')).toHaveLength(2)
     expect(failed.filter((f) => f.kind === 'screenshot').map((f) => f.displayName))
-      .toEqual(['moo-screenshot-2.png'])
+      .toEqual(['moo-screenshot-2.jpg'])
+  })
+})
+
+// ─────────────────── v0.8.14 截图重编码 JPEG（uploadZentaoAttachments）───────────────────
+// 契约：禅道路径上传前把截图有损重编码成 JPEG（q0.9，老禅道通吃）压体积，治
+//   「2560px PNG 仍 >8MB 被服务端静默丢」。验上传 blob.type=image/jpeg + 文件名 .jpg。
+//   只截图走 JPEG；context/requests 等 json 附件不动。
+describe('uploadZentaoAttachments · v0.8.14 重编码 JPEG', () => {
+  const PNG = (tag: string) => `data:image/png;base64,QUFB${tag}`
+
+  /** stub canvas 让 reencodeImage 成功出 image/jpeg；注入 dataUrlToBlob 走真解码（验 blob.type）。 */
+  function stubJpegCanvas() {
+    const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]).buffer // JPEG SOI 头
+    vi.stubGlobal('fetch', vi.fn(async () => ({ blob: async () => ({ type: 'image/png', arrayBuffer: async () => jpegBytes }) })))
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 2560, height: 1440, close: () => {} })))
+    vi.stubGlobal('OffscreenCanvas', class {
+      width: number; height: number
+      constructor(w: number, h: number) { this.width = w; this.height = h }
+      getContext() { return { set fillStyle(_v: string) {}, fillRect: () => {}, drawImage: () => {} } }
+      async convertToBlob(opts: { type: string }) { return { type: opts.type, arrayBuffer: async () => jpegBytes } }
+    })
+  }
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('上传 blob.type=image/jpeg + 文件名 .jpg（真重编码，非兜底）', async () => {
+    stubJpegCanvas()
+    const uploadedBlobs: { name: string; type: string }[] = []
+    mockedUpload.mockImplementation(async (_base: string, blob: Blob, name: string) => {
+      if (name.startsWith('moo-screenshot')) uploadedBlobs.push({ name, type: blob.type })
+      return { ok: true as const, data: { url: '/file-read-1.jpg' } }
+    })
+    const req: SubmitBugReq = { ...baseReq, image: PNG('A'), images: [PNG('A'), PNG('B')] }
+    // submitToZentao 注入 dataUrlToBlob 闭包；这里用真 dataUrl 解码器验 blob.type
+    const { dataUrlToBlob } = await import('@/utils/dataUrl')
+    mockedEnsure.mockResolvedValue({ ok: true })
+    mockedSubmit.mockResolvedValue({ ok: true, data: { bugId: 1 } })
+    await submitToZentao(req, project, dataUrlToBlob)
+    expect(uploadedBlobs).toEqual([
+      { name: 'moo-screenshot-1.jpg', type: 'image/jpeg' },
+      { name: 'moo-screenshot-2.jpg', type: 'image/jpeg' }
+    ])
+  })
+
+  it('不污染 req：提交后 req.images 仍是原 PNG dataUrl（history 走原 req）', async () => {
+    stubJpegCanvas()
+    mockedUpload.mockResolvedValue({ ok: true, data: { url: '/file-read-1.jpg' } })
+    mockedEnsure.mockResolvedValue({ ok: true })
+    mockedSubmit.mockResolvedValue({ ok: true, data: { bugId: 1 } })
+    const req: SubmitBugReq = { ...baseReq, image: PNG('A'), images: [PNG('A'), PNG('B')] }
+    const { dataUrlToBlob } = await import('@/utils/dataUrl')
+    await submitToZentao(req, project, dataUrlToBlob)
+    expect(req.image).toBe(PNG('A'))
+    expect(req.images).toEqual([PNG('A'), PNG('B')])
   })
 })

@@ -4,6 +4,7 @@ import {
   insertScreenshotsField,
   DEFAULT_PAYLOAD_TEMPLATE
 } from '@/types/config'
+import { renderTemplate } from '@/utils/template'
 
 /**
  * 多图字段检测 + 一键补（v0.8.11）。EnvironmentWebhook.vue「补多图字段」按钮 +
@@ -50,9 +51,36 @@ describe('insertScreenshotsField', () => {
     expect(insertScreenshotsField(tpl)).toBe(tpl)
   })
 
-  it('匹配不到标准行（自定义结构 / 无 trailing 逗号）→ null（调用方提示手动）', () => {
+  it('字段名自定义（非 "screenshot"）→ null（调用方提示手动）', () => {
     expect(insertScreenshotsField('{"img":"{{image}}"}')).toBeNull()
-    expect(insertScreenshotsField('{\n  "screenshot": "{{image}}"\n}')).toBeNull() // 末字段无逗号
+  })
+
+  // ★ v0.8.14 修：screenshot 是末字段、无尾逗号（cloud 单图模板）—— 旧正则漏匹配 → 多图发不出去
+  it('★ screenshot 末字段无尾逗号 → 也能插入，且产出合法 JSON', () => {
+    const tpl = '{\n  "title": "{{title}}",\n  "screenshot": "{{image}}"\n}'
+    const out = insertScreenshotsField(tpl)
+    expect(out).not.toBeNull()
+    expect(out).toContain('"screenshots": {{imagesJson}}')
+    // 渲染后必须是合法 JSON（screenshots 成末字段、不带尾逗号，不撞 }）
+    const rendered = renderTemplate(out!, { title: 't', image: 'data:1', images: ['data:1', 'data:2'] })
+    const parsed = JSON.parse(rendered)
+    expect(parsed.screenshot).toBe('data:1')
+    expect(parsed.screenshots).toEqual(['data:1', 'data:2'])
+  })
+
+  it('★ screenshot 末字段无逗号 + 单行紧凑 JSON → 同样修复', () => {
+    const out = insertScreenshotsField('{"title":"{{title}}","screenshot":"{{image}}"}')
+    expect(out).not.toBeNull()
+    const parsed = JSON.parse(renderTemplate(out!, { title: 't', image: 'data:1', images: ['data:1'] }))
+    expect(parsed.screenshots).toEqual(['data:1'])
+  })
+
+  it('有尾逗号（后面还有字段）→ screenshots 带逗号，不回归', () => {
+    const out = insertScreenshotsField('{\n  "screenshot": "{{image}}",\n  "url": "{{url}}"\n}')
+    expect(out).toContain('"screenshots": {{imagesJson}},')
+    const parsed = JSON.parse(renderTemplate(out!, { image: 'data:1', images: ['data:1'], url: 'u' }))
+    expect(parsed.screenshots).toEqual(['data:1'])
+    expect(parsed.url).toBe('u')
   })
 
   it('非字符串 → null', () => {

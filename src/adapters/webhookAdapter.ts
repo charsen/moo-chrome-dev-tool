@@ -34,6 +34,7 @@ import type {
 import { renderTemplate } from '@/utils/template'
 import { parseRemoteId } from '@/utils/remoteHeaders'
 import { dataUrlToBlob } from '@/utils/dataUrl'
+import { reencodeImage } from '@/utils/image'
 import { t } from '@/i18n'
 
 /**
@@ -63,10 +64,17 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
     const storageKeys = project.capture?.storageKeys ?? []
     const storage = storageKeys.length > 0 ? await readPageStorage(ctx.tabId, storageKeys) : {}
 
+    // v0.8.14 截图上传前有损重编码成 WebP（q0.9）压体积，治「2560px PNG 仍 >8MB 被云端
+    // extractBinary 静默 skip」的丢图 bug。cloud MIME 白名单含 image/webp，最清晰。
+    // ⚠ 只重编码「要发出去的副本」 —— 不碰 req.image/req.images（history 走原 req 保 PNG 无损）。
+    const outImage = await reencodeImage(req.image ?? '', 'image/webp')
+    const srcImages = req.images ?? (req.image ? [req.image] : [])
+    const outImages = await Promise.all(srcImages.map((d) => reencodeImage(d, 'image/webp')))
+
     const renderCtx: Record<string, unknown> = {
       title: req.title,
       description: req.description,
-      image: req.image,
+      image: outImage,
       url: req.url,
       userAgent: req.userAgent,
       viewport: req.viewport,
@@ -80,7 +88,8 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
       videoDuration: req.video?.duration ?? 0,
       // v0.8.10 多图：模板可用 {{imagesJson}} 注入 JSON 数组（renderTemplate 的 xxxJson
       // 后缀自动 JSON.stringify）。不引用则零影响 —— 老模板/老服务端完全兼容。
-      images: req.images ?? (req.image ? [req.image] : []),
+      // v0.8.14：这里是已重编码的 WebP 副本（{{imagesJson}} 渲染出的也是 WebP）。
+      images: outImages,
       // 让模板可以用 {{token}} 把项目 token 写进 body。
       // 后端只读 body 字段做鉴权时（不走 Authorization header）必须有这个。
       token: project.token ?? ''

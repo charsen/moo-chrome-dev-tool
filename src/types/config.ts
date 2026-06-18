@@ -165,20 +165,28 @@ export function templateMissingMultiImage(tpl: string): boolean {
 }
 
 /**
- * 在模板的 `"screenshot": "{{image}}",` 标准行后插入 `"screenshots": {{imagesJson}},` 多图字段。
+ * 在模板的 `"screenshot": "{{image}}"` 行后插入 `"screenshots": {{imagesJson}}` 多图字段。
  * - 已含 `{{imagesJson}}` → 原样返回（幂等）。
- * - 匹配不到标准行（完全自定义结构 / 无 trailing 逗号）→ 返回 null，调用方提示用户手动加。
+ * - 匹配不到 `"screenshot": "{{image}}"` 行（字段名自定义等）→ 返回 null，调用方提示手动加。
+ *
+ * ⚠ v0.8.14 修：旧正则强制要求 screenshot 行尾有逗号（`"\{\{image\}\}"\s*,`），漏了
+ * **screenshot 是末字段、无尾逗号**的模板（如 cloud 单图模板 `{...,"screenshot":"{{image}}"}`）
+ * → 迁移跳过 → 多图永远发不出去（用户实测 3 张只存 1 张的根因）。改为尾逗号可选 `(\s*,)?`，
+ * 并据原行有无逗号决定 screenshots 行尾要不要逗号，两种结构都产出合法 JSON。
  * 迁移（storage/config.ts）与 UI「补多图字段」按钮共用此函数，保证行为一致。
  */
 export function insertScreenshotsField(tpl: string): string | null {
   if (typeof tpl !== 'string') return null
   if (tpl.includes('{{imagesJson}}')) return tpl
-  const m = tpl.match(/([ \t]*)"screenshot"\s*:\s*"\{\{image\}\}"\s*,/)
+  const m = tpl.match(/([ \t]*)"screenshot"\s*:\s*"\{\{image\}\}"(\s*,)?/)
   if (!m) return null
   const lead = m[1] ?? '  '
+  // 原 screenshot 行有逗号 = 后面还有字段 → screenshots 行也要逗号；
+  // 无逗号 = screenshot 是末字段 → screenshots 成新末字段、不加逗号（否则尾逗号撞 } 非法）。
+  const trailingComma = m[2] && m[2].includes(',') ? ',' : ''
   return tpl.replace(m[0], [
     `${lead}"screenshot": "{{image}}",`,
-    `${lead}"screenshots": {{imagesJson}},`
+    `${lead}"screenshots": {{imagesJson}}${trailingComma}`
   ].join('\n'))
 }
 
