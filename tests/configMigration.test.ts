@@ -208,7 +208,37 @@ describe('applyMigrations · payloadTemplate 加 video 字段', () => {
     expect(cfg.projects[0]!.servers[0]!.payloadTemplate).toBe(template)
   })
 
-  it('自定义模板不含「screenshot": "{{image}}",」标准行 → 不动', async () => {
+  // ★ v0.8.14：cloud 单图模板（screenshot 末字段、无尾逗号）—— 旧迁移漏匹配致多图发不出去
+  it('★ v0.8.14：cloud 单图模板 screenshot 末字段无逗号 → loadConfig 自动补 screenshots 且仍合法 JSON', async () => {
+    const template = `{
+  "token": "{{token}}",
+  "title": "{{title}}",
+  "screenshot": "{{image}}"
+}`
+    storage.data.mooConfig = {
+      projects: [{
+        id: 'p1', name: 'cloud', matchPatterns: [],
+        kind: 'webhook',
+        servers: [{
+          id: 's1', name: 'cloud', endpoint: 'https://sc.example.com/api/v1/todos/intake', method: 'POST',
+          headers: {}, payloadTemplate: template, imageField: 'screenshot', imageFormat: 'base64'
+        }],
+        defaultServerId: 's1',
+        capture: { requests: true, consoleErrors: true, storageKeys: [], requestBufferSize: 50 },
+        redact: { headerKeys: [], bodyKeys: [], maskPasswordInputs: false },
+        enabled: true
+      }]
+    }
+    const { loadConfig } = await import('@/storage/config')
+    const cfg = await loadConfig()
+    const tpl = cfg.projects[0]!.servers[0]!.payloadTemplate
+    expect(tpl).toContain('"screenshots": {{imagesJson}}')
+    const { renderTemplate } = await import('@/utils/template')
+    const parsed = JSON.parse(renderTemplate(tpl, { token: 't', title: 'x', image: 'data:1', images: ['data:1', 'data:2'] }))
+    expect(parsed.screenshots).toEqual(['data:1', 'data:2']) // 多图真发出去了
+  })
+
+  it('自定义模板不含「screenshot": "{{image}}"」行 → 不动', async () => {
     // 用户自定义模板，image 字段名不一样 / 没 trailing comma → migration 不该乱改
     const template = `{ "imageData": "{{image}}" }`
     storage.data.mooConfig = {

@@ -460,6 +460,113 @@ describe('webhookAdapter.submit — v0.8.10 多图', () => {
   })
 })
 
+// ─────────────────── v0.8.14 截图上传前重编码 WebP ───────────────────
+// 契约：webhook/cloud 路径把要发出去的截图有损重编码成 WebP（q0.9）压体积，治
+//   「2560px PNG 仍 >8MB 被云端 extractBinary 静默丢」。只动「要发出去的副本」，
+//   不碰 req.image/req.images（history 走原 req 保 PNG）。
+//   inline：renderCtx.image / images 是 WebP → {{image}}/{{imagesJson}} 渲染出 WebP。
+//   multipart：dataUrlToBlob 前的图是 WebP（blob.type=image/webp）。
+describe('webhookAdapter.submit — v0.8.14 重编码 WebP', () => {
+  const PNG_A = 'data:image/png;base64,QQ=='
+  const PNG_B = 'data:image/png;base64,QUE='
+
+  /**
+   * stub 一套能让 reencodeImage 成功的 canvas 链路：
+   *   - fetch(dataUrl) → 返回带 .blob() 的对象（reencodeImage 解码用）
+   *   - fetch(endpoint, init) → 返回上报响应，并把 body 捕获回 cap
+   *   - OffscreenCanvas.convertToBlob 出 image/webp blob
+   * blobToDataUrl 会把 outBlob.type 写进 data URL 前缀 → 输出 data:image/webp;base64,...
+   */
+  function stubWebpPipeline() {
+    const cap = { body: null as unknown, bodyString: '' }
+    const webpBytes = new Uint8Array([0x52, 0x49, 0x46, 0x46]).buffer // 'RIFF'（webp 头特征）
+    vi.stubGlobal('fetch', vi.fn(async (url: unknown, init?: RequestInit) => {
+      // reencodeImage 内部 fetch(dataUrl) —— 返回可 .blob() 的轻量对象
+      if (typeof url === 'string' && url.startsWith('data:')) {
+        return { blob: async () => ({ type: 'image/png', arrayBuffer: async () => webpBytes }) } as unknown as Response
+      }
+      // 上报 fetch —— 捕获 body 后返回 200
+      cap.body = init?.body
+      cap.bodyString = typeof init?.body === 'string' ? init.body : ''
+      return jsonRes({ id: 'bug-webp' })
+    }))
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 2560, height: 1440, close: () => {} })))
+    vi.stubGlobal('OffscreenCanvas', class {
+      width: number; height: number
+      constructor(w: number, h: number) { this.width = w; this.height = h }
+      getContext() { return { set fillStyle(_v: string) {}, fillRect: () => {}, drawImage: () => {} } }
+      async convertToBlob(opts: { type: string }) { return { type: opts.type, arrayBuffer: async () => webpBytes } }
+    })
+    return cap
+  }
+
+  it('inline {{image}} → 提交 body 里的图是 data:image/webp（不是原 PNG）', async () => {
+    const cap = stubWebpPipeline()
+    const project = baseProject()
+    project.servers[0]!.payloadTemplate = '{"img":"{{image}}"}'
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.submit(baseReq({ image: PNG_A }), project, {})
+    expect(r.ok).toBe(true)
+    const parsed = JSON.parse(cap.bodyString) as { img: string }
+    expect(parsed.img.startsWith('data:image/webp;base64,')).toBe(true)
+  })
+
+  it('inline {{imagesJson}} 多图 → 每张都是 data:image/webp', async () => {
+    const cap = stubWebpPipeline()
+    const project = baseProject()
+    project.servers[0]!.payloadTemplate = '{"shots":{{imagesJson}}}'
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.submit(baseReq({ image: PNG_A, images: [PNG_A, PNG_B] }), project, {})
+    expect(r.ok).toBe(true)
+    const parsed = JSON.parse(cap.bodyString) as { shots: string[] }
+    expect(parsed.shots).toHaveLength(2)
+    expect(parsed.shots.every((s) => s.startsWith('data:image/webp;base64,'))).toBe(true)
+  })
+
+  it('multipart → 上传的 Blob.type 是 image/webp（dataUrlToBlob 前已重编码）', async () => {
+    const cap = stubWebpPipeline()
+    const project = baseProject()
+    project.servers[0]!.imageFormat = 'multipart'
+    project.servers[0]!.imageField = 'image'
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.submit(baseReq({ image: PNG_A, images: [PNG_A, PNG_B] }), project, {})
+    expect(r.ok).toBe(true)
+    const form = cap.body as FormData
+    expect((form.get('image') as File).type).toBe('image/webp')
+    expect((form.get('image_2') as File).type).toBe('image/webp')
+  })
+
+  it('不污染 req：req.image/req.images 提交后仍是原 PNG（history 走原 req）', async () => {
+    stubWebpPipeline()
+    const project = baseProject()
+    project.servers[0]!.payloadTemplate = '{"img":"{{image}}"}'
+    const req = baseReq({ image: PNG_A, images: [PNG_A, PNG_B] })
+    const { webhookAdapter } = await importAdapter()
+    await webhookAdapter.submit(req, project, {})
+    // req 本体未被改写 —— 仍是原 PNG dataUrl
+    expect(req.image).toBe(PNG_A)
+    expect(req.images).toEqual([PNG_A, PNG_B])
+  })
+
+  it('reencode 失败兜底 → 发原图（不丢图，跟 downscale 同款兜底）', async () => {
+    // 不 stub canvas → node 无 createImageBitmap → reencodeImage catch 返原 dataUrl
+    let bodyString = ''
+    vi.stubGlobal('fetch', vi.fn(async (url: unknown, init?: RequestInit) => {
+      if (typeof url === 'string' && url.startsWith('data:')) {
+        return { blob: async () => ({ type: 'image/png', arrayBuffer: async () => new ArrayBuffer(4) }) } as unknown as Response
+      }
+      bodyString = typeof init?.body === 'string' ? init.body : ''
+      return jsonRes({ id: 'bug-fallback' })
+    }))
+    const project = baseProject()
+    project.servers[0]!.payloadTemplate = '{"img":"{{image}}"}'
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.submit(baseReq({ image: PNG_A }), project, {})
+    expect(r.ok).toBe(true)
+    expect((JSON.parse(bodyString) as { img: string }).img).toBe(PNG_A) // 原 PNG 透传
+  })
+})
+
 describe('webhookAdapter.retryFromPayload', () => {
   const payload = () => ({
     kind: 'webhook' as const,

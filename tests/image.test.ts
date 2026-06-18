@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { downscaleToMaxWidth, MAX_SHOT_WIDTH } from '@/utils/image'
+import { downscaleToMaxWidth, reencodeImage, MAX_SHOT_WIDTH } from '@/utils/image'
 
 /**
  * downscaleToMaxWidth（v0.8.13）：上传前把高 DPI 截图缩到 ≤2560 宽。
@@ -75,5 +75,95 @@ describe('downscaleToMaxWidth', () => {
     await downscaleToMaxWidth(PNG) // 不传 maxWidth
     expect(cap.w).toBe(2560)
     expect(cap.h).toBe(1440) // round(2880 * 2560/5120)
+  })
+})
+
+/**
+ * reencodeImage（v0.8.14）：上传前按目标格式有损重编码（webhook→WebP / 禅道→JPEG）压体积，
+ * 治「复杂截图 2560px PNG 仍 >8MB 被服务端静默丢」。stub canvas，验出 MIME、quality、
+ * JPEG 填白底、非 image 原样、失败兜底。
+ */
+describe('reencodeImage', () => {
+  /** stub 一套 canvas，记录 convertToBlob 的 type/quality + ctx 上的填底调用顺序。 */
+  function stubReencode(srcW = 2560, srcH = 1440, blobType = 'image/png') {
+    const cap = { outType: '', quality: undefined as number | undefined, fillStyle: '', calls: [] as string[] }
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer
+    vi.stubGlobal('fetch', vi.fn(async () => ({ blob: async () => ({ type: blobType, arrayBuffer: async () => bytes }) })))
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: srcW, height: srcH, close: () => {} })))
+    vi.stubGlobal('OffscreenCanvas', class {
+      width: number; height: number
+      constructor(w: number, h: number) { this.width = w; this.height = h }
+      getContext() {
+        return {
+          set fillStyle(v: string) { cap.fillStyle = v; cap.calls.push(`fillStyle=${v}`) },
+          fillRect: (..._a: number[]) => { cap.calls.push('fillRect') },
+          drawImage: (..._a: unknown[]) => { cap.calls.push('drawImage') }
+        }
+      }
+      async convertToBlob(opts: { type: string; quality?: number }) {
+        cap.outType = opts.type
+        cap.quality = opts.quality
+        return { type: opts.type, arrayBuffer: async () => bytes }
+      }
+    })
+    return cap
+  }
+
+  it('webp 目标 → 输出 data:image/webp，默认 quality 0.9', async () => {
+    const cap = stubReencode()
+    const out = await reencodeImage(PNG, 'image/webp')
+    expect(cap.outType).toBe('image/webp')
+    expect(cap.quality).toBe(0.9)
+    expect(out.startsWith('data:image/webp;base64,')).toBe(true)
+  })
+
+  it('jpeg 目标 → 输出 data:image/jpeg + 先填白底再 drawImage（避免透明区变黑）', async () => {
+    const cap = stubReencode()
+    const out = await reencodeImage(PNG, 'image/jpeg')
+    expect(cap.outType).toBe('image/jpeg')
+    expect(out.startsWith('data:image/jpeg;base64,')).toBe(true)
+    // 关键：白底填充必须在 drawImage 之前
+    expect(cap.fillStyle).toBe('#fff')
+    expect(cap.calls).toEqual(['fillStyle=#fff', 'fillRect', 'drawImage'])
+  })
+
+  it('webp 目标 → 不填白底（WebP 保 alpha），只 drawImage', async () => {
+    const cap = stubReencode()
+    await reencodeImage(PNG, 'image/webp')
+    expect(cap.calls).toEqual(['drawImage'])
+    expect(cap.fillStyle).toBe('')
+  })
+
+  it('自定义 quality 透传给 convertToBlob', async () => {
+    const cap = stubReencode()
+    await reencodeImage(PNG, 'image/webp', 0.7)
+    expect(cap.quality).toBe(0.7)
+  })
+
+  it('非 data:image → 原样返回（不解码）', async () => {
+    expect(await reencodeImage('https://x.com/a.png', 'image/webp')).toBe('https://x.com/a.png')
+    expect(await reencodeImage('', 'image/jpeg')).toBe('')
+  })
+
+  it('解码失败（createImageBitmap throw）→ 返回原图（宁可大也别丢）', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ blob: async () => ({ type: 'image/png', arrayBuffer: async () => new ArrayBuffer(4) }) })))
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => { throw new Error('no bitmap') }))
+    expect(await reencodeImage(PNG, 'image/webp')).toBe(PNG)
+  })
+
+  it('不改尺寸：canvas 用源图原宽高（降采样是 downscale 的事，这里只换编码）', async () => {
+    let canvasW = 0, canvasH = 0
+    const bytes = new Uint8Array([1, 2, 3, 4]).buffer
+    vi.stubGlobal('fetch', vi.fn(async () => ({ blob: async () => ({ type: 'image/png', arrayBuffer: async () => bytes }) })))
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 2560, height: 1700, close: () => {} })))
+    vi.stubGlobal('OffscreenCanvas', class {
+      width: number; height: number
+      constructor(w: number, h: number) { this.width = w; this.height = h; canvasW = w; canvasH = h }
+      getContext() { return { fillRect: () => {}, drawImage: () => {} } }
+      async convertToBlob(opts: { type: string }) { return { type: opts.type, arrayBuffer: async () => bytes } }
+    })
+    await reencodeImage(PNG, 'image/webp')
+    expect(canvasW).toBe(2560)
+    expect(canvasH).toBe(1700)
   })
 })

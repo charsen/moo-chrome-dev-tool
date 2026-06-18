@@ -26,6 +26,7 @@ import { redactBody } from '@/utils/redact'
 import { parseUserAgent } from '@/utils/ua'
 import { escapeHtml } from '@/utils/jsonHighlight'
 import { formatBytes } from '@/utils/formatBytes'
+import { reencodeImage } from '@/utils/image'
 import {
   submitBug as zentaoClientSubmit,
   uploadEditorFile,
@@ -91,12 +92,18 @@ export async function uploadZentaoAttachments(
   }
 
   // 截图（v0.8.10 多图：逐张上传，文件名带序号；单图老调用方走 image 字段不变）
+  //
+  // v0.8.14：上传前**有损重编码成 JPEG**（q0.9）压体积，治「2560px PNG 仍 >8MB
+  // 被服务端静默丢」的丢图 bug。禅道老版本不一定支持 WebP，JPEG 通吃。
+  // 文件名同步改 .jpg —— 禅道 inline `<img>` 按文件/内容渲染，扩展名要跟内容一致。
+  // 只截图走 JPEG；录像 / json 等附件不动。重编码失败兜底返回原 PNG dataUrl（宁可大别丢）。
   const shots = req.images?.length ? req.images : (req.image ? [req.image] : [])
   for (let i = 0; i < shots.length; i++) {
     const dataUrl = shots[i]
     if (!dataUrl) continue
-    const blob = dataUrlToBlobLocal(dataUrl)
-    const name = shots.length > 1 ? `moo-screenshot-${i + 1}.png` : 'moo-screenshot.png'
+    const jpeg = await reencodeImage(dataUrl, 'image/jpeg')
+    const blob = dataUrlToBlobLocal(jpeg)
+    const name = shots.length > 1 ? `moo-screenshot-${i + 1}.jpg` : 'moo-screenshot.jpg'
     await upload('screenshot', name, blob)
   }
 

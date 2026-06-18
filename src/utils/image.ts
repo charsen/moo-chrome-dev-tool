@@ -100,6 +100,61 @@ export async function downscaleToMaxWidth(
   }
 }
 
+/**
+ * 把截图 dataUrl **有损重编码**成指定格式（WebP / JPEG），上传前调用以压体积。
+ *
+ * 为啥要做：downscaleToMaxWidth 只缩宽不换格式 —— 复杂截图（满屏文字/细节）的
+ * 2560px PNG 仍可达 10-13MB（高熵内容 PNG 无损压不掉）。云端 extractBinary 有 8MB/张
+ * 上限，base64 decode 后超限的图**静默 skip 不建附件**（请求仍 200）→ 多图被丢只剩 1 张
+ * （lab-tester 真 cloud 实锤）。根治杠杆 = 有损重编码：2560px WebP/JPEG ≈ 1-2MB，远低于 8MB。
+ *
+ * 按上报目标分格式（调用方传 targetMime 决定）：
+ * - **webhook/cloud → image/webp**（q0.9 最清晰，cloud MIME 白名单含 webp）
+ * - **禅道 → image/jpeg**（q0.9，老版本禅道不一定支持 webp，jpeg 通吃）
+ *
+ * 关键点：
+ * - **JPEG 无 alpha**：targetMime==='image/jpeg' 时先填白底再 drawImage，否则透明区变黑。
+ *   WebP 保 alpha 不用填。
+ * - **不缩尺寸**（宽高保持原样）—— 降采样是 downscaleToMaxWidth 的事，这里只换编码。
+ * - 非 data:image / 解码失败 → 返回原 dataUrl（宁可大也别丢图，跟 downscaleToMaxWidth 同款兜底）。
+ *
+ * createImageBitmap / OffscreenCanvas / convertToBlob('image/webp') 在 MV3 service worker 可用。
+ */
+export async function reencodeImage(
+  dataUrl: string,
+  targetMime: 'image/webp' | 'image/jpeg',
+  quality = 0.9
+): Promise<string> {
+  if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return dataUrl
+
+  try {
+    const resp = await fetch(dataUrl)
+    const blob = await resp.blob()
+    const bitmap = await createImageBitmap(blob)
+    const w = bitmap.width
+    const h = bitmap.height
+    const canvas = new OffscreenCanvas(w, h)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      bitmap.close()
+      return dataUrl
+    }
+    // JPEG 无 alpha 通道：透明像素 convertToBlob 会落成黑底。先铺白再画图，跟浏览器
+    // 「另存为 JPEG」一致。WebP 保留 alpha，不填。
+    if (targetMime === 'image/jpeg') {
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(0, 0, w, h)
+    }
+    ctx.drawImage(bitmap, 0, 0, w, h)
+    bitmap.close()
+    const outBlob = await canvas.convertToBlob({ type: targetMime, quality })
+    return await blobToDataUrl(outBlob)
+  } catch (e) {
+    console.warn('[Moo] reencodeImage failed', (e as Error).message)
+    return dataUrl
+  }
+}
+
 async function blobToDataUrl(blob: Blob): Promise<string> {
   const buf = await blob.arrayBuffer()
   const bytes = new Uint8Array(buf)
