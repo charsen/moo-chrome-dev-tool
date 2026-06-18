@@ -4,15 +4,15 @@
 
 ## 一句话现状
 
+**v0.8.13 已发**（2026-06-18）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.13/moo-chrome-dev-tool-0.8.13.zip)（sha256 待回填）。无 BREAKING（向后兼容，只缩不放）— 🗜 **截图上传前降采样到 ≤2560 宽**：高 DPI / retina 屏 `captureVisibleTab` 截的是物理像素（1280 CSS 宽 DPR 2–3 下实际 2560–3840px、PNG 5–6MB），新增 `downscaleToMaxWidth` 在 **SW 截图 handler 截完即缩**（单一收口点）→ 标注/预览/上传/history 全拿缩好的图，省上传带宽 + 减小 payload（缓解 webhook/zentao 重试队列 1MB 上限 + 多图叠加体积）。与服务端 `ImageDownscaler::toMaxWidth` **同语义**（≤2560 原样返回、高度按比例、保留格式 PNG→PNG 文字清晰 + alpha、失败返原图不丢截图）；两端配合防御纵深（扩展先缩 → 服务端见 ≤2560 不重复处理 → 老客户端 >2560 服务端兜底缩）。834 单测（含 8 条降采样：缩放数学/只缩不放/格式保留/失败兜底）+ 截图 e2e + type-check + build 全绿。**dogfood 不足（刚做），用户明示放行；留观：真高 DPI 屏上传体积变小 + PNG 文字清晰/alpha 保留 + ≤2560 不被多余处理 + 解码失败返原图不丢截图。** 服务端 moo-scaffold-cloud 配套补了 ImageDownscaler 单测 + intake 集成测试（独立 repo，不在本次发版范围）。详情见 CHANGELOG v0.8.13 段。
+
 **v0.8.12 已发**（2026-06-17）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.12/moo-chrome-dev-tool-0.8.12.zip)（sha256 `14087a802b10826180e4f89b5438a5e80661b7248c131b88184970e346e135df`）。无 BREAKING — 提交弹窗两件：⚠ **多匹配时目标项目可见**（一页命中多个 Moo 项目时，弹窗顶显「命中 N 个项目 · 当前提交到 X · 禅道 #id」+ 录制条目标标识；修快捷键/录屏静默 default 提错项目看不见，用户反馈「提报到无项目」根因之一，唯一匹配零打扰）；✨ **「再截一张」改延迟触发**（点「＋ 再截一张」收起弹窗 + 右下角浮可拖「现在截图」，先切 SPA tab/滚动再截；新增 `arming` 状态 + `ArmShotTrigger.vue`，拖拽照搬悬浮球 pointer-capture、listener idempotent 收口）。826 单测 + 181 e2e（multi-shot 5 含 arming 取消 + 多匹配警告 4 + dialog-multi-shot 7）全绿。**dogfood 不足（刚做），用户明示放行；留观：真录屏/快捷键路径警告条准确、arming 切页后截到切后页面 + 取消保留草稿 + 拖拽不泄漏。** 不碰匹配引擎/存储 schema/悬浮球强制选逻辑，零迁移。详情见 CHANGELOG v0.8.12 段。
 
 **v0.8.11 已发**（2026-06-12）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.11/moo-chrome-dev-tool-0.8.11.zip)（sha256 `ee29b694da3cfc3167a9641316b65b26b2093935b321ff03e38bb7d3adc4ece6`）。无 BREAKING（向后兼容）— 🔴 **修 v0.8.10 多图数据丢失**：默认 base64/JSON 模板（含 cloud intake）漏 `{{imagesJson}}`，开箱截多张只发首图。默认模板补 `screenshots` 数组 + `migrateServerTemplate` 自动升级老配置（修「已含 video 即提前返回」吞 screenshots 的陷阱）；⚠ 模板缺多图字段时 Environment 显警告条 + 一键补按钮（自定义模板迁移碰不到的兜底）；🔑 配置导出加「含密钥」选项（自己多机/重装备份免再找 token）；📐 多图缩略图横向铺开（flex-wrap）。826 单测 + 多图/横向布局/警告条 e2e 全绿。**dogfood 不足，用户明示放行；留观：默认模板多图在真禅道/cloud 实发多张、老配置自动升级（v0.4.7~v0.8.10 有 video 缺 screenshots 存量）。** 服务端 moo-scaffold-cloud 不在本次发版范围。详情见 CHANGELOG v0.8.11 段。
 
 **v0.8.10 已发**（2026-06-12）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.10/moo-chrome-dev-tool-0.8.10.zip)（sha256 `50eaeb6a23b11693546ff5f993d44ebea8d9b9d47000180a7bb0e2193667635c`）。无 BREAKING — ✨ 提交弹窗 UX 三件（轻遮罩 0.18 / 标题栏可拖拽防出视口 / 缩小成右下角药丸）+ 多图截图（上限 5 张，单张重截/重标/删，提交端全链路）；🔴 表单草稿跨重挂真保留（`dialogDraft` 模块级单例，修旧 confirm「保留」实际全丢的撒谎）+ focusTrap 恢复焦点从未生效（nextTick + 双守卫）；📝 全量文档脱敏修订。808 单测 + 176 e2e 两遍零 flake。**dogfood 不足，用户明示放行；留观：多图+草稿真禅道链路、拖拽/缩小在重 CSS 站点。** 详情见 CHANGELOG v0.8.10 段。
 
-**v0.8.9 已发**（2026-06-11）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.9/moo-chrome-dev-tool-0.8.9.zip)（sha256 `65eeb6c6a2ba3df09ca6e4f5cd2ccd94c66837e1030c39774f453b1e170e43ac`）。无 BREAKING — 🔴 **dogfood 真修：普通账号禅道指派人/模块拉不到**（users/modules API 是管理员权限端点，新增 tier-3「建单页视图数据」兜底，v2→v1→tier-3 只加层不换轨）；✨ 历史 Tab 自动同步放宽到所有有单号记录（webhook/cloud 不用手动点）+ inflight 锁/60s 冷却/force 三保护；🟠 五轮 review 记账 8 项全清（multipart 大小写 / Settings 队列跨上下文锁 / cookie 复查空转 / urlMatches Chrome 语义 / useConfig 回声泄漏 / ElementPicker HOST_ID / recorder.start 裸抛 / BodyViewer 劈实体）+ 审计 2 项。+71 单测/+3 e2e 全红→绿，768 单测 + 155 e2e 零 flake。**手测点留 dogfood：普通账号指派人下拉 + 元素选取 hover。** 详情见 CHANGELOG v0.8.9 段。
-
-> **v0.8.8 及更早「一句话段」已批量归档**：v0.5.0 → v0.8.8 见 [docs/handoff-archive/v0.5.x-v0.8.x.md](docs/handoff-archive/v0.5.x-v0.8.x.md)；更早 v0.1.x → v0.4.x 见下方「早期版本简介」。本文「一句话现状」只保留最近 4 个发版（v0.8.9 → v0.8.12）。
+> **v0.8.9 及更早「一句话段」已批量归档**：v0.5.0 → v0.8.9 见 [docs/handoff-archive/v0.5.x-v0.8.x.md](docs/handoff-archive/v0.5.x-v0.8.x.md)；更早 v0.1.x → v0.4.x 见下方「早期版本简介」。本文「一句话现状」只保留最近 4 个发版（v0.8.10 → v0.8.13）。
 
 **早期版本简介**：v0.1.x → v0.4.3 见 [docs/handoff-archive/v0.1.x.md](docs/handoff-archive/v0.1.x.md)；v0.4.4 → v0.4.9 见 [docs/handoff-archive/v0.4.4-v0.4.9.md](docs/handoff-archive/v0.4.4-v0.4.9.md)。
 
@@ -26,7 +26,7 @@
 
 ## Playwright E2E
 
-> **最新 case 数看顶部「一句话现状」**（v0.8.12 时 181 case），本段只讲结构和原因，不再回填具体数字。
+> **最新 case 数看顶部「一句话现状」**（v0.8.13 时 181 case），本段只讲结构和原因，不再回填具体数字。
 
 **真起 chromium、真加载 dist 当 extension、真跑 SW**。跑法：`pnpm test:e2e`（先 build，全量约 2min）；首次要先 `pnpm exec playwright install chromium`（本机已装）。
 
@@ -105,7 +105,9 @@
 
 ## 现在最值得做的下一件事
 
-v0.8.12 已发完。**当前没有强迫性 todo**。本版主体是提交弹窗两件：⚠ 多匹配时目标项目可见（一页命中多个 Moo 项目时弹窗顶显「命中 N 个 · 当前提交到 X · 禅道 #id」+ 录制条目标标识，修快捷键/录屏静默 default 提错项目看不见）+ ✨「再截一张」改延迟触发（收起弹窗 + 右下角可拖「现在截图」，先切 SPA tab/滚动再截；新增 `arming` 状态 + `ArmShotTrigger.vue`）。非 BREAKING、零迁移，dogfood 不足（用户明示放行跳 checklist，理由见 CHANGELOG v0.8.12「发版决策小记」）。**留观的手测点**：① 多匹配警告条在真录屏/快捷键路径准确显「命中 N 个 · 当前提交到 X · 禅道 #id」② arming「现在截图」在真 SPA 切 tab/滚动后截到的是切后页面 + 取消能保留草稿 + 拖拽 listener 不泄漏。等用户继续真实 dogfood 反馈，再决定 hotfix 还是新 feature。
+v0.8.13 已发完。**当前没有强迫性 todo**。本版主体是 🗜 **截图上传前降采样到 ≤2560 宽**：高 DPI / retina 屏 `captureVisibleTab` 截物理像素（1280 CSS 宽 DPR 2–3 下实际 2560–3840px、PNG 5–6MB），新增 `downscaleToMaxWidth` 在 **SW 截图 handler 截完即缩**（单一收口点）→ 标注/预览/上传/history 全拿缩好的图，省带宽 + 减小 payload。与服务端 `ImageDownscaler::toMaxWidth` 同语义（只缩不放、保留格式、失败返原图）。非 BREAKING、零迁移，dogfood 不足（用户明示放行跳 checklist，理由见 CHANGELOG v0.8.13「发版决策小记」）。**留观的手测点**：① 真高 DPI 屏截图上传后体积明显变小、标注/预览/history 拿到的都是缩好的图；② PNG 文字清晰 + alpha 保留、JPEG 格式不变；③ 已 ≤2560 的截图不被多余处理；④ 解码失败兜底返原图不丢截图。服务端 moo-scaffold-cloud 配套补了 ImageDownscaler 单测 + intake 集成测试（独立 repo，不在本次发版范围，用户自行 deploy）。等用户继续真实 dogfood 反馈，再决定 hotfix 还是新 feature。
+
+> **截图降采样链路速记**（v0.8.13 加，碰截图/上传体积先看）：`captureVisibleTab` 返的是**物理像素** PNG —— 高 DPI / retina 屏（DPR 2–3）下 1280 CSS 宽实际 2560–3840px、单图 5–6MB，多图叠加易撞 webhook/zentao 重试队列 1MB 上限。`downscaleToMaxWidth`（`src/utils/image.ts`）**收口在 SW 截图 handler 截完即缩**这一个点（不是上传端各自缩）→ 标注/预览/上传/history 全链路拿同一张缩好的图，避免多处各缩一遍 / 漏缩。语义必须跟服务端 `ImageDownscaler::toMaxWidth` **对齐**：① 只缩不放（≤2560 原样 return，别放大糊）② 高度按比例 ③ **保留原格式**（PNG→PNG 保文字清晰 + alpha，JPEG→JPEG）④ 解码失败（无 canvas / createImageBitmap throw）**返原图不抛**（宁可发大图也不丢截图）。两端都缩是防御纵深不是重复劳动：扩展先缩省带宽，服务端见 ≤2560 跳过、见 >2560（老客户端）兜底。改这块**必须同步核对服务端 ImageDownscaler 语义**别让两端漂移。
 
 > **发版踩坑速记**（v0.8.12 这次踩，下次发版必看）：`pnpm release --publish` 会**重新 build + 重打 zip**，而 vite 产物文件名带 content-hash → 两次构建字节不同 → **zip sha256 会变**。若上一会话已 bump/tag/push 留下旧 zip，这次 publish 重打的新 zip sha256 跟旧的对不上。**回填 HANDOFF 的 sha256 一律以「Gitee release 页面实际挂着的产物」为准**（curl 下来 `shasum -a 256` 核对），不是任何缓存/口头给的旧值 —— 否则用户下载 `shasum -c` 必失败。另：e2e 全量 181 条单 worker 串行偶发 1 条 flake（本次 MS7 `dialog-multi-shot:138` ESC cancel 时序），单独 `--repeat-each=3` 重跑 + 全量复跑均全绿确认非回归后再发。
 
