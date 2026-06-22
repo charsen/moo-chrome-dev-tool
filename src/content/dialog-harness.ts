@@ -274,6 +274,7 @@ async function bootstrap(): Promise<void> {
             onRecapture: (i: number) => logEmit('recapture', i),
             onAddShot: () => logEmit('add-shot'),
             onRemoveShot: (i: number) => logEmit('remove-shot', i),
+            onPasteShot: (dataUrl: string) => logEmit('paste-shot', dataUrl.length),
             onAsyncLoadFailed: (m: string) => logEmit('async-load-failed', m)
           })
       }

@@ -1357,6 +1357,15 @@ export const SHADOW_CSS = `
   align-content: flex-start;
   gap: 8px;
 }
+/* 「或 ⌘V 粘贴图片」弱提示：跟在「再截一张」按钮后，弱化（dim）不抢按钮注意力。
+ * 走 token（深浅色自动适配），与同区域其它 hint（.req-hint）同色阶。flex 容器里
+ * align-self:center 让它跟按钮基线对齐。 */
+.moo-shots-hint {
+  align-self: center;
+  font-size: 11px;
+  color: var(--c-text-dim);
+  white-space: nowrap;
+}
 /* 盖在截图右上角的删除 ×：截图底色任意（可能很深/很浅），跟 .moo-thumb-action
  * 同款取舍 —— 不透明白底玻璃卡 + 强阴影，不走 token（token 跟系统深浅色走，
  * 叠在截图上反而可能没对比度）。常显不进 overlay：删除入口要可发现，

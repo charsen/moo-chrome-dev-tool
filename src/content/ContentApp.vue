@@ -49,6 +49,7 @@
       @recapture="onRecapture"
       @add-shot="onAddShot"
       @remove-shot="onRemoveShot"
+      @paste-shot="onPasteShot"
       @async-load-failed="(msg: string) => showToast(msg, 'error')"
     />
     <div v-if="toast" :class="['moo-toast', toastKind]" :role="toastKind === 'error' ? 'alert' : 'status'" aria-live="polite">{{ toast }}</div>
@@ -70,6 +71,7 @@ import type { Project } from '@/types/config'
 import { MSG, type CaptureScreenshotRes, type MatchProjectRes } from '@/types/messages'
 import { onConfigChanged } from '@/storage/config'
 import { safeSendMessage } from '@/utils/messaging'
+import { downscaleToMaxWidth } from '@/utils/image'
 import { useToast } from '@/composables/useToast'
 import { guardFocusForHost } from '@/utils/stealPageFocus'
 import { useRequests } from './useRequests'
@@ -601,6 +603,21 @@ function onArmCancel() {
 // 删除第 i 张：弹窗开着原地 splice，不切状态。删到 0 张允许 —— 无图提交本就合法
 function onRemoveShot(index: number) {
   shots.value.splice(index, 1)
+}
+
+// ⌘V / Ctrl+V 在 SubmitDialog 里粘贴的图片：append 到 shots（弹窗开着，不切状态）。
+// 粘贴图无标注步骤，raw = annotated（「重新标注」仍可对其重画）。缩到 ≤2560 宽与
+// 截屏图一致，避免大图撑爆 payload / 重试队列。
+async function onPasteShot(rawDataUrl: string) {
+  if (shots.value.length >= MAX_SHOTS) {
+    showToast(`最多附 ${MAX_SHOTS} 张截图，删掉一张再粘贴`, 'info')
+    return
+  }
+  const d = await downscaleToMaxWidth(rawDataUrl)
+  // await 期间用户可能又粘 / 删，再守一次上限
+  if (shots.value.length >= MAX_SHOTS) return
+  shots.value.push({ raw: d, annotated: d })
+  showToast('已粘贴 1 张图', 'success')
 }
 
 function reset() {
