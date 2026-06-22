@@ -253,6 +253,28 @@ describe('webhookAdapter.serializeForRetry', () => {
     const p = webhookAdapter.serializeForRetry(baseReq({ serverId: 'wrong' }), baseProject())
     expect(p).toBeNull()
   })
+
+  // 回归守卫：serializeForRetry 的 renderCtx 曾漏 images 键，默认模板含 {{imagesJson}}，
+  // 缺变量被 renderTemplate 原样保留成字面量 {{imagesJson}} → 重试 body 非法 JSON、多图全丢。
+  // 锁住「能进 1MB 队列的小体积多图」重试时渲染出合法 JSON 且 screenshots 含全部图。
+  it('★ 真实默认模板 + 多图 → 重试 body 合法 JSON 且 screenshots 含全部图', async () => {
+    const { DEFAULT_PAYLOAD_TEMPLATE } = await import('@/types/config')
+    const project = baseProject()
+    project.servers[0]!.payloadTemplate = DEFAULT_PAYLOAD_TEMPLATE
+    const SHOT_1 = 'data:image/png;base64,QQ=='
+    const SHOT_2 = 'data:image/png;base64,QUE='
+    const { webhookAdapter } = await importAdapter()
+    const p = webhookAdapter.serializeForRetry(
+      baseReq({ image: SHOT_1, images: [SHOT_1, SHOT_2] }), project
+    )
+    expect(p).not.toBeNull()
+    const w = p as { bodyString: string }
+    // 漏 images 时这里 bodyString 含字面量 {{imagesJson}} → JSON.parse 抛
+    expect(() => JSON.parse(w.bodyString)).not.toThrow()
+    const parsed = JSON.parse(w.bodyString) as { screenshots: string[] }
+    expect(parsed.screenshots).toEqual([SHOT_1, SHOT_2])
+    expect(parsed.screenshots).toHaveLength(2)
+  })
 })
 
 // v0.8.9 Fix A 回归：multipart 路径删除 Content-Type 必须大小写无关。
