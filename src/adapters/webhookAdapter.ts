@@ -176,6 +176,10 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
       timestamp: req.timestamp, requests: req.requests, errors: req.errors,
       elements: req.elements ?? [], storage: {}, video: req.video?.dataUrl ?? '',
       videoBytes: req.video?.bytes ?? 0, videoDuration: req.video?.duration ?? 0,
+      // 镜像 live submit 的语义：缺了 images，默认模板的 {{imagesJson}} 会被 renderTemplate
+      // 原样保留成字面量 → 重试 body 非法 JSON、多图全丢。serialize 同步路径不 reencode，
+      // 直接用原始 PNG dataUrl 数组（大体积本就被下面 RETRY_MAX_BODY_BYTES cap 拦下返 null）。
+      images: req.images ?? (req.image ? [req.image] : []),
       token: project.token ?? ''
     }
     const { body, headers } = buildRequestBody(server, renderCtx)
