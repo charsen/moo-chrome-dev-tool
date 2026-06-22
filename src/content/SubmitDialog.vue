@@ -84,6 +84,7 @@
               :title="images.length >= MAX_SHOTS ? `最多附 ${MAX_SHOTS} 张截图，删掉一张才能再截` : '重走截图 → 标注，追加一张（表单已填内容保留）'"
               @click="onAddShot"
             >＋ 再截一张（{{ images.length }}/{{ MAX_SHOTS }}）</button>
+            <span class="moo-shots-hint">或 ⌘V / Ctrl+V 粘贴图片</span>
           </div>
         </div>
 
@@ -329,6 +330,8 @@ import { formatBytes } from '@/utils/formatBytes'
 import { safeSendMessage } from '@/utils/messaging'
 import { redactUrl } from '@/utils/redact'
 import { stealPageFocusRepeatedly } from '@/utils/stealPageFocus'
+import { imageFileFromClipboard } from '@/utils/clipboardImage'
+import { blobToDataUrl } from '@/utils/image'
 import SubmitFormZentao from './components/SubmitFormZentao.vue'
 import SubmitFormWebhook from './components/SubmitFormWebhook.vue'
 import type { ZentaoFormFields } from './components/SubmitFormZentao.types'
@@ -366,6 +369,9 @@ const emit = defineEmits<{
   (e: 'add-shot'): void
   /** 删除第 index 张缩略图（弹窗不卸载，ContentApp 原地 splice） */
   (e: 'remove-shot', index: number): void
+  /** ⌘V / Ctrl+V 粘贴剪贴板图片：转 dataUrl 后交 ContentApp 落 shots + 守上限 + 反馈
+   *  （与 add-shot / remove-shot 同款职责划分，SubmitDialog 保持 thin，不直接动 shots）。 */
+  (e: 'paste-shot', dataUrl: string): void
   /** 异步子组件（ElementPicker）chunk 加载失败：扩展重载后老 hash 文件 404。
    *  自己没 toast，让 ContentApp 提示用户刷页。 */
   (e: 'async-load-failed', message: string): void
@@ -908,6 +914,25 @@ function onRemoveShot(index: number) {
   emit('remove-shot', index)
 }
 
+// ⌘V / Ctrl+V 粘贴剪贴板图片 → 追加到截图列表（用户自己截的图 / 外部图，不走截屏流程）。
+// 监听挂在 document capture 阶段：① 弹窗在 closed shadow DOM 内，paste 事件 composed
+// 能冒泡到 document；② capture 阶段先于宿主页 bubble listener，防宿主页 stopPropagation
+// 吃掉粘贴。无图（纯文本）不 preventDefault —— 让文本正常进 title/description textarea。
+async function onPaste(e: ClipboardEvent) {
+  if (submitting.value || successInfo.value) return
+  const file = imageFileFromClipboard(e.clipboardData)
+  if (!file) return // 纯文本 / 无图：放行，不破坏文本粘贴
+  // 图片粘不进 textarea，拦下默认行为是对的（否则部分浏览器会塞进 contenteditable）
+  e.preventDefault()
+  try {
+    const dataUrl = await blobToDataUrl(file)
+    if (dataUrl) emit('paste-shot', dataUrl)
+  } catch {
+    // 转码失败静默吞：reads 自宿主 clipboard 的 Blob 极少失败，且 ContentApp 那侧
+    // 守卫/反馈不依赖此处；硬要提示反而要再引一条 emit，得不偿失。
+  }
+}
+
 // 键盘快捷键：⌘/Ctrl+Enter 提交（Esc 走 MooDialog → onMaskClick 路径）
 function onKeydown(e: KeyboardEvent) {
   if (dialogMinimized.value) return // 缩小态：键盘全还给宿主页（Esc=恢复由 MooDialog 自管）
@@ -929,6 +954,9 @@ function onKeydown(e: KeyboardEvent) {
 let stealFocusCleanup: (() => void) | null = null
 onMounted(() => {
   window.addEventListener('keydown', onKeydown, true)
+  // capture 阶段（见 onPaste 注释）。生命周期 == 弹窗开着（只在 'submitting' 经 v-if
+  // 挂载），onBeforeUnmount 同 flag removeEventListener 配对清理，天然 scoped。
+  document.addEventListener('paste', onPaste, true)
   stealFocusCleanup = stealPageFocusRepeatedly(() => {
     titleInput.value?.focus()
   })
@@ -938,6 +966,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown, true)
+  document.removeEventListener('paste', onPaste, true)
   // v0.7.7 P0：清 stealPageFocusRepeatedly 的 timer 防泄漏
   if (stealFocusCleanup) { stealFocusCleanup(); stealFocusCleanup = null }
   if (successTimer) clearTimeout(successTimer)

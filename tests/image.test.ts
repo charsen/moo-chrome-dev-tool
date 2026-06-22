@@ -69,6 +69,16 @@ describe('downscaleToMaxWidth', () => {
     expect(await downscaleToMaxWidth(PNG, 2560)).toBe(PNG)
   })
 
+  it('不依赖 fetch(dataUrl)（宿主页 CSP 禁 data: 也能缩 → 粘贴图片场景）', async () => {
+    // content world 跑时宿主页 CSP connect-src 'self' 会让 fetch(dataUrl) 抛错。
+    const cap = stubCanvas(3840, 2160)
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('CSP: connect-src blocks data:') }))
+    const out = await downscaleToMaxWidth(PNG, 2560)
+    // 仍缩到 2560 → 证明走 atob 没碰 fetch（若走 fetch 会 catch 返原图、cap.w 停在 0）
+    expect(cap.w).toBe(2560)
+    expect(out.startsWith('data:image/png;base64,')).toBe(true)
+  })
+
   it('默认 maxWidth = MAX_SHOT_WIDTH(2560)', async () => {
     expect(MAX_SHOT_WIDTH).toBe(2560)
     const cap = stubCanvas(5120, 2880)

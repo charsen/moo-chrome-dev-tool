@@ -73,8 +73,11 @@ export async function downscaleToMaxWidth(
   if (maxWidth < 1) return dataUrl
 
   try {
-    const resp = await fetch(dataUrl)
-    const blob = await resp.blob()
+    // 不走 fetch(dataUrl)：downscaleToMaxWidth 现也在 content world 跑（SubmitDialog 粘贴图片），
+    // 宿主页 CSP connect-src 'self' 不含 data: scheme 时 fetch(dataUrl) 直接 Failed to fetch
+    // （SubmitDialog 录像转 blob 早踩过同款坑）→ 改 atob 同步解析绕开宿主 CSP。SW 截图路径同样适用。
+    const blob = dataUrlToBlob(dataUrl)
+    if (!blob) return dataUrl
     const bitmap = await createImageBitmap(blob)
     if (bitmap.width <= maxWidth) {
       bitmap.close()
@@ -155,7 +158,12 @@ export async function reencodeImage(
   }
 }
 
-async function blobToDataUrl(blob: Blob): Promise<string> {
+/**
+ * Blob → data URL（base64）。SW / content world 通用：FileReader 在 SW 不可用，
+ * 故手动 arrayBuffer → 分块 fromCharCode → btoa。SubmitDialog 粘贴图片 → File →
+ * 这里转 dataUrl 后走 emit 落 shots（与截屏图同一 dataUrl 链路）。
+ */
+export async function blobToDataUrl(blob: Blob): Promise<string> {
   const buf = await blob.arrayBuffer()
   const bytes = new Uint8Array(buf)
   // 大 ArrayBuffer 不能一次性 String.fromCharCode(...bytes)，超出参数上限。分块拼。
@@ -166,4 +174,31 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
     binary += String.fromCharCode.apply(null, chunk as unknown as number[])
   }
   return `data:${blob.type};base64,${btoa(binary)}`
+}
+
+/**
+ * data URL → Blob，**刻意不走 fetch(dataUrl)**：宿主页 CSP `connect-src 'self'` 不含 data:
+ * scheme 时 fetch(dataUrl) 会 Failed to fetch（content world 跑的 downscaleToMaxWidth 在
+ * 粘贴图片场景会撞上）。atob 同步解析 base64 不受宿主 CSP 影响。type 取自 dataUrl 头部，
+ * 保住 downscaleToMaxWidth 的「保留源格式」判断。非 data: / 解析失败 → null（调用方兜底返原图）。
+ */
+function dataUrlToBlob(dataUrl: string): Blob | null {
+  if (!dataUrl.startsWith('data:')) return null
+  const comma = dataUrl.indexOf(',')
+  if (comma < 0) return null
+  const header = dataUrl.slice(0, comma)
+  const data = dataUrl.slice(comma + 1)
+  const isB64 = /;base64$/i.test(header)
+  const mime = header.slice(5).replace(/;base64$/i, '') || 'application/octet-stream'
+  try {
+    if (isB64) {
+      const bin = atob(data)
+      const bytes = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+      return new Blob([bytes], { type: mime })
+    }
+    return new Blob([decodeURIComponent(data)], { type: mime })
+  } catch {
+    return null
+  }
 }
