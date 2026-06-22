@@ -2,6 +2,35 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.8.15
+
+2026-06-22。无 BREAKING —— **提交弹窗支持 ⌘V 粘贴图片 + 修多图重试丢图**。
+
+### ✨ SubmitDialog 支持 ⌘V/Ctrl+V 粘贴图片
+
+提交弹窗里直接粘贴剪贴板图片（截图工具截的、复制的图片文件）→ 追加为一张截图，走与截屏图**同款降采样 / 上传链路**（落 `shots`、统一 dataUrl）。
+
+- 纯文本粘贴照常进输入框：document capture 阶段监听，**仅图片才 `preventDefault`**，文本仍正常落 textarea。
+- `MAX_SHOTS` 上限守卫 + 满额 toast（不静默吞）。
+- 取图逻辑抽成纯函数 `imageFileFromClipboard`（从 `DataTransfer` 挑第一张 `image/*` File）+ 8 单测覆盖分支（有图 / 只有文本 / 多 item 含一张图 / 空）；事件接线交 dialog-harness e2e 观测（jsdom 对 `ClipboardEvent`/`DataTransfer` 支持差，难可靠 dispatch）。
+
+### 🐛 修 `downscaleToMaxWidth` 在 content world 撞宿主 CSP
+
+`downscaleToMaxWidth` 现也在 content world 跑（弹窗粘贴图片降采样）。宿主页 CSP `connect-src 'self'` 不含 `data:` scheme 时，原 `fetch(dataUrl)` 会 `Failed to fetch` → 粘贴图不降采样（SubmitDialog 录像转 blob 早踩过同款坑）。
+
+- 改 **`atob` 同步解析 dataUrl → Blob**（新 `dataUrlToBlob`），不受宿主 CSP 影响；`type` 取自 dataUrl 头部，保住「保留源格式」判断；解析失败兜底返原图。SW 截图路径同样适用。
+- `blobToDataUrl` 提为导出（SW / content world 通用，FileReader 在 SW 不可用，手动 `arrayBuffer → 分块 fromCharCode → btoa`），粘贴 File → dataUrl 与截屏图同链路。
+
+### 🐛 webhook 重试路径补 `images` —— 修多图重试渲染出非法 `{{imagesJson}}`
+
+`serializeForRetry` 漏 `images` 键，重试时默认模板 `{{imagesJson}}` 原样渲成**非法 JSON** → 小体积多图遇瞬时 5xx 重试时丢图 / 坏 body。镜像 live submit 补 `images` + 回归测试。
+
+**862 单测（含 clipboardImage 8 例 + image / webhookAdapter 回归）+ e2e + type-check + build 全绿。**
+
+### 发版决策小记（跳 RELEASE_TEST_CHECKLIST 理由）
+
+非 BREAKING（不碰存储 schema / 上传协议：弹窗粘贴图走既有 `shots` + 截屏图同款降采样 / 上传链路；`downscaleToMaxWidth` 仅换 dataUrl→Blob 解析方式、失败兜底返原图；webhook 重试补 `images` 是补齐 live submit 已有字段）+ 全绿（862 单测含 clipboardImage 8 例 + image / webhookAdapter 回归 + e2e + type-check + build）+ 用户明示「确认现在发、放行跳 checklist」。dogfood 不足（粘贴图片刚做）—— 跳过 checklist。**剪贴板粘贴 e2e 无法 MCP 自动化**（clipboard 注入受限），逻辑靠单测覆盖（`imageFileFromClipboard` 8 条 + image 回归）。留 dogfood 观察点：① 真弹窗里 ⌘V 粘贴截图工具的图能追加成一张截图并正常上传；② 纯文本粘贴照常进输入框不被吞；③ 满 `MAX_SHOTS` 时 toast 提示不静默丢；④ 严格 CSP 宿主页粘贴图能正常降采样（不再 `Failed to fetch`）；⑤ 小体积多图遇瞬时 5xx 重试不再丢图 / 坏 body。
+
 ## v0.8.14
 
 2026-06-18。无 BREAKING —— **修「截多图只存 1 张」数据丢失 bug（截图体积超服务端 8MB 上限被静默丢）**。
