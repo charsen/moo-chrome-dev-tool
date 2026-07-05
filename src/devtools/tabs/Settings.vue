@@ -530,6 +530,7 @@ const TagInput = defineComponent({
         value: input.value,
         onInput: (e: Event) => { input.value = (e.target as HTMLInputElement).value },
         onKeydown: (e: KeyboardEvent) => {
+          if (e.isComposing) return // 输入法组字中的回车是选字，不是「添加」
           if (e.key === 'Enter') { e.preventDefault(); add() }
           else if (e.key === 'Backspace' && !input.value && props.modelValue.length) {
             remove(props.modelValue.length - 1)

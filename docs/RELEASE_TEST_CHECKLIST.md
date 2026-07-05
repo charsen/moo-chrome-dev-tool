@@ -103,6 +103,11 @@ playwright e2e 物理驱不动的真用户场景，必须手测兜底：
 20. **popup「悬浮球（host）」toggle 跨 tab 一致性**：popup 点 toggle → 当前 tab 悬浮球消失，**另开一个 host 不同的 tab** → 悬浮球出现（toggle 只藏当前 host）
 21. **升级闭合「✓ 已升级到 vX.Y.Z」toast**：手动设 `chrome.storage.local.set({mooUpgradeIntent:{expected:'0.7.6',at:Date.now()}})` → reload extension → popup 开 → 看到绿色「✓ 已升级到 v0.7.6」3s 自动消
 
+### v0.8.16 手测项（弹窗防误关 + IME 守卫 —— Playwright 合成不了 trusted 输入法组字事件，必须真输入法手测）
+
+22. **点遮罩不关弹窗 + bump 脉冲**：截图开提交弹窗 → 填标题 → 鼠标点弹窗外灰区 → 弹窗**不关**、已填内容还在、弹窗播一次轻微缩放脉冲；在标题框按下鼠标拖出弹窗外松手（拖选文字手滑场景）→ 同样不关不丢。✕ / Esc / 取消按钮仍正常关闭。
+23. **中文输入法组字 Esc/Enter 不误触发**：标题框中文打字、候选框开着时按 Esc → 只取消候选，**弹窗不关、内容不丢**；Annotator 文字标注中文组字中按 Enter → 只选字不提交标注、按 Esc 只取消候选不丢已输入文字。搜狗/系统拼音任一即可。
+
 ## 自动化测试（chrome-devtools MCP / playwright MCP）注意
 
 - 悬浮球用 pointer 事件自实现 click 判定（防 drag 误触）。CDP `click` / `click_at` 合成事件**可能触发不了**截图按钮 —— v0.3.0+ 已加 dragEndedAt 时间窗（250ms 之外的合成 click 放过），但极快连击仍有打架。如自动化遇「click 报 success 但 Annotator 不弹」，先确认 host 已创建、再尝试隔 300ms 重试。

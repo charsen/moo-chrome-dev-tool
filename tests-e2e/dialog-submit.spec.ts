@@ -2,7 +2,7 @@
  * SubmitDialog 行为锁 —— 用 src/content/dialog-harness.html 在 chrome-extension://
  * 页面内复现 shadow root + 组件实例化。覆盖原 v0.1.14 手摸 checklist 第 3 步：
  *   - 初始焦点在标题输入框
- *   - ESC / mask click → emit 'cancel'
+ *   - ESC → emit 'cancel'；mask 点击不再关闭（v0.8.16 maskClosable=false 防误关）→ 播 bump 脉冲
  *   - Tab 焦点循环不出 dialog
  *   - 成功视图 1.5s 保护期：ESC / mask 都不应再 emit cancel
  *   - 失败横幅 × 只关横幅，dialog 仍在
@@ -45,16 +45,31 @@ test('SubmitDialog · D2 · ESC → emit cancel', async ({ context, extensionId,
   const page = await openExtensionPage(context, sw, harnessUrl(extensionId))
   await page.waitForSelector('#moo-title', { timeout: 5000 })
 
-  // ESC 走 useFocusTrap → onEscape → MooDialog emit 'close' → SubmitDialog onMaskClick → emit('cancel')
+  // ESC 走 useFocusTrap → onEscape → MooDialog emit 'close' → SubmitDialog onDialogClose → emit('cancel')
   await page.locator('.moo-dialog').press('Escape')
 
   const emits = await readEmits(page)
   expect(emits.some((e) => e.event === 'cancel')).toBe(true)
 })
 
-test('SubmitDialog · D3 · 点 mask 外灰区 → emit cancel', async ({ context, extensionId, sw }) => {
+test('SubmitDialog · D3 · 点 mask 外灰区 → 不关闭不 cancel，dialog 播 bump 脉冲', async ({ context, extensionId, sw }) => {
+  // v0.8.16 防误关：SubmitDialog 传 maskClosable=false —— 点 mask 不再 emit cancel，
+  // 改为 dialog 容器加一次性 .moo-dialog--bump（0.22s scale 脉冲，animationend 按名自清）
   const page = await openExtensionPage(context, sw, harnessUrl(extensionId))
   await page.waitForSelector('.moo-dialog-mask', { timeout: 5000 })
+
+  // bump class 只存活 0.22s，点完再查有时序风险 —— 先挂 MutationObserver 抓
+  // 「class 曾出现过」，与动画时长解耦
+  await page.evaluate(() => {
+    const shadow = (window as unknown as { __mooHarnessShadow?: ShadowRoot }).__mooHarnessShadow
+    const dialog = shadow?.querySelector('.moo-dialog')
+    if (!dialog) throw new Error('dialog missing')
+    const w = window as unknown as { __mooBumpSeen?: boolean }
+    w.__mooBumpSeen = false
+    new MutationObserver(() => {
+      if (dialog.classList.contains('moo-dialog--bump')) w.__mooBumpSeen = true
+    }).observe(dialog, { attributes: true, attributeFilter: ['class'] })
+  })
 
   // mask 上找一个 dialog 容器外的点击位置：取 mask 左上角偏移一点
   const mask = page.locator('.moo-dialog-mask')
@@ -62,9 +77,26 @@ test('SubmitDialog · D3 · 点 mask 外灰区 → emit cancel', async ({ contex
   if (!box) throw new Error('mask bbox missing')
   // 点 mask 左上 20,20 —— 一定不在 .moo-dialog 容器内（容器居中）
   await page.mouse.click(box.x + 20, box.y + 20)
+  await page.waitForTimeout(50)
 
+  // ① 弹窗仍在 ② 没有 emit cancel
+  await expect(page.locator('.moo-dialog')).toBeVisible()
   const emits = await readEmits(page)
-  expect(emits.some((e) => e.event === 'cancel')).toBe(true)
+  expect(emits.some((e) => e.event === 'cancel')).toBe(false)
+
+  // ③ bump 脉冲播过（class 曾出现）……
+  await expect.poll(
+    () => page.evaluate(() => (window as unknown as { __mooBumpSeen?: boolean }).__mooBumpSeen),
+    { timeout: 2000, message: '点 mask 后 .moo-dialog--bump 应出现过' }
+  ).toBe(true)
+  // ……且 animationend 后自清（onBumpEnd 按 animationName 过滤 —— 不被 moo-dialog-in 误清）
+  await expect.poll(
+    () => page.evaluate(() => {
+      const shadow = (window as unknown as { __mooHarnessShadow?: ShadowRoot }).__mooHarnessShadow
+      return shadow?.querySelector('.moo-dialog')?.classList.contains('moo-dialog--bump') ?? null
+    }),
+    { timeout: 2000, message: 'animationend 后 bump class 应自清' }
+  ).toBe(false)
 })
 
 test('SubmitDialog · D4 · Tab 焦点在 dialog 内循环（不走出宿主页）', async ({ context, extensionId, sw }) => {
@@ -97,7 +129,7 @@ test('SubmitDialog · D5 · 成功视图 1.5s 保护期：ESC 不触发 cancel',
   await page.locator('.moo-dialog-foot .moo-btn.primary').click()
   await page.waitForSelector('.moo-submit-success', { timeout: 3000 })
 
-  // 成功视图期间 ESC 不应触发 cancel（onMaskClick 早返）。successTimer 1.5s 后才
+  // 成功视图期间 ESC 不应触发 cancel（onDialogClose 早返）。successTimer 1.5s 后才
   // 触发 'submitted' —— 时间窗内只断言保护期：cancel 没发出来
   await page.locator('.moo-dialog').press('Escape')
   await page.waitForTimeout(50)
@@ -106,6 +138,8 @@ test('SubmitDialog · D5 · 成功视图 1.5s 保护期：ESC 不触发 cancel',
 })
 
 test('SubmitDialog · D6 · 成功视图 1.5s 保护期：点 mask 不触发 cancel', async ({ context, extensionId, sw }) => {
+  // 断言不变但语义换了底：v0.8.16 起 mask 点击全程不 cancel（maskClosable=false 兜底），
+  // 不再依赖 onDialogClose 的 successInfo 早返。保留本 case 锁成功视图这条路径不回退。
   const page = await openExtensionPage(context, sw, harnessUrl(extensionId, 'success=true'))
   await page.waitForSelector('#moo-title', { timeout: 5000 })
 

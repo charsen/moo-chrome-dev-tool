@@ -23,8 +23,8 @@
           v-model="editing.text"
           class="moo-text-input"
           :style="{ fontSize: textFontPx * displayScale + 'px' }"
-          @keydown.enter.prevent="commitText"
-          @keydown.escape.prevent="cancelText"
+          @keydown.enter="onTextKeyEnter"
+          @keydown.escape="onTextKeyEscape"
           placeholder="输入文字，回车确认 / Esc 取消"
         />
         <button class="moo-text-btn ok" @click="commitText" title="确认 (Enter)">✓</button>
@@ -308,6 +308,7 @@ const TOOL_KEY_MAP: Record<string, Mode> = {
 }
 
 function onKey(e: KeyboardEvent) {
+  if (e.isComposing) return // 输入法组字中：方向键在选候选、Esc 在取消候选，都不该动标注
   if (editing.value) return
   // cancel-guard 打开时把所有键盘交给 trap 处理：避免按 Esc 同时被 trap 关 guard +
   // 又被这里 cancel() 走"退出 Annotator"分支造成行为冲突
@@ -587,6 +588,19 @@ function commitText() {
 function cancelText() {
   discardAction()
   editing.value = null
+}
+
+// 文字输入框键盘包装：输入法组字中回车=选字、Esc=取消候选，不是提交/放弃命令。
+// commitText/cancelText 还有 ✓/✕ 按钮等调用点，签名不动，守卫收在包装里。
+function onTextKeyEnter(e: KeyboardEvent) {
+  if (e.isComposing) return
+  e.preventDefault()
+  commitText()
+}
+function onTextKeyEscape(e: KeyboardEvent) {
+  if (e.isComposing) return
+  e.preventDefault()
+  cancelText()
 }
 
 // pointermove 期间 redraw 可能每帧多次被调（move handler + reactive watchers），

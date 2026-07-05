@@ -95,6 +95,9 @@ export function useFocusTrap(
   let previouslyFocused: HTMLElement | null = null
 
   function onKeydown(e: KeyboardEvent) {
+    // 输入法组字中的 Esc（取消候选）/ Tab 不是对 dialog 的命令 ——
+    // 否则中文用户在标题/描述框打字按 Esc 会直接关弹窗丢内容
+    if (e.isComposing) return
     const root = activeRoot
     if (!root) return
 

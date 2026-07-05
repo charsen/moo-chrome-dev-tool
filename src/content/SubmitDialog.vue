@@ -5,12 +5,13 @@
     v-show="!picking"
     variant="light"
     minimizable
+    :mask-closable="false"
     v-model:pos="dialogPos"
     v-model:minimized="dialogMinimized"
     :title="`提交 Bug — ${project.name}`"
     labelled-by="moo-submit-title"
     initial-focus="container"
-    @close="onMaskClick"
+    @close="onDialogClose"
   >
       <!-- 提交成功内嵌反馈：取代 toast 一闪而过的反馈方式。
            v0.7.6 vue-craft P1：加 role=status + aria-live=polite 让 SR 用户能读到「提交成功 #xxx」反馈
@@ -447,7 +448,7 @@ const preview = ref('')
 const submitting = ref(false)
 const titleInput = ref<HTMLInputElement | null>(null)
 // 焦点陷阱 + Esc 收口到 MooDialog；本组件 onMounted 仍负责把焦点给到标题输入框（MooDialog initialFocus='container'
-// 让 trap 不抢初始焦点）。Esc 路径见 MooDialog 的 @close → onMaskClick。
+// 让 trap 不抢初始焦点）。Esc 路径见 MooDialog 的 @close → onDialogClose。
 
 /** 提交成功后的内嵌反馈视图。设值即覆盖 body/footer 展示 ✓ 卡片。 */
 const successInfo = ref<{ message: string; remoteId?: string; viewUrl?: string } | null>(null)
@@ -868,12 +869,13 @@ async function onSubmit() {
   }
 }
 
-/** 用户主动退出（Esc / mask / 取消按钮）→ 不存草稿（ContentApp reset 会 clear，
+/** 用户主动退出（Esc / ✕ / 取消按钮）→ 不存草稿（ContentApp reset 会 clear，
  *  「主动退出丢草稿」是设计语义）。其他卸载路径（再截一张/重截/重标）才存。 */
 let userCancelled = false
 
-/** 成功面板期间禁止点遮罩取消，避免误关。失败/正常表单态 mask 点击仍走取消。 */
-function onMaskClick() {
+/** 成功面板期间 Esc/✕ 不取消，等自动关闭；mask 点击已由 maskClosable=false
+ *  全程禁用防误关（v0.8.16 修误点遮罩丢内容）。 */
+function onDialogClose() {
   if (successInfo.value) return
   userCancelled = true
   emit('cancel')
@@ -933,8 +935,9 @@ async function onPaste(e: ClipboardEvent) {
   }
 }
 
-// 键盘快捷键：⌘/Ctrl+Enter 提交（Esc 走 MooDialog → onMaskClick 路径）
+// 键盘快捷键：⌘/Ctrl+Enter 提交（Esc 走 MooDialog → onDialogClose 路径）
 function onKeydown(e: KeyboardEvent) {
+  if (e.isComposing) return // 输入法组字中（选字/取消候选）的按键不是命令，直接放行
   if (dialogMinimized.value) return // 缩小态：键盘全还给宿主页（Esc=恢复由 MooDialog 自管）
   if (picking.value) return // 选元素状态由 ElementPicker 自己接管
   if (successInfo.value) return // 成功视图期间快捷键全部禁用，等待自动关闭
@@ -973,7 +976,7 @@ onBeforeUnmount(() => {
   if (clearElementsConfirmTimer) clearTimeout(clearElementsConfirmTimer)
   if (copyHintTimer) clearTimeout(copyHintTimer)
   // 表单草稿（v0.8.10）：「再截一张/重截/重标」触发的卸载要把已填内容摆渡到下次重挂。
-  // 两个例外不存：① 提交成功（流程结束）② 用户主动取消（Esc/mask/取消按钮 —— 主动
+  // 两个例外不存：① 提交成功（流程结束）② 用户主动取消（Esc / ✕ / 取消按钮 —— 主动
   // 退出丢草稿是设计语义；且 ContentApp.reset 的 clearDialogDraft 先于本钩子跑，
   // 这里再存会把刚清掉的草稿写回去，下次全新流程会诈尸恢复旧内容）。
   if (!successInfo.value && !userCancelled) {

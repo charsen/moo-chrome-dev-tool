@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // 会 Vue warn —— mock 成 no-op（同 useAutoSave.test.ts 先例），专注测 trap 状态机：
 // activate（挂监听+初始焦点）/ Tab 循环 / Esc 钩子 / paused 摘挂监听（v0.8.11 新增）。
 //
-// 覆盖：composable 的监听挂/摘、焦点策略、paused 切换语义（MooDialog 缩小态依赖）。
-// 不覆盖：真浏览器 Tab 键焦点移动 / shadow DOM 下钻（e2e dialog-submit D4 + dialog-ux 负责）。
+// 覆盖：composable 的监听挂/摘、焦点策略、paused 切换语义（MooDialog 缩小态依赖）、
+// isComposing 组字守卫（v0.8.16：IME 取消候选的 Esc 不该关弹窗）。
+// 不覆盖：真浏览器 Tab 键焦点移动 / shadow DOM 下钻（e2e dialog-submit D4 + dialog-ux 负责）、
+// 真实 IME 组字事件（合成不了 trusted composition，发版前人肉：中文输入中按 Esc）。
 vi.mock('vue', async (importActual) => {
   const actual = await importActual<typeof import('vue')>()
   return { ...actual, onBeforeUnmount: vi.fn() }
@@ -62,8 +64,8 @@ function makeRoot(doc: FakeDoc, focusables: ReturnType<typeof makeFocusable>[]) 
   return root
 }
 
-function makeKeyEvent(key: string, shiftKey = false) {
-  return { key, shiftKey, preventDefault: vi.fn() }
+function makeKeyEvent(key: string, shiftKey = false, isComposing = false) {
+  return { key, shiftKey, isComposing, preventDefault: vi.fn() }
 }
 
 function setup(opts: { initialFocus?: 'first' | 'container'; paused?: ReturnType<typeof ref<boolean>>; onEscape?: () => void } = {}) {
@@ -128,6 +130,34 @@ describe('useFocusTrap', () => {
     await nextTick()
     root.dispatch('keydown', makeKeyEvent('Escape'))
     expect(onEscape).toHaveBeenCalledTimes(1)
+  })
+
+  it('组字中（isComposing）的 Esc 不触发 onEscape；非组字 Esc 照常触发', async () => {
+    // v0.8.16：中文输入法在标题/描述框组字时按 Esc 是「取消候选」，不是关弹窗命令。
+    // 漏了这个守卫 = 打字取消候选直接关窗丢内容。
+    const onEscape = vi.fn()
+    const { root } = setup({ onEscape })
+    await nextTick()
+
+    root.dispatch('keydown', makeKeyEvent('Escape', false, true))
+    expect(onEscape, '组字中的 Esc 必须被吞掉').not.toHaveBeenCalled()
+
+    // 正控：同一个监听，非组字 Esc 立即生效 —— 证明不是「监听没挂上」的假绿
+    root.dispatch('keydown', makeKeyEvent('Escape'))
+    expect(onEscape).toHaveBeenCalledTimes(1)
+  })
+
+  it('组字中（isComposing）的 Tab 不做焦点循环：不 preventDefault、焦点不动', async () => {
+    const { root, first, last, doc } = setup()
+    await nextTick()
+    expect(first.focus).toHaveBeenCalledTimes(1)   // activate 时的 initialFocus
+
+    doc.activeElement = last
+    const tab = makeKeyEvent('Tab', false, true)
+    root.dispatch('keydown', tab)
+    expect(tab.preventDefault, '组字中的 Tab 不该被拦').not.toHaveBeenCalled()
+    expect(doc.activeElement, '焦点不应被 trap 挪动').toBe(last)
+    expect(first.focus).toHaveBeenCalledTimes(1)   // 没有第二次 focus（未发生循环回跳）
   })
 
   it('paused=true：摘掉 keydown 监听 —— Tab/Esc 全还给宿主页（MooDialog 缩小态依赖）', async () => {

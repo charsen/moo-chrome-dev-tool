@@ -2,6 +2,38 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.8.16
+
+2026-07-04。无 BREAKING —— **弹窗防误点遮罩丢内容 + 中文输入法组字守卫**。
+
+### 🐛 提交弹窗点遮罩不再关闭（防误点丢草稿）
+
+SubmitDialog 传 `maskClosable=false`：点弹窗外灰区**不再关窗**。根因是用户在标题/描述框里**按下鼠标拖选文本、手一滑拖出弹窗到遮罩松手**——浏览器把 `click` 派发到共同祖先（= mask），老 `@click.self` 误判成「点 mask」→ `emit('cancel')` → 已填内容全丢。
+
+- `onMaskClick` → `onDialogClose` 重命名（语义收敛为「Esc / ✕ / 取消按钮」三条主动退出路径；mask 全程不触发）。
+- 成功视图期间的早返守卫保留（`successInfo` 时 Esc/✕ 也不 cancel，等自动关闭）。
+- MooDialog 加**防误关反馈**：点 mask 时给弹窗容器加一次性 `.moo-dialog--bump`（0.22s 轻微 `scale` 脉冲，提示「弹窗还在，请用 ✕/Esc/取消」）。用 CSS `scale` 属性（非 `transform`）—— 不与拖拽的 inline `translate` 及 `moo-dialog-in` 入场动画的 `transform` 冲突；`@keyframes` 排在 `.moo-dialog--moved` 之后靠 cascade 覆盖其 `animation:none`（拖过的弹窗也播得出）；`animationend` 按 `animationName` 过滤自清（不被 `moo-dialog-in` 误清）；`prefers-reduced-motion` 由文件尾统一段落退化。
+
+### 🐛 中文输入法组字中的 Esc/Enter/Tab 不再误触发命令
+
+中文输入法组字（候选框开着）时按 Esc 是「取消候选」、Enter 是「选字」、方向键/Tab 在候选间移动——**都不是对弹窗/组件的命令**。漏守卫 = 中文用户打字按 Esc 直接关窗丢内容、按 Enter 误提交。统一加 `if (e.isComposing) return` 守卫，覆盖全部 keydown 收口点：
+
+- `useFocusTrap`（Esc 关弹窗 / Tab 焦点循环）、`MooDialog` 缩小态 `onMinimizedKeydown`（Esc 恢复）
+- `SubmitDialog` `onKeydown`（⌘↵ 提交 / Esc）、`Annotator` `onKey`（工具热键 / Esc）+ 文字标注输入框 Enter/Esc（抽 `onTextKeyEnter`/`onTextKeyEscape` 包装，`commitText`/`cancelText` 签名不动、✓/✕ 按钮调用点不受影响）、`ElementPicker` `onKey`（Esc 退出）
+- DevTools 侧：`ConfirmModal`（Enter 确认）、`PayloadEditorModal`（Esc/⌘↵）、`Settings` `TagInput`（Enter 添加）
+
+### ✅ 测试
+
+- **单测 +2**（`useFocusTrap`）：组字中 Esc 不触发 `onEscape`（+ 正控：非组字 Esc 照常触发，证明不是「监听没挂上」的假绿）；组字中 Tab 不 `preventDefault`、焦点不动。**864 单测全绿。**
+- **e2e**：D3 重写为「点 mask → 不关不 cancel + 播 bump 脉冲」（`MutationObserver` 抓 `.moo-dialog--bump` class 曾出现、与动画时长解耦，再断 `animationend` 后自清）；新增 **UX11**（标题框内按下 → 拖到 mask 灰区松手：弹窗不关、已填内容保留、不 emit cancel）。
+- **手测项 22-23**（`docs/RELEASE_TEST_CHECKLIST.md`）：Playwright **合成不了 trusted 输入法组字 / composition 事件**，点遮罩防误关 + 中文组字 Esc/Enter 必须真输入法人肉过。
+
+**864 单测 + e2e + type-check + build 全绿。**
+
+### 发版决策小记（跳 RELEASE_TEST_CHECKLIST 理由）
+
+非 BREAKING（纯键盘 / 交互守卫，不碰存储 schema / 上传协议 / 匹配引擎；mask 从「可关」改「不可关 + 脉冲提示」是收紧误关面，Esc/✕/取消三条关闭路径不变）+ 全绿（864 单测含 isComposing 2 例 + e2e 含 D3 改写 + UX11 + type-check + build）+ 用户明示放行。dogfood 不足（刚做）—— 跳过 checklist。**IME 组字 / 点遮罩防误关无法 MCP 自动化**（Playwright 合成不了 trusted composition + 跨界松手时序），逻辑靠单测（isComposing 守卫）+ e2e（mask 不关 / 跨界松手 UX11）覆盖，真输入法路径留 checklist 22-23 人肉。留 dogfood 观察点：① 标题框内拖选文本手滑到遮罩松手不再关窗丢草稿；② 点遮罩播一次轻微缩放脉冲、✕/Esc/取消仍正常关；③ 中文输入法组字中按 Esc 只取消候选不关窗、按 Enter 只选字不提交（SubmitDialog / Annotator 文字标注 / DevTools 各 modal / TagInput 同款）。
+
 ## v0.8.15
 
 2026-06-22。无 BREAKING —— **提交弹窗支持 ⌘V 粘贴图片 + 修多图重试丢图**。

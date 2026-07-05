@@ -105,6 +105,7 @@ function onCancel() {
 }
 
 function onKey(e: KeyboardEvent) {
+  if (e.isComposing) return // 输入法组字中的 Esc/回车是选字操作，不是对 modal 的命令
   if (e.key === 'Escape') { e.stopPropagation(); onCancel() }
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); onSave() }
 }

@@ -69,6 +69,7 @@ onBeforeUnmount(() => {
 })
 
 function onKey(e: KeyboardEvent) {
+  if (e.isComposing) return // 输入法组字中的 Esc 是取消候选，不该退出 picker
   if (e.key === 'Escape') {
     e.preventDefault()
     e.stopPropagation()

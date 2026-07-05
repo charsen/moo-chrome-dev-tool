@@ -746,6 +746,12 @@ export const SHADOW_CSS = `
    moo-dialog-in 的 keyframes transform 在播放期会盖过内联 translate，
    重挂还原时会先「居中入场 0.2s」再跳到记忆位置，闪跳。 */
 .moo-dialog--moved { animation: none; }
+/* mask 点击防误关反馈：标准 scale 属性（非 transform）—— 不与拖拽的 inline translate
+   及 moo-dialog-in 入场动画的 transform 冲突。必须排在 .moo-dialog--moved 之后：
+   同特异性靠 cascade 覆盖其 animation:none，拖过的弹窗才播得出 bump。
+   prefers-reduced-motion 退化由文件尾统一段落覆盖（.moo-dialog animation:none !important 同元素压得住这条）。 */
+@keyframes moo-dialog-bump { 0%, 100% { scale: 1; } 40% { scale: 1.02; } }
+.moo-dialog--bump { animation: moo-dialog-bump .22s ease-out; }
 .moo-dialog-head h3 {
   margin: 0;
   font-size: 14px;

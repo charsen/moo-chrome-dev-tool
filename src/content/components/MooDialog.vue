@@ -11,13 +11,14 @@
     >
       <div
         ref="dialogEl"
-        :class="['moo-dialog', { 'moo-dialog--moved': pos !== null, 'moo-dialog--dragging': dragging }]"
+        :class="['moo-dialog', { 'moo-dialog--moved': pos !== null, 'moo-dialog--dragging': dragging, 'moo-dialog--bump': bumping }]"
         :style="dialogStyle"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="labelledBy"
         :aria-label="labelledBy ? undefined : title"
         tabindex="-1"
+        @animationend="onBumpEnd"
       >
         <slot name="head">
           <header v-if="title" ref="headEl" class="moo-dialog-head" @pointerdown="onHeadDown">
@@ -119,8 +120,15 @@ useFocusTrap(dialogEl, {
   paused: minimized
 })
 
+const bumping = ref(false)
 function onMaskClick() {
-  if (props.maskClosable) emit('close')
+  if (props.maskClosable) { emit('close'); return }
+  // 防误关反馈：轻微 scale 脉冲提示「弹窗还在，请用 ✕ / Esc / 取消 关闭」
+  bumping.value = true
+}
+function onBumpEnd(e: AnimationEvent) {
+  // 同元素还有 moo-dialog-in 入场动画的 animationend，必须按名过滤
+  if (e.animationName === 'moo-dialog-bump') bumping.value = false
 }
 
 // ── header 拖拽（FloatingBall.vue 同款 pointer capture 模式）──────────────────
@@ -213,6 +221,8 @@ function endDrag(): void {
 // 唯一例外是 Esc：用户按 Esc 期待「把弹窗叫回来」。window capture 监听只在缩小态
 // 挂载，恢复 / 卸载即摘，不常驻污染宿主页。
 function onMinimizedKeydown(e: KeyboardEvent) {
+  // 输入法组字中的 Esc 是「取消候选」，不该恢复弹窗、更不该 stopImmediatePropagation 打断宿主页 IME
+  if (e.isComposing) return
   if (e.key !== 'Escape') return
   e.preventDefault()
   e.stopImmediatePropagation()

@@ -56,6 +56,7 @@ function onConfirm() { emit('confirm') }
 function onCancel() { emit('cancel') }
 
 function onKeydown(e: KeyboardEvent) {
+  if (e.isComposing) return // 输入法组字中的回车是选字，不该触发确认
   if (e.key === 'Escape') { e.stopPropagation(); onCancel() }
   // Enter 默认确认；如果焦点在 cancel 按钮上，Enter 也会触发原生 click（resolve cancel），
   // 这里只处理"未聚焦任何按钮"的场景：默认走确认
