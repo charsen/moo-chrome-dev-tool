@@ -26,3 +26,6 @@ tests/fixtures/zentao-real/raw/
 
 # CC-Panes 多会话编排本地元数据（session history sqlite + config + blobs，含会话内容，绝不入仓）
 .ccpanes/
+
+# Claude Code 本地设置（每台机器/每人不同的权限允许列表，不入仓；.claude/agents 与 commands 才入仓）
+.claude/settings.local.json
