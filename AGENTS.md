@@ -6,7 +6,7 @@
 
 1. 先读 `notes.md`，再读 `README.md`、`HANDOFF.md` 和任务对应的 `docs/`；发版任务必须读 `docs/RELEASE_TEST_CHECKLIST.md` 与 `docs/MCP_TESTING.md`。
 2. 按 Chrome 世界追完整链：page MAIN hook → isolated content/shadow UI → background service worker → offscreen recorder/devtools/popup/options → storage/后端 adapter。
-3. 修改前读目标文件、同类实现与测试。先列计划并获用户批准；权限、数据采集、上报、重试、录屏或 release 范围变化时重新确认。
+3. 修改前读目标文件、同类实现与测试。机械性、零语义且范围明确的小修可直接实施；非琐碎或涉及权限、数据采集、上报、重试、录屏、release 的改动先列计划并获用户批准，范围或风险实质变化时重新确认。
 
 - `notes.md` 只记录已经由单测、E2E、dogfood 或真实 Chrome/禅道验证，且跨任务仍有价值的坑和做法；不写任务流水账、猜测和固定测试数量。
 - 新证据推翻旧结论时修订原条目。禁止写真实姓名、账号、手机号、公司域名、token、内部 IP 或生产工单内容。
@@ -60,6 +60,6 @@
 
 - 修一个 listener、normalizer、动态注入、timer、CSS token、message type 或 v2 endpoint，至少用 `rg` 扫全仓同类；只修直接报错点通常不足以闭环。
 - 同类扫描限于同一风险模式；工作量明显扩大或业务不确定时报告并重新确认，不借机做泛化重构。
-- 文档-only 至少运行 `git diff --check` 与相关一致性脚本。代码改动先跑目标 Vitest，再执行 `pnpm check:versions`、`pnpm type-check`、`pnpm type-check:tests`、`pnpm test` 和 `pnpm build`。
+- 文档-only 至少运行 `git diff --check` 与相关一致性脚本。代码改动开发中按需先跑目标 Vitest；最终代码状态执行一次 `pnpm check:versions`、`pnpm type-check:tests`、`pnpm test` 和 `pnpm build`。`pnpm build` 已包含主源码 `vue-tsc --noEmit`，运行后不再重复 `pnpm type-check`；只有提前反馈或失败诊断时单独运行它。
 - UI/扩展链改动按 `docs/MCP_TESTING.md` 分断面：Playwright harness 做程序化交互，真实 Chrome/DevTools 验证 SW、权限、动态注入和真扩展行为；发版按 checklist 追加 dogfood/人工项。
 - 不主动 commit、push、bump、tag、release 或商店提交。提交前展示完整 diff 与真实验证结果并取得用户明确确认。
