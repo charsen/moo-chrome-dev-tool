@@ -1,14 +1,14 @@
 # AGENTS.md
 
-本文件适用于整个 Moo Dev Tool 仓库。规则冲突时依次服从系统/用户指令、当前代理规则、用户批准的方案、`notes.md`、`HANDOFF.md`、发布/测试文档和现码。归档文档记录历史，不得覆盖当前 manifest、类型、测试和真实 Chrome 行为。
+本文件适用于整个 Moo Dev Tool 仓库。规则冲突时依次服从系统/用户指令、当前代理规则、用户批准的方案、`NOTES.md`、`HANDOFF.md`、发布/测试文档和现码。归档文档记录历史，不得覆盖当前 manifest、类型、测试和真实 Chrome 行为。
 
 ## 开工顺序与长期记忆
 
-1. 先读 `notes.md`，再读 `README.md`、`HANDOFF.md` 和任务对应的 `docs/`；发版任务必须读 `docs/RELEASE_TEST_CHECKLIST.md` 与 `docs/MCP_TESTING.md`。
+1. 先读 `NOTES.md`，再读 `README.md`、`HANDOFF.md` 和任务对应的 `docs/`；发版任务必须读 `docs/RELEASE_TEST_CHECKLIST.md` 与 `docs/MCP_TESTING.md`。
 2. 按 Chrome 世界追完整链：page MAIN hook → isolated content/shadow UI → background service worker → offscreen recorder/devtools/popup/options → storage/后端 adapter。
 3. 修改前读目标文件、同类实现与测试。机械性、零语义且范围明确的小修可直接实施；非琐碎或涉及权限、数据采集、上报、重试、录屏、release 的改动先列计划并获用户批准，范围或风险实质变化时重新确认。
 
-- `notes.md` 只记录已经由单测、E2E、dogfood 或真实 Chrome/禅道验证，且跨任务仍有价值的坑和做法；不写任务流水账、猜测和固定测试数量。
+- `NOTES.md` 只记录已经由单测、E2E、dogfood 或真实 Chrome/禅道验证，且跨任务仍有价值的坑和做法；不写任务流水账、猜测和固定测试数量。
 - 新证据推翻旧结论时修订原条目。禁止写真实姓名、账号、手机号、公司域名、token、内部 IP 或生产工单内容。
 - `HANDOFF.md` 用于当前产品状态和接力，`CHANGELOG` 用于版本档案；两者不替代永久工程规则。
 

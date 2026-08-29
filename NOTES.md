@@ -1,4 +1,4 @@
-# notes.md — Moo Dev Tool 长期记忆
+# NOTES.md — Moo Dev Tool 长期记忆
 
 > 每次开工先读。这里只记录经单测、E2E、dogfood 或真实 Chrome 验证，且可跨任务复用的坑与确认做法；不记录任务进度、猜测和容易过期的用例数量。
 
