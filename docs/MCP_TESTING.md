@@ -1,3 +1,8 @@
+---
+title: 双 MCP 测试分工
+group: 浏览器研发工具
+order: 50
+---
 # 双 MCP 测试分工（Tier 3 · 真发挥不同断面）
 
 > v0.4.3 复盘后立项。「双 MCP 都跑」不等于覆盖到位 —— 之前 chrome-devtools MCP 和 playwright MCP 在用同一份 mock 数据，断面相同，所以同事 dogfood 仍炸。这份文档定下两个 MCP 各管什么。

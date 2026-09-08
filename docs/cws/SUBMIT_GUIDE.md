@@ -1,3 +1,8 @@
+---
+title: Chrome 应用商店提交指南
+group: Chrome 应用商店
+order: 110
+---
 # CWS 提交执行步骤（给你一步步照做）
 
 ## 准备清单（按顺序）

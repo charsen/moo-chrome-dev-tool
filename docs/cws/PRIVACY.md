@@ -1,3 +1,8 @@
+---
+title: 浏览器研发工具隐私政策
+group: Chrome 应用商店
+order: 90
+---
 # Moo Dev Tool 隐私政策 / Privacy Policy
 
 **最后更新：2026-06-11 / Last updated: 2026-06-11**
