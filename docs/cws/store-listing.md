@@ -1,3 +1,8 @@
+---
+title: Chrome 应用商店上架资料
+group: Chrome 应用商店
+order: 100
+---
 # Chrome Web Store Listing 物料
 
 填到 https://chrome.google.com/webstore/devconsole/ 的「Store listing」/「Privacy practices」字段。

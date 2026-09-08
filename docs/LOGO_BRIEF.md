@@ -1,3 +1,8 @@
+---
+title: 浏览器研发工具标志设计说明
+group: 浏览器研发工具
+order: 80
+---
 # moo-chrome-dev-tool · Logo 设计 Brief
 
 > 这份 brief 用于把 logo 设计需求交付给设计师。前置已经走完方向取舍（鹰图腾保留、实心剪影、3/4 侧、深圆底 badge、金色 reticle 眼睛），设计师只需在此基础上把鹰的解剖学画准、把视觉做精。
