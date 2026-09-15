@@ -2,6 +2,75 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.8.18
+
+2026-09-15。无 BREAKING —— **修三处数据/稳定性缺陷 + 补齐类型与 lint 门禁 + 依赖漏洞归零**。
+
+### 🔴 修 history 被并发写覆盖（devtools / popup 删过的记录会「复活」）
+
+`withWriteMutex` 这类内存锁只在**单个 JS 上下文**内有效 —— 它在 Service Worker 侧，而 devtools / popup 直调 `addHistoryEntry` / `removeHistory` 时会与 SW 的写回交错，把已删条目又写回去（重试队列早就这么修过，history 当时漏了）。
+
+- 新增 `HISTORY_REMOVE` / `HISTORY_CLEAR` 消息 + `src/background/handlers/historyWrite.ts`，`History.vue` / `Settings.vue` 的**写**路径改走 `safeSendMessage` 路由到 SW（只读路径仍可直调）。
+- `storage/history.ts` 的 `removeHistory` 改返 `boolean`，与 retryQueue 同口径，便于调用端判断。
+
+### 🔴 修重试队列 flush 中途被杀 → 远端重复工单
+
+`doFlush` 原来整轮跑完才落一次盘：SW 在循环中途被停，已成功的条目仍留在队列里，冷却一过就重发 → 远端出现重复工单。
+
+- 重构出 `persistProgress()`（锁内重读 + 按成功/放弃/待重试归并），**成功条与放弃条立即落盘**，失败条在收尾落。
+- **落盘顺序**改为「先从队列移除 → 再回填 history」（反了最坏是多一条重复单）。
+- 新增 5 条回归用例，含「假设此刻 SW 被杀」的显式断言。
+
+### ⚡ MAIN world 读响应体前先过闸，不再无条件全量解码
+
+页面 hook 原来是 `resp.clone().text()` / `xhr.responseText` 先**把整份 body 解码成 JS 字符串**再 clip 到 20KB —— 遇到大文件 / 二进制响应会白吃内存和 CPU。
+
+- 新增 `src/utils/bodyGate.ts`（**content-length + content-type 双闸**）+ 单测；`main-world.ts` 的 fetch 与 XHR 两条路径同款接入。
+- 超阈值只记 `[binary type size]` 摘要；**payload shape 与 20KB clip 语义不变**，`isValidRequestPayload` 无需改。
+
+### 🔧 SW 冷启动：动态注入自愈不再被重试队列网络段挡住
+
+boot 里 `syncContentScripts()` 原来排在 `await flushRetryQueue()` 之后，而 flush 的网络段最长可达「单条禅道 multipart 80s × 50 条」→ 冷启动后动态注入自愈可能被挡几十秒。已前移并行 kick off。
+
+- `refreshBadge()` / `checkOffscreenAutoStoppedFlag()` **刻意留在原位**（前者提前跑会读到旧计数把 badge 写错；后者靠等待 flush 让出 `currentRecording`），代码里已写明原因，避免下次被「顺手并行化」。
+
+### 🧹 删掉从未接线的 `CaptureConfig.userInfo`
+
+全仓 0 写 0 读、`normalizeProject` 也不携带该字段 —— 留着等于给下一次「实现了但被 read 边界静默剥掉」埋雷（同一个文件已因 `images` / 禅道 5 字段踩过两次）。原地留注释说明将来加回时必须同步补 normalizer 并加 round-trip 测试。
+
+### ✅ 测试
+
+- 新增 `tests/passwordMask.test.ts`（7 例）：「截图前密码遮罩」是 `AGENTS.md` 点名的防线，此前 unit + e2e 都没有任何文件引用它。按本仓既有风格（vitest 只跑 node 环境）用 `vi.stubGlobal` 注入最小 DOM 假体，断言更精确。
+- 新增 `bodyGate` / `backgroundHistoryRoute` / `retryQueue`（5 条 flush 回归）/ `remoteStatus` 用例；顺带修掉测试 fixture 与生产类型脱钩（`imageFormat: 'inline'` 8 处、`viewport: { w, h }` 16 处，全被 `as T` 蒙过）。
+- **测试类型债 41 处 / 15 文件 → 0**；CI 摘掉 `type-check:tests` 的 `continue-on-error`，并把它与 `lint` 一起纳入 pre-commit。
+
+### 🛠 工具链
+
+- 引入 **ESLint**（eslint 10 + typescript-eslint 8 + eslint-plugin-vue 10，flat config），只开「写错了」类规则；基线 **0 error / 5 warning**（5 条全是 `main-world.ts` patch fetch/XHR 的签名边界 `any`）。
+
+### 📦 依赖：npm 漏洞 18 → 0
+
+全部来自 dev 工具链（`dependencies` 里只有 `vue`，扩展产物是打包 JS、不含 `node_modules`，**不影响用户运行时**）。按漏洞给出的**最小 patched 版本**对齐，只动 4 个包：
+
+- `vite` 5.4.21 → **6.4.3**（清 vite 自身 + 传递链 esbuild / postcss / nanoid）
+- `vitest` 1.6.1 → **4.1.11** + `@vitest/coverage-v8` 同步（清唯一 critical）
+- `sharp` 0.34.5 → **0.35.4**（清 2 high）
+- `@crxjs/vite-plugin` 2.4.0 → **2.7.1**（把钉死的 `rollup` 抬到 patched 下限，清 1 high）
+
+**刻意停在 vite 6 而不是 8**：vite 8 换掉 esbuild 引擎（rolldown + lightningcss），而 `vite.config.ts` 的 `esbuild: { drop: ['console','debugger'] }` 是**安全控制**（v0.1.6 前真实泄漏过完整 Authorization header）—— vite 8 只会把它**自动改写**，**改写失效是静默的**（无报错、构建绿、测试全绿，但发布 zip 里真带 token）。另 vite 8 / vitest 5 的 engines 会把 node 20 砍掉，迫使 CI 升 node；vite 6.4.3 / vitest 4.1.11 都容得下，**CI 一行未改**。
+
+**唯一代码改动 1 行**：`tests/useToast.test.ts` 的 `vi.fn<[Args], Return>()` → `vi.fn<(cb) => void>()`（vitest 4 的 `vi.fn` 只吃一个泛型参数），全仓仅此一处。`vitest.config.ts` 零迁移。
+
+### ⚠️ 用户可见变化
+
+popup「最近提交」的状态 chip 文案由「完成 / 已删」变为「**已完成 / 已删除**」（与 DevTools History 一致）—— 这是两处中文映射收口到 `src/utils/remoteStatus.ts` 唯一来源的必然结果。若产品上更希望 popup 保留两字短版，在 `remoteStatus.ts` 加 `labelCompact` 导出即可（仍是单一来源）。
+
+**913 单测（含 passwordMask 7 例 + retryQueue 5 例）+ 全量 e2e 182 passed + 两路 type-check 0 错 + eslint 0 error/5 warning + build 全绿。**
+
+### 发版决策小记（跳 RELEASE_TEST_CHECKLIST 理由）
+
+非 BREAKING（不碰存储 schema / 上传协议 / 匹配引擎：history 写路径只是把**调用入口**从直调改经 SW 路由；重试队列改的是落盘**时机与顺序**、条目语义不变；MAIN world 闸门只影响**超阈值响应**记什么摘要，正常 JSON 路径 payload shape 与 clip 语义不变；依赖升级经全量 e2e + 产物严口径 console/debugger 断言双重验证）。dogfood 不足 —— 三处修复都由单测（含「SW 中途被杀」显式用例）+ e2e 锁住回归。留 dogfood 观察点：① devtools / popup 删历史记录后不再复活；② 重试队列冷却后不再出现远端重复工单；③ 大文件 / 二进制响应不再让页面卡顿；④ popup 状态 chip 显示「已完成 / 已删除」。
+
 ## v0.8.17
 
 2026-08-29。无 BREAKING —— **统一协作文档命名**。

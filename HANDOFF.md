@@ -109,7 +109,15 @@
 
 ## 现在最值得做的下一件事
 
-v0.8.14 已发完。**当前没有强迫性 todo**。本版主体是 🔴 **修「截多图只存 1 张」数据丢失**：v0.8.13 降采样只缩宽保留 PNG，复杂截图 2560px PNG 仍可达 10–13MB，超云端 `extractBinary` 8MB/张上限 → 静默 skip 不建附件、请求仍 200（用户截 3 张、2 张被丢）。修：截图入口仍降采样 PNG（标注/预览/history 用），**格式重编码放各 adapter 上传前** —— webhook/cloud → WebP q0.9、禅道 → JPEG q0.9（先铺白底防透明变黑、文件名同步 `.jpg`），失败兜底返原图。真视口截图从 ~10MB 压到 ~0.27MB，8MB 闸不再撞。配套服务端（moo-scaffold-cloud）：迁移正则补「screenshot 末字段无尾逗号」（漏 cloud 单图模板结构致那批用户多图迁移被跳过，另一类「只存 1 张」根因）+ `ImageDownscaler::fit` 降采样移到 8MB 检查前（>8MB 先缩再有损重压）。非 BREAKING、零迁移，dogfood 不足（用户明示放行跳 checklist，理由见 CHANGELOG v0.8.14「发版决策小记」）。lab-tester 已真 cloud 实锤 3 张大图全落库（对照 PNG 路径落 0 张）。**留观的手测点**：① 复杂大图截多张全落库不再静默丢；② webhook/cloud 落 WebP、禅道落 JPEG（白底/`.jpg`）；③ history 回看仍 PNG 无损；④ 旧多图模板迁移不再被跳过。服务端 moo-scaffold-cloud 不在本次发版范围（独立 repo，测试已 push，用户自行 deploy）。等用户继续真实 dogfood 反馈，再决定 hotfix 还是新 feature。
+**v0.8.18 待发**（版本号已 bump、CHANGELOG 已写，3 个提交在 `master` 上**未 push / 未 tag**）。本版三块 + 一批门禁收口：
+
+- 🔴 **修 history 被并发写覆盖**：devtools / popup 直调写 API 绕过了 SW 的内存锁（锁只在单上下文有效）→ 已删记录会被 SW 写回「复活」。改为经 `HISTORY_REMOVE` / `HISTORY_CLEAR` 路由（retryQueue 早已这么修，history 漏了）。
+- 🔴 **修重试队列 flush 中途被杀 → 远端重复工单**：改增量落盘（成功/放弃条立即落），并把顺序改成「先从队列移除 → 再回填 history」。
+- ⚡ **MAIN world 读响应体前先过闸**（`content-length` + `content-type` 双闸），不再无条件把整份 body 解码成字符串再截断。
+- 🔧 SW 冷启动把 `syncContentScripts()` 从重试队列网络段（最长 80s × 50 条）之后前移并行 —— 动态注入自愈不再被挡；`refreshBadge()` / `checkOffscreenAutoStoppedFlag()` 刻意留原位（代码里写明原因）。
+- 🧹 删掉从未接线的 `CaptureConfig.userInfo`；补 `passwordMask` / `bodyGate` / `retryQueue` / `remoteStatus` 测试；测试类型债 **41 → 0**；引入 ESLint（基线 0 error / 5 warning）；依赖漏洞 **18 → 0**（vite 6.4.3 / vitest 4.1.11 / sharp 0.35.4 / crxjs 2.7.1，刻意停在 vite 6）。
+
+非 BREAKING、零迁移，dogfood 不足（三处修复均有单测 + e2e 锁回归，理由见 CHANGELOG v0.8.18「发版决策小记」）。**唯一用户可见变化**：popup 状态 chip 文案「完成 / 已删」→「已完成 / 已删除」（两处中文映射收口到 `remoteStatus.ts` 的必然结果）。发版前按 `docs/RELEASE_TEST_CHECKLIST.md` 过一遍，`pnpm release` dry-run 已通过，真发用 `pnpm release --publish`（需先 commit 让工作区干净 + `export GITEE_TOKEN`）。
 
 > **截图重编码链路速记**（v0.8.14 加，碰截图上传体积/丢图先看）：截图体积有**两个收口点，别混**。① **降采样收口在 SW 截图 handler 截完即缩**（`downscaleToMaxWidth`，≤2560 宽 PNG）—— 给标注/预览/history/上传**全链路同一张**用，保 PNG 无损（文字清晰 + alpha）。② **格式重编码收口在各 adapter 上传前**（不在截图入口！）—— 因为目标已知才能选对格式 + 给禅道正确文件名：webhook/cloud → **WebP q0.9**（cloud `extractBinary` MIME 白名单含 webp，最清晰），禅道 → **JPEG q0.9**（老版禅道不一定支持 webp，jpeg 通吃；JPEG 无 alpha 必须**先铺白底**否则透明区变黑，文件名同步 `.jpg`）。为啥不在入口就转有损：history 回看要无损 PNG，转早了 history 也跟着糊。**根因教训**：降采样只缩尺寸不降格式，复杂内容（满屏文字/细节）2560px PNG 仍 10–13MB，超云端 8MB/张上限被**静默 skip**（不建附件、请求仍 200、history 列表只显封面图所以看不出丢）→ 多图只落 1 张。改截图链路**必须同时想「上传那一刻这张图多大、目标接受什么格式」**，不能只盯尺寸。失败（无 canvas / createImageBitmap throw / toBlob null）一律兜底返原图（宁可发大也别丢截图）。另一类「只存 1 张」根因在服务端迁移正则（漏匹配 cloud 单图模板结构 → 多图字段没补进去），见 moo-scaffold-cloud。
 
@@ -125,7 +133,7 @@ v0.8.14 已发完。**当前没有强迫性 todo**。本版主体是 🔴 **修�
 
 **Backlog（被动等待 / 非阻塞）**：
 
-- **npm 依赖漏洞：18 → 0（已归零）**（`pnpm audit` 实测：`{"moderate":0,"high":0,"critical":0}`；两波均已执行完、门禁 + 全量 e2e 全绿、**未 commit**，明细见本条目末尾）：**全部来自 dev 工具链** —— rollup（经 @crxjs）、vite、esbuild、postcss、nanoid、brace-expansion（经 vue-tsc / @vitest/coverage-v8 的 minimatch）、vitest、sharp。`dependencies` 里只有 `vue` 一个，扩展产物是打包后的 JS、不把 node_modules 发给用户，所以**不影响用户运行时**；但不该长期挂着。**已做可行性评估（未发版批次），结论：不需要 major 大波 —— 按漏洞给出的最小 patched 版本对齐，4 个包即可归零，且刻意不用 vite 8 / vitest 5**：
+- ✅ **npm 依赖漏洞：18 → 0（已随 v0.8.18 发版）**（`pnpm audit` 实测：`{"moderate":0,"high":0,"critical":0}`；两波均已执行完、门禁 + 全量 e2e 全绿，明细见本条目末尾）：**全部来自 dev 工具链** —— rollup（经 @crxjs）、vite、esbuild、postcss、nanoid、brace-expansion（经 vue-tsc / @vitest/coverage-v8 的 minimatch）、vitest、sharp。`dependencies` 里只有 `vue` 一个，扩展产物是打包后的 JS、不把 node_modules 发给用户，所以**不影响用户运行时**；但不该长期挂着。**已做可行性评估（已随 v0.8.18 落地），结论：不需要 major 大波 —— 按漏洞给出的最小 patched 版本对齐，4 个包即可归零，且刻意不用 vite 8 / vitest 5**：
   - `vite` 5.4.21 → **6.4.3**（6.x 最新且恰为最小修复版；清 vite 自身 4 条 + 传递链 esbuild 需 ≥0.25.0、postcss 需 ≥8.5.23，vite 6 依赖 `esbuild ^0.25.0` / `postcss ^8.5.3` 均已满足；nanoid 在 vite 6 已不再依赖）
   - `vitest` 1.6.1 → **3.2.7** + `@vitest/coverage-v8` 同步（清唯一 critical：vitest <3.2.6）
   - `sharp` 0.34.5 → **0.35.4**（清 2 high，engines node ≥20.9）
@@ -135,7 +143,7 @@ v0.8.14 已发完。**当前没有强迫性 todo**。本版主体是 🔴 **修�
   - **`typescript` 天花板是 6.0.3，不是 7**：`typescript-eslint@8.70.0` 的 peer 是 `typescript ">=4.8.4 <6.1.0"`，而 npm latest 已是 7.0.2 → 升 7 会让 `pnpm lint` 直接失败，且上游**不存在**支持 TS7 的 typescript-eslint 版本。`vue-tsc` 3.3.11 peer 仅 `typescript >=5.0`（与 TS 解耦），升级无安全动机、纯现代化，单独排期
   - **升级后必须验的不是版本号，是产物**：`grep -rnEo 'console\.(log|warn|error|info|debug)\(' dist --include='*.js' | wc -l` **必须为 0**（当前基线 0 ✅）。**别用** `grep -rno "console\." dist` —— 当前有 4 处命中，全是 UI 文案字符串（`requestRowFormat.ts` 的 `'console.error 调用'`、`zentao/submit.ts` 的 `'console.error / unhandledrejection raw'`），会误判成泄漏
   - 同 major 内「零安全收益」的浮动项（**已随第 0 波实际落进工作区**）：`vue` 3.5.34→3.5.42、`@playwright/test` 1.60.0→1.63.0、`simple-git-hooks` 2.13.1→2.14.0、`@types/node` 25.7.0→25.9.6。⚠️ `@playwright/test` 浮动有个隐形成本：新版要 **chromium-1243**，本机只有 1223 → 不补浏览器时**全量 e2e 会 182 failed 且错误信息完全一致**（`Executable doesn't exist at .../chromium-1243/...`），看着像大回归其实只是缺二进制；`playwright install chromium`（94MB）即恢复 182 passed。
-  - **分波结果（两波都已执行，未 commit）**：**0 ✅** `pnpm update` 一条命令 18 → 7（清 rollup ×1 + brace-expansion ×6 + postcss ×2 + nanoid ×2；crxjs 落在 `^2.4.0` 范围内，顺带浮到 2.7.1，把原计划第 2 波的 rollup high 也清了）→ **1+2 ✅ 合并执行**（`vite` 5.4.21→**6.4.3**、`vitest` 1.6.1→**4.1.11**、`@vitest/coverage-v8`→**4.1.11**、`sharp` 0.34.5→**0.35.4**）→ **7 → 0**。→ **3（可选，未做）** typescript 6.0.3 + vue-tsc 3。
+  - **分波结果（两波都已执行，随 v0.8.18 发版）**：**0 ✅** `pnpm update` 一条命令 18 → 7（清 rollup ×1 + brace-expansion ×6 + postcss ×2 + nanoid ×2；crxjs 落在 `^2.4.0` 范围内，顺带浮到 2.7.1，把原计划第 2 波的 rollup high 也清了）→ **1+2 ✅ 合并执行**（`vite` 5.4.21→**6.4.3**、`vitest` 1.6.1→**4.1.11**、`@vitest/coverage-v8`→**4.1.11**、`sharp` 0.34.5→**0.35.4**）→ **7 → 0**。→ **3（可选，未做）** typescript 6.0.3 + vue-tsc 3。
   - **为什么 1 与 2 必须合并**：`vitest@1.6.1` 把 `vite: "^5.0.0"` 当**直接依赖**（不是 peer），与根依赖**共用同一份 `vite@5.4.21`** —— 只升根 vite 会让 vitest 再拉一份内嵌 vite 5（仍在 `<=6.4.2` 受影响区间内）→ **漏洞换条路径继续报，还平白多出一套构建工具链**。⚠️ **`pnpm add` 不会自动去重**（它保守复用 lockfile 里已满足范围的旧版），必须补跑 `pnpm dedupe` —— 实测 dedupe 后才真的只剩一份，`vitest → vite 6.4.3`。
   - **最终落点为什么是 vitest 4.1.11 而不是原定的 3.2.7**：升到 3.2.7 后 critical（`<3.2.6`）消失，却冒出一条**原本不存在**的 moderate —— 它的 `vulnerable_versions` 是 `>=2.1.0 <4.1.11`，**下界是 2.1.0，所以 1.6.1 时期不受影响、原清单里根本没它**。教训：**漏洞建议有下界，升级会「换出新建议」，必须逐级重跑 `pnpm audit` 直到归零，不能照第一次的清单做一次性决策**。`vitest@4.1.11` engines `^20||^22||>=24`、vite 范围 `^6||^7||^8` → **CI 不用改**、与根 vite 6 天然去重。配套：`@vitejs/plugin-vue@5.2.4` peer 含 `^6`、`@crxjs/vite-plugin@2.7.1` peer 含 `^6`、`vitest.config.ts` 只用了跨版本稳定的选项（**配置层零迁移**）。
   - **升级中唯一的源码/测试改动**：`tests/useToast.test.ts:8` 的 `vi.fn<[cb: () => void], void>()` → `vi.fn<(cb: () => void) => void>()`（vitest 4 的 `vi.fn` 只吃**一个**泛型参数，旧双参写法报 TS2558）。全仓仅此一处。
@@ -143,7 +151,7 @@ v0.8.14 已发完。**当前没有强迫性 todo**。本版主体是 🔴 **修�
     逐条依据见 `.workbuddy/review-2026-09-15.md` 第五～七轮；源头命令：`pnpm audit --json`（看 `patched_versions`）+ `pnpm outdated`（本机 pnpm 11 会弹交互提示，见 NOTES/记忆里的 pnpm10 shim 绕法）。
 - **等禅道补 v2 Module 章节后收口 listModules**（被动等待）：当前唯一保留的 v1 endpoint
 - **knip / ts-prune 死代码扫**（手动定期跑）：v0.4.4 试过两个工具 false positive 严重，标 backlog，未来如果有更好工具再上 CI
-- ~~popup / History 各写一份 `remoteStatus → 中文` 映射~~ ✅ **已收口**（未发版批次那次复盘）：两份文案其实已经漂了（popup「完成」/「已删」vs History「已完成」/「已删除」），已统一到 `src/utils/remoteStatus.ts` 唯一来源，popup 只保留自己的配色 class。Backlog 里「两处文案一致所以不修」的前提当时已过期。**副作用（用户可见）**：popup 状态 chip 文案跟着变成三字的「已完成」/「已删除」——这是收口取 History 口径的结果；若要 popup 保留两字短版，在 `remoteStatus.ts` 加 `labelCompact` 导出即可（仍是单一来源）。改这几个文案要同步 3 个断言面（1 个单测 + 2 个 e2e spec），见 NOTES.md。
+- ~~popup / History 各写一份 `remoteStatus → 中文` 映射~~ ✅ **已收口并随 v0.8.18 发版**：两份文案其实已经漂了（popup「完成」/「已删」vs History「已完成」/「已删除」），已统一到 `src/utils/remoteStatus.ts` 唯一来源，popup 只保留自己的配色 class。Backlog 里「两处文案一致所以不修」的前提当时已过期。**副作用（用户可见）**：popup 状态 chip 文案跟着变成三字的「已完成」/「已删除」——这是收口取 History 口径的结果；若要 popup 保留两字短版，在 `remoteStatus.ts` 加 `labelCompact` 导出即可（仍是单一来源）。改这几个文案要同步 3 个断言面（1 个单测 + 2 个 e2e spec），见 NOTES.md。
 - **可能的禅道实例兼容跟进**（dogfood 反馈再说）：① 其他禅道版本（开源版 12 / 老版本）兼容回归 ② 附件大小阈值校准 ③ multipart 重试 IndexedDB blob 过期清理 ④ 自签证书 SSL 场景
 
 **审视过没看到优化机会的维度**：v0.4.5 大复盘验证过 postMessage 安全 / type 漏洞 / storage quota / UX 三态 / 长文件拆分 5 个维度无优化空间（除非业务变化，下次审视可跳过），明细已归档至 [docs/handoff-archive/v0.4.4-v0.4.9.md](docs/handoff-archive/v0.4.4-v0.4.9.md)。
@@ -165,8 +173,8 @@ v0.8.14 已发完。**当前没有强迫性 todo**。本版主体是 🔴 **修�
 
 ## 工程约束（必须遵守）
 
-- **不绕 hook**：pre-commit 跑 `pnpm check:versions && pnpm type-check && pnpm type-check:tests && pnpm test`，过不了就修，不要 `--no-verify`。（`type-check:tests` 是本次未发版批次加进来的 —— 之前它只在 CI 跑且带 `continue-on-error`，于是测试类型债一路攒到 41 处没人管。）
-- **`pnpm lint` 是 CI 门禁**（本次未发版批次新引入 ESLint，此前仓里没有任何 linter）：只开「写错了」类规则，不含排版规则；边界与取舍见 `eslint.config.js` 文件头。当前基线 **0 error / 5 warning**（5 条全是 `main-world.ts` patch fetch/XHR 的签名边界 `any`，属正当用法）。**新增的 warning 要当回事** —— 基线只有这 5 条，多出来就是新债。
+- **不绕 hook**：pre-commit 跑 `pnpm check:versions && pnpm type-check && pnpm type-check:tests && pnpm test`，过不了就修，不要 `--no-verify`。（`type-check:tests` 是 v0.8.18 加进来的 —— 之前它只在 CI 跑且带 `continue-on-error`，于是测试类型债一路攒到 41 处没人管。）
+- **`pnpm lint` 是 CI 门禁**（v0.8.18 新引入 ESLint，此前仓里没有任何 linter）：只开「写错了」类规则，不含排版规则；边界与取舍见 `eslint.config.js` 文件头。当前基线 **0 error / 5 warning**（5 条全是 `main-world.ts` patch fetch/XHR 的签名边界 `any`，属正当用法）。**新增的 warning 要当回事** —— 基线只有这 5 条，多出来就是新债。
 - **不关 `noUncheckedIndexedAccess`**：写数组/对象索引时显式处理 `undefined`。
 - **改 `src/types/messages.ts` 要看清下游**：dispatch 走强类型，新增 message 要把所有 handler 补齐才能过编译。
 - **改 `injected/main-world.ts` 的 payload shape 必同步改 validator**：见上面坑 #2。
