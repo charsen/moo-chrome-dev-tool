@@ -60,11 +60,11 @@ export interface CaptureConfig {
   consoleErrors: boolean
   /** localStorage / sessionStorage 白名单 key */
   storageKeys: string[]
-  /** 当前用户信息来源（可选） */
-  userInfo?: {
-    source: 'localStorage' | 'sessionStorage' | 'cookie'
-    key: string
-  }
+  // （userInfo?: { source: 'localStorage' | 'sessionStorage' | 'cookie'; key: string }
+  //   已删 —— 它从未接线：全仓 0 写 0 读，且 normalizeProject 的 capture 分支
+  //   也不携带该字段。留着等于给下一次「实现了但被 read 边界静默剥掉」埋雷
+  //   （同一个文件已因 images / 禅道 5 字段踩过两次）。若将来要加回来，务必
+  //   同时补 src/types/config.ts 的 normalizeProject，并加一条 round-trip 测试。）
   /** 环形缓冲：保留最近多少条请求 */
   requestBufferSize: number
 }

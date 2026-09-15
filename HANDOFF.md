@@ -125,7 +125,7 @@ v0.8.14 已发完。**当前没有强迫性 todo**。本版主体是 🔴 **修�
 
 **Backlog（被动等待 / 非阻塞）**：
 
-- **3 个 npm 依赖漏洞**（rollup / esbuild / vite）：都是 dev-time only 不影响用户运行；`@crxjs/vite-plugin` **已在 2.4.0**（lockfile 与 package.json 声明都对齐了，无需再动），只剩 **vite 5→6** 待做，单独升级波
+- **18 个 npm 依赖漏洞**（实测 `pnpm audit`：4 moderate / 13 high / 1 critical）：**全部来自 dev 工具链** —— rollup（经 @crxjs）、vite、esbuild、postcss、nanoid、brace-expansion（经 vue-tsc / @vitest/coverage-v8 的 minimatch）、vitest、sharp。`dependencies` 里只有 `vue` 一个，扩展产物是打包后的 JS、不把 node_modules 发给用户，所以**不影响用户运行时**；但不该长期挂着。修它们要动的是 **major 升级波**、不是零星 patch：`vite` 5.4.21→**8.3.0**（旧文案写的「只剩 vite 5→6」已过期）、`vitest` 1.6.1→5、`@vitest/coverage-v8` 1.6.1→5、`typescript` 5.9.3→7、`vue-tsc` 2.2.12→3、`@vitejs/plugin-vue` 5.2.4→6、`@types/chrome` 0.0.263→0.2.9。同 major 内可顺手吃的（低风险）：`vue` 3.5.34→3.5.42、`@playwright/test` 1.60.0→1.63.0、`simple-git-hooks` 2.13.1→2.14.0、`@crxjs/vite-plugin` 2.4.0→2.7.1、`sharp` 0.34.5→0.35.4。清单来源：`pnpm outdated` / `pnpm audit`（本机 pnpm 11 会弹交互提示，见 NOTES/记忆里的 pnpm10 shim 绕法）。
 - **等禅道补 v2 Module 章节后收口 listModules**（被动等待）：当前唯一保留的 v1 endpoint
 - **knip / ts-prune 死代码扫**（手动定期跑）：v0.4.4 试过两个工具 false positive 严重，标 backlog，未来如果有更好工具再上 CI
 - ~~popup / History 各写一份 `remoteStatus → 中文` 映射~~ ✅ **已收口**（未发版批次那次复盘）：两份文案其实已经漂了（popup「完成」/「已删」vs History「已完成」/「已删除」），已统一到 `src/utils/remoteStatus.ts` 唯一来源，popup 只保留自己的配色 class。Backlog 里「两处文案一致所以不修」的前提当时已过期。**副作用（用户可见）**：popup 状态 chip 文案跟着变成三字的「已完成」/「已删除」——这是收口取 History 口径的结果；若要 popup 保留两字短版，在 `remoteStatus.ts` 加 `labelCompact` 导出即可（仍是单一来源）。改这几个文案要同步 3 个断言面（1 个单测 + 2 个 e2e spec），见 NOTES.md。
