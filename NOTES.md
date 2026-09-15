@@ -28,10 +28,22 @@
 
 - 测试 fixture 必须用**生产真形态**，`as T` / `as unknown as T` 断言会把「生产造不出的形状」整条放过：实例 `imageFormat: 'inline'`（真类型只有 `base64 | multipart`）、`viewport: { w, h }`（真值是 `'1280x800'` 字符串）。做法是**基于生产默认值展开**（`DEFAULT_ZENTAO` / `DEFAULT_CAPTURE` / `DEFAULT_REDACT`）并去掉断言，让 TS 真校验 —— 手抄一份字段清单迟早再次漂移。
 - `vi.fn(async () => ...)` 零形参会把 `mock.calls` 推成空 tuple，`calls[1]?.[0]` 直接 TS2493；要断言调用入参就得照真实签名声明形参。
+- **vitest 4 起 `vi.fn` 只吃一个泛型参数**（函数类型）：旧的 `<Args, Return>` 双参写法报 TS2558，要改成 `vi.fn<(cb: () => void) => void>()`。目的不变 —— 仍是让 `mock.calls` 保持 `[cb: () => void][]` 的 tuple 形状。
 - 类型检查必须真的跑。`tsconfig.tests.json` 曾长期挂在 CI 的 `continue-on-error` 下，结果攒到 41 处错误（跨 15 文件）无人知。清零后要立刻摘掉 `continue-on-error` 并进 pre-commit，否则必然复发。
 - 引入 linter 时按面收紧：`tseslint.config()` 里 `extends` 的顺序决定 parser 归属 —— TS 预设排 Vue 预设之后会把 `.vue` 的 parser 顶成裸 TS parser，23 个 SFC 全部 parse error。
 - 用户可见文案一旦收口成单一来源（如历史状态 chip 走 `utils/remoteStatus.ts`），改文案就同时命中多个断言面：`tests/remoteStatus.test.ts` + `tests-e2e/popup-recent.spec.ts` + `tests-e2e/popup-status.spec.ts`。这三处必须一起动，只改源码会以「单测绿、e2e 红」的形式暴露。
 - E2E **直挂 `dist/`**（见 `playwright.config.ts` 顶部注释），不读 `src/`。所以改完源码必须先 `pnpm build` 再跑 e2e，否则测的是旧产物 —— 会出现「断言按新文案写、结果仍报旧文案」的方向性误判。
+
+## 依赖与工具链升级
+
+- **漏洞建议有「下界」，所以升级会「换出新建议」**：`vulnerable_versions: ">=2.1.0 <4.1.11"` 这种区间对更老的版本不成立。实测把 `vitest` 从 1.6.1 升到 3.2.7（当时清单写的最小 patched 版）后，critical 没了，却冒出原本不存在的 moderate（要求 `>=4.1.11`）。**必须逐级重跑 `pnpm audit` 直到归零，不能照第一次的清单做一次性决策。**
+- **升级前先查「这个包有没有被别的工具当直接依赖」**：有内嵌副本时只升根依赖清不掉漏洞。实例：`vitest` 直接依赖 `vite ^5` 且与根依赖**共用同一份 vite**，只把根 vite 升到 6 会留下 vitest 内嵌的 vite 5（仍在 `<=6.4.2` 受影响区间）→ 必须把 vitest 一起升到支持新大版本的版本才能去重。
+- **`pnpm add` 不会去重**：它保守复用 lockfile 里已有的版本（满足范围就沿用）。升完要跑 `pnpm dedupe`，再用解析探针确认真的只剩一份：`node -e "const{createRequire}=require('module');const r=createRequire(require.resolve('vitest/package.json'));console.log(r('vite/package.json').version)"`。
+- **`pnpm update` 不是 lockfile-only**：它会同时改写 `package.json` 的版本范围（下限抬到已解析版本）。要只动传递依赖得用 `pnpm.overrides`；想事后手工收窄范围会让 lockfile 的 `specifiers` 对不上 → `--frozen-lockfile` 失败。
+- **`@playwright/test` 升级要补浏览器**：revision 不匹配时全量 e2e 会**全部失败且错误信息一致**（`Executable doesn't exist at .../chromium-<rev>/...`），`playwright install chromium` 即恢复 —— 先查 `~/Library/Caches/ms-playwright/`，别误判成代码回归。
+- **验证「构建期剥除类安全控制」看产物、不看配置**：`vite.config.ts` 的 `esbuild: { drop: ['console','debugger'] }` 是防 token 泄漏的**安全控制**，断言必须带调用括号：`grep -rnEo 'console\.(log|warn|error|info|debug)\(' dist --include='*.js' | wc -l` 必须为 **0**。宽口径 `grep -rno "console\." dist` 会命中 4 处 UI 文案字符串（`'console.error 调用'` 等）而误报。
+- **别拿 `dist-e2e*/` 当构建行为的基线**：那两个目录的 manifest 被 e2e spec **故意**把 `optional_host_permissions` 提升成 mandatory（见 `docs/MCP_TESTING.md`）。拿它对比会得出「升级把权限改成 mandatory 了」这种假结论；要比就先排除 `host_permissions` / `optional_host_permissions` 两个字段。
+- **升级目标不必追最新大版本**：vite 8 换掉 esbuild 引擎（rolldown + lightningcss），上面那条 `esbuild.drop` 安全控制只会被**静默改写**（无报错、构建绿、测试全绿，但发布 zip 里真带 token）→ 停在 vite 6/7 即零迁移。另：vite 8 需 node ≥22.12、vitest 5 直接砍掉 node 20（`^22.12 || ^24 || >=26`），会让 CI 被迫升 node；vite 6.4.3 + vitest 4.1.11 的 engines 都容得下 node 20。
 
 ## 公开发布
 

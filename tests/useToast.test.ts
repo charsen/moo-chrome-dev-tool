@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 //    可观察的 vi.fn()，并把注册进去的 callback 留出来手动触发（测 unmount 清 timer 用）
 // 2) node 没 window，但 useToast 用 window.setTimeout 拿 number 返回类型——
 //    stub 一个最小 window 把调用转发到 globalThis 的 setTimeout / clearTimeout
-const onBeforeUnmountMock = vi.fn<[cb: () => void], void>()
+// 注：vitest 4 起 `vi.fn` 只吃**一个**泛型参数（函数类型），旧的 `<Args, Return>` 双参形式会
+// 报 TS2558。这里写全形参/返回类型的目的不变 —— 让 mock.calls 有 `[cb: () => void][]` 的
+// tuple 形状，`calls[i][0]` 才能取到注册进去的 callback（零参写会让 calls 退化成空 tuple）。
+const onBeforeUnmountMock = vi.fn<(cb: () => void) => void>()
 vi.mock('vue', async (importActual) => {
   const actual = await importActual<typeof import('vue')>()
   return { ...actual, onBeforeUnmount: onBeforeUnmountMock }

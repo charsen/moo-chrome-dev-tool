@@ -26,24 +26,24 @@
     "pre-commit": "pnpm check:versions && pnpm type-check && pnpm type-check:tests && pnpm test"
   },
   "dependencies": {
-    "vue": "^3.4.21"
+    "vue": "^3.5.42"
   },
   "devDependencies": {
-    "@crxjs/vite-plugin": "^2.4.0",
-    "@playwright/test": "^1.60.0",
+    "@crxjs/vite-plugin": "^2.7.1",
+    "@playwright/test": "^1.63.0",
     "@types/chrome": "^0.0.263",
-    "@types/node": "^25.7.0",
-    "@vitejs/plugin-vue": "^5.0.4",
-    "@vitest/coverage-v8": "^1.6.1",
+    "@types/node": "^25.9.6",
+    "@vitejs/plugin-vue": "^5.2.4",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^10.10.0",
     "eslint-plugin-vue": "^10.11.0",
     "globals": "^17.12.0",
-    "sharp": "^0.34.5",
-    "simple-git-hooks": "^2.13.1",
-    "typescript": "^5.4.2",
+    "sharp": "^0.35.4",
+    "simple-git-hooks": "^2.14.0",
+    "typescript": "^5.9.3",
     "typescript-eslint": "^8.70.0",
-    "vite": "^5.2.0",
-    "vitest": "^1.6.1",
-    "vue-tsc": "^2.0.6"
+    "vite": "^6.4.3",
+    "vitest": "^4.1.11",
+    "vue-tsc": "^2.2.12"
   }
 }
