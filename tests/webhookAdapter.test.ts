@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Project } from '@/types/config'
+import { DEFAULT_CAPTURE, DEFAULT_REDACT, type Project } from '@/types/config'
 import type { SubmitBugReq } from '@/types/messages'
 
 /**
@@ -61,7 +61,7 @@ const baseReq = (overrides: Partial<SubmitBugReq> = {}): SubmitBugReq => ({
   image: '',
   url: 'https://example.com',
   userAgent: 'UA',
-  viewport: { w: 1280, h: 800 },
+  viewport: '1280x800',
   timestamp: '2026-05-24T08:00:00Z',
   requests: [],
   errors: [],
@@ -76,13 +76,17 @@ const baseProject = (): Project => ({
     id: 's1', name: 'svr', endpoint: 'http://api.example.com/intake',
     method: 'POST', headers: {},
     payloadTemplate: '{"title":"{{title}}"}',
-    imageFormat: 'inline', imageField: 'image'
+    imageFormat: 'base64', imageField: 'image'
   }],
   defaultServerId: 's1',
-  capture: { storageKeys: [], requestBufferSize: 50 },
-  redact: { bodyKeys: [], cookies: [], headers: [] },
+  // 原来这里写 `capture: { storageKeys, requestBufferSize }` / `redact: { bodyKeys, cookies, headers }`，
+  // 两个都不是真类型（RedactConfig 是 headerKeys/bodyKeys/maskPasswordInputs，没有 cookies/headers；
+  // CaptureConfig 还缺 requests/consoleErrors）—— 被结尾的 `as Project` 一路蒙过去。
+  // 现在按真源展开：key 列表清空以保持「不脱敏」的原意，其余字段取生产默认。
+  capture: { ...DEFAULT_CAPTURE, requestBufferSize: 50 },
+  redact: { ...DEFAULT_REDACT, headerKeys: [], bodyKeys: [] },
   enabled: true
-} as Project)
+})
 
 describe('webhookAdapter.submit', () => {
   it('server 找不到 → error', async () => {
@@ -329,7 +333,7 @@ describe('webhookAdapter.submit — multipart Content-Type 大小写无关删除
       captured = (init?.headers ?? {}) as Record<string, string>
       return jsonRes({ id: 'bug-2' })
     }))
-    const project = baseProject()   // imageFormat: 'inline'
+    const project = baseProject()   // imageFormat: 'base64'
     project.servers[0]!.headers = { 'Content-Type': 'application/json', 'X-Trace': 't1' }
     const { webhookAdapter } = await importAdapter()
     const r = await webhookAdapter.submit(baseReq(), project, {})
@@ -408,7 +412,7 @@ describe('webhookAdapter.submit — v0.8.10 多图', () => {
       capturedBody = String(init?.body ?? '')
       return jsonRes({ id: 'bug-2' })
     }))
-    const project = baseProject()  // imageFormat: 'inline'
+    const project = baseProject()  // imageFormat: 'base64'
     project.servers[0]!.payloadTemplate = '{"title":"{{title}}","shots":{{imagesJson}}}'
     const { webhookAdapter } = await importAdapter()
     const r = await webhookAdapter.submit(

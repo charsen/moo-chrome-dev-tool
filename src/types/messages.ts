@@ -122,6 +122,12 @@ export const MSG = {
   GET_ERRORS: 'GET_ERRORS',
   CLEAR_ERRORS: 'CLEAR_ERRORS',
   REFRESH_HISTORY_STATUS: 'REFRESH_HISTORY_STATUS',
+  /** devtools → background：删单条历史。**必须路由到 SW 执行** —— withWriteMutex 是各上下文
+   *  一把锁（见 storage/history.ts），devtools 直调会跟 SW 的提交/状态回查写回交错，
+   *  让删掉的条目复活。同 RETRY_QUEUE_REMOVE 的理由。 */
+  HISTORY_REMOVE: 'HISTORY_REMOVE',
+  /** devtools → background：清空历史。同 HISTORY_REMOVE 的跨上下文锁理由 */
+  HISTORY_CLEAR: 'HISTORY_CLEAR',
   RETRY_QUEUE_FLUSH: 'RETRY_QUEUE_FLUSH',
   RETRY_QUEUE_REMOVE: 'RETRY_QUEUE_REMOVE',
   RETRY_QUEUE_CLEAR: 'RETRY_QUEUE_CLEAR',
@@ -162,6 +168,10 @@ export const MSG = {
 // 因为旧 API 表达力足够；type-safe sender wrapper 留下个 PR。
 
 export interface RefreshHistoryStatusRes { ok: true; updated: number }
+/** HISTORY_REMOVE：removed=false 表示那条已经不在（SW 与 UI 快照不一致时的正常结果，不算错）。
+ *  ok=false 只在 storage 整体写失败时出现，UI 要区分「没删到」和「删失败」。 */
+export interface HistoryRemoveRes { ok: boolean; removed: boolean; error?: string }
+export interface HistoryClearRes { ok: boolean; error?: string }
 export interface RetryQueueFlushRes {
   ok: true
   /** 重试成功移出队列的条数 */
@@ -237,6 +247,11 @@ export type IncomingMessage =
   | { type: typeof MSG.SUBMIT_BUG; payload: SubmitBugReq }
   | { type: typeof MSG.PREVIEW_PAYLOAD; payload?: PreviewPayloadReq }
   | { type: typeof MSG.REFRESH_HISTORY_STATUS; payload?: { force?: boolean } }
+  // 写 history 必须路由到 SW：withWriteMutex 是各 JS 上下文一把锁，devtools 直调会跟 SW
+  // 并发写同一份 mooHistory 数组交错 → 删掉的条目复活 / 新提交的条目被旧快照覆盖。
+  // 读路径（listHistory）无害，各 UI 继续直调。
+  | { type: typeof MSG.HISTORY_REMOVE; payload: { id: string } }
+  | { type: typeof MSG.HISTORY_CLEAR }
   | { type: typeof MSG.RETRY_QUEUE_FLUSH }
   // v0.8.9：删条/清空必须路由到 SW 执行 —— devtools 直 import retryQueue 写路径时，
   // withQueueMutex 是各 JS 上下文一把锁互不相干，会跟 SW flush 的 reconcile 写回交错

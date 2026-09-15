@@ -63,7 +63,7 @@ async function importHandler() {
 
 describe('handleRefreshHistoryStatus — host permission 未授权', () => {
   it('contains 返 false → 静默 skip 返 updated:0', async () => {
-    ;(globalThis as { chrome: { permissions: { contains: () => Promise<boolean> } } })
+    ;(globalThis as unknown as { chrome: { permissions: { contains: () => Promise<boolean> } } })
       .chrome.permissions.contains = async () => false
     // 即使 history 里有可刷新的 entry 也不调 fetch
     state.storageData.mooHistory = [{
@@ -71,7 +71,7 @@ describe('handleRefreshHistoryStatus — host permission 未授权', () => {
       projectId: 'p1', projectName: 'x',
       serverId: 's1', serverName: 'svr',
       title: 't', description: '', url: '', userAgent: '',
-      viewport: { w: 0, h: 0 }, result: { ok: true },
+      viewport: '0x0', result: { ok: true },
       remoteId: '100'
     }]
     const { handleRefreshHistoryStatus } = await importHandler()
@@ -102,7 +102,7 @@ describe('handleRefreshHistoryStatus', () => {
         description: '',
         url: '',
         userAgent: '',
-        viewport: { w: 0, h: 0 },
+        viewport: '0x0',
         result: { ok: true }
       }
     ]
@@ -128,7 +128,7 @@ describe('handleRefreshHistoryStatus', () => {
       projectId: 'p1', projectName: 'x',
       serverId: 'zentao', serverName: 'z',
       title: 't', description: '',
-      url: '', userAgent: '', viewport: { w: 0, h: 0 },
+      url: '', userAgent: '', viewport: '0x0',
       result: { ok: true },
       remoteId: '42',
       remoteStatus: 'active'
@@ -164,7 +164,7 @@ describe('handleRefreshHistoryStatus', () => {
       projectId: 'p1', projectName: 'x',
       serverId: 'zentao', serverName: 'z',
       title: 't', description: '',
-      url: '', userAgent: '', viewport: { w: 0, h: 0 },
+      url: '', userAgent: '', viewport: '0x0',
       result: { ok: true },
       remoteId: '99'
     }]
@@ -196,7 +196,7 @@ describe('handleRefreshHistoryStatus', () => {
       projectId: 'p1', projectName: 'x',
       serverId: 's1', serverName: 'svr',
       title: 't', description: '',
-      url: '', userAgent: '', viewport: { w: 0, h: 0 },
+      url: '', userAgent: '', viewport: '0x0',
       result: { ok: true },
       remoteId: '100',
       remoteBase: 'http://api.example.com/scaffold/todos',
@@ -229,7 +229,7 @@ describe('handleRefreshHistoryStatus', () => {
       projectId: 'p1', projectName: 'x',
       serverId: 's1', serverName: 'svr',
       title: 't', description: '',
-      url: '', userAgent: '', viewport: { w: 0, h: 0 },
+      url: '', userAgent: '', viewport: '0x0',
       result: { ok: true },
       remoteId: '100',
       remoteBase: 'http://api.example.com/scaffold/todos'
@@ -258,7 +258,7 @@ describe('handleRefreshHistoryStatus', () => {
       projectId: 'p1', projectName: 'x',
       serverId: 's1', serverName: 'svr',
       title: 't', description: '',
-      url: '', userAgent: '', viewport: { w: 0, h: 0 },
+      url: '', userAgent: '', viewport: '0x0',
       result: { ok: true },
       remoteId: '100',
       remoteBase: 'http://api.example.com/scaffold/todos',
@@ -288,7 +288,7 @@ describe('handleRefreshHistoryStatus', () => {
         projectId: 'p1', projectName: 'x',
         serverId: 's1', serverName: 'svr',
         title: 't', description: '', url: '', userAgent: '',
-        viewport: { w: 0, h: 0 }, result: { ok: true },
+        viewport: '0x0', result: { ok: true },
         remoteId: '100', remoteBase: 'http://a/scaffold/todos'
       },
       {
@@ -296,7 +296,7 @@ describe('handleRefreshHistoryStatus', () => {
         projectId: 'p1', projectName: 'x',
         serverId: 's1', serverName: 'svr',
         title: 't', description: '', url: '', userAgent: '',
-        viewport: { w: 0, h: 0 }, result: { ok: true },
+        viewport: '0x0', result: { ok: true },
         remoteId: '101', remoteBase: 'http://a/scaffold/todos',
         remoteStatus: 'active'
       }
@@ -331,7 +331,7 @@ describe('v0.8.9 负载保护 — 冷却 / inflight / 武装条件', () => {
       projectId: 'p1', projectName: 'x',
       serverId: 's1', serverName: 'svr',
       title: 't', description: '', url: '', userAgent: '',
-      viewport: { w: 0, h: 0 }, result: { ok: true },
+      viewport: '0x0', result: { ok: true },
       remoteId: '100', remoteBase: 'http://api.example.com/scaffold/todos',
       remoteStatus: 'active',
       ...over
@@ -457,7 +457,7 @@ describe('v0.8.9 审计修：冷却武装条件与真实发网条件对齐', () 
       projectId: 'deleted-project', projectName: 'x',
       serverId: 's1', serverName: 'svr',
       title: 't', description: '', url: '', userAgent: '',
-      viewport: { w: 0, h: 0 }, result: { ok: true },
+      viewport: '0x0', result: { ok: true },
       remoteId: '100'
     }]
     const fetchMock = vi.fn(async (url: string) => {
@@ -488,7 +488,7 @@ describe('v0.8.9 审计修：冷却武装条件与真实发网条件对齐', () 
       projectId: 'p1', projectName: 'x',
       serverId: 's1', serverName: 'svr',
       title: 't', description: '', url: '', userAgent: '',
-      viewport: { w: 0, h: 0 }, result: { ok: true },
+      viewport: '0x0', result: { ok: true },
       remoteId: '100',
       remoteBase: 'http://api.example.com/scaffold/todos',
       remoteStatus: 'active'

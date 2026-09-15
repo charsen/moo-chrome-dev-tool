@@ -281,6 +281,7 @@ import type { BugHistoryEntry } from '@/types/history'
 import { loadConfig, saveConfig, urlMatches } from '@/storage/config'
 import { listHistory } from '@/storage/history'
 import { relativeTime } from '@/utils/relativeTime'
+import { remoteStatusLabel, remoteStatusTitle } from '@/utils/remoteStatus'
 import { t } from '@/i18n'
 import { UPGRADE_FLAG_KEY } from '@/utils/upgradeFlag'
 import { VERSION_CHECK_FLAG_KEY, UPGRADED_TOAST_KEY, readValidStoredVersionInfo, type LatestVersionInfo, type UpgradedToastInfo } from '@/utils/versionCheck'
@@ -289,15 +290,14 @@ import { useVersionCheck } from '@/composables/useVersionCheck'
 const version = ref(chrome.runtime.getManifest().version)
 // 显示尺寸 28px，用 32 比 48 更省字节 + 缩放损失更小（lighthouse image-size-responsive）
 const logoUrl = chrome.runtime.getURL('icons/icon-32.png')
+// ⚠ 这个 key **目前只有读、没有写**：曾经有个 dismissOnboard() 负责写它，但那次改动之后
+// 弹窗里的「知道了」入口没了、函数也一直没被调用（本仓启用 ESLint 时被 no-unused-vars 抓到）。
+// 现状 = 走到 637 行时 `!r[ONBOARD_KEY]` 恒为 true，所以空态文案恒为「欢迎使用」分支。
+// 要么补回一个真正的 dismiss 入口（重新写这个 key），要么把 key + firstRun 一起删掉 ——
+// 属产品决定，这里先只删掉那个死函数、把这个不对称写明，避免下次有人以为它在生效。
 const ONBOARD_KEY = 'mooOnboardedAt'
 const firstRun = ref(false)
 
-async function dismissOnboard() {
-  firstRun.value = false
-  try {
-    await chrome.storage.local.set({ [ONBOARD_KEY]: Date.now() })
-  } catch {}
-}
 const matched = ref<Project[]>([])
 const projects = ref<Project[]>([])
 
@@ -446,17 +446,27 @@ function openTabUrl(url: string) {
 }
 
 interface StatusBadge { label: string; cls: string; title: string }
+
+/** popup 自己的视觉契约：远端状态 → badge 配色 class（devtools History 用 `rs-*`，互不相干） */
+const REMOTE_STATUS_CLS: Record<string, string> = {
+  open: 'rh-open',
+  in_progress: 'rh-prog',
+  done: 'rh-done',
+  deleted: 'rh-del',
+  submitted: 'rh-ok'
+}
+
 function statusOf(e: BugHistoryEntry): StatusBadge {
   if (!e.result.ok) {
     if (e.result.queued) return { label: '重试中', cls: 'rh-queued', title: '已加入重试队列，后台周期重试' }
     return { label: '失败', cls: 'rh-fail', title: e.result.error || `HTTP ${e.result.status ?? '?'}` }
   }
-  switch (e.remoteStatus) {
-    case 'done':        return { label: '完成', cls: 'rh-done', title: '后端已标记完成' }
-    case 'in_progress': return { label: '处理中', cls: 'rh-prog', title: '后端处理中' }
-    case 'deleted':     return { label: '已删', cls: 'rh-del', title: '后端已删除' }
-    case 'open':        return { label: '待处理', cls: 'rh-open', title: '后端 open' }
-    default:            return { label: '已提交', cls: 'rh-ok', title: '已提交（后端尚未回查或不支持状态）' }
+  // 远端状态文案走唯一来源（src/utils/remoteStatus.ts）—— 这里只留 popup 自己的配色 class。
+  // 之前这里内联了一份中文映射，跟 History.vue 那份漂成了「完成」vs「已完成」。
+  return {
+    label: remoteStatusLabel(e.remoteStatus),
+    cls: REMOTE_STATUS_CLS[e.remoteStatus ?? 'submitted'] ?? 'rh-ok',
+    title: remoteStatusTitle(e.remoteStatus)
   }
 }
 

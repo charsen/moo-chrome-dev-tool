@@ -19,12 +19,10 @@
  *   - deriveRemoteBase —— history.remoteBase 是 router 字段
  */
 
-import type { Project, BugServer } from '@/types/config'
-import type { SubmitBugReq } from '@/types/messages'
+import type { BugServer } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
 import type {
   IssueAdapter,
-  AdapterSubmitCtx,
   AdapterSubmitOutcome,
   AdapterRetryPayload,
   AdapterRetryOutcome,

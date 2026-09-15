@@ -216,8 +216,8 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, ref, watch, type PropType } from 'vue'
 import type { Project } from '@/types/config'
-import { listHistory, clearHistory } from '@/storage/history'
-import { MSG } from '@/types/messages'
+import { listHistory } from '@/storage/history'
+import { MSG, type HistoryClearRes } from '@/types/messages'
 import { safeSendMessage } from '@/utils/messaging'
 // retryQueue 的**只读**函数（getQueueLength/getQueueItems）devtools 直 import 没问题
 // （少一次 SW 唤醒 + 一轮 IPC）。但**写路径必须走 sendMessage 路由到 SW 执行** ——
@@ -225,7 +225,6 @@ import { safeSendMessage } from '@/utils/messaging'
 // flush 的 reconcile 写回交错：用户删的条复活 / flush 已移除的条被旧快照写回 → 重发重复单
 // （v0.8.9 修，原注释「纯函数模块（只读）」是过期假设 —— clear/remove 是写）。
 import {
-  getQueueLength,
   getQueueItems,
   RETRY_MAX_ATTEMPTS,
   type QueuedItem
@@ -374,7 +373,13 @@ async function clearHistoryAll() {
   if (!ok) return
   busy.value = 'history'
   try {
-    await clearHistory()
+    // 写路径必须路由到 SW —— 同上方 retryQueue 写路径的理由（withWriteMutex 是各上下文
+    // 一把内存锁，devtools 直调 clearHistory 会跟 SW 的提交写回交错）。读 listHistory 无害可直调。
+    const res = await safeSendMessage<HistoryClearRes>({ type: MSG.HISTORY_CLEAR, source: 'devtools' })
+    if (!res?.ok) {
+      showToast(`没能清空：${res?.error ?? '后台没有响应，请重试'}`, 'error')
+      return
+    }
     await refreshStats()
     showToast(`已删除 ${n} 条本地历史`, 'success')
   } catch (e) {

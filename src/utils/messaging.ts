@@ -1,5 +1,3 @@
-import type { MooMessage, MooSource } from '@/types/messages'
-
 /**
  * 几种典型的 MV3 消息错误：
  * - no-receiver: 接收端不存在 (content script 没注入 / SW 没起 / port name 错)
@@ -41,8 +39,10 @@ export function friendly(raw: string): string {
   return raw
 }
 
+// `fallback?: undefined` 而不是 `{}`：整条 union 就是靠「有没有 fallback」分流的，
+// 写成 `{}` 语义上是「任何非 nullish 值」（lint: no-empty-object-type），既宽又表达不出意图。
 type SendOptions<T> =
-  | { /** 不传：失败时抛 MessagingError */ }
+  | { /** 不传：失败时抛 MessagingError */ fallback?: undefined }
   | { /** 传了：失败时静默返回 fallback，不抛 */ fallback: T }
 
 /**

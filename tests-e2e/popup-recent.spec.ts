@@ -60,7 +60,9 @@ test('popup 最近提交：1 prominent + 2 compact 行 + 状态 chip', async ({ 
   await expect(rows.nth(0).locator('.rh-status')).toHaveText('失败')
   await expect(rows.nth(0).locator('.rh-status')).toHaveClass(/rh-fail/)
   await expect(rows.nth(1).locator('.rh-row-title')).toHaveText('图片加载失败')
-  await expect(rows.nth(1).locator('.rh-status')).toHaveText('完成')
+  // 文案来源是 utils/remoteStatus.ts（popup 与 devtools History 同一份）——
+  // 这里锁的是「done → 已完成」，不要写回 popup 旧口径的「完成」
+  await expect(rows.nth(1).locator('.rh-status')).toHaveText('已完成')
   await expect(rows.nth(1).locator('.rh-status')).toHaveClass(/rh-done/)
 
   await page.screenshot({ path: 'tests-e2e/screenshots/popup-recent.png' })
@@ -85,7 +87,8 @@ test('popup 最近提交：queued / open / deleted 三态正确', async ({ conte
   const rows = page.locator('.rh-list .rh-row')
   await expect(rows.nth(0).locator('.rh-status')).toHaveText('待处理')
   await expect(rows.nth(0).locator('.rh-status')).toHaveClass(/rh-open/)
-  await expect(rows.nth(1).locator('.rh-status')).toHaveText('已删')
+  // 同上：deleted → 已删除（不是旧 popup 的「已删」）
+  await expect(rows.nth(1).locator('.rh-status')).toHaveText('已删除')
   await expect(rows.nth(1).locator('.rh-status')).toHaveClass(/rh-del/)
 })
 

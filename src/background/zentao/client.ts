@@ -249,7 +249,7 @@ export async function login(baseUrl: string, account: string, password: string):
     return { ok: true, data: body.token }
   }
   const errMsg = body?.reason || body?.error
-    || (body && typeof body === 'object' && '_rawText' in body ? String((body as any)._rawText) : `HTTP ${res.status}`)
+    || (body && typeof body === 'object' && '_rawText' in body ? String((body as Record<string, unknown>)._rawText) : `HTTP ${res.status}`)
   return { ok: false, error: errMsg }
 }
 

@@ -23,7 +23,7 @@ function stubCanvas(srcW: number, srcH: number, blobType = 'image/png') {
   return cap
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.unstubAllGlobals() })
 
 describe('downscaleToMaxWidth', () => {
   it('宽 > maxWidth → 缩到 maxWidth，高度等比', async () => {

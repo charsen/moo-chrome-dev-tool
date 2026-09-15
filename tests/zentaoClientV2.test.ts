@@ -622,6 +622,9 @@ describe('v2 鉴权失效非标响应 — 真禅道 实测 200 + {result:false, 
     if (r.ok) {
       expect(r.data.realname).toBe('A-new')  // 用响应里的新名字
     }
+    // 未发版批次：这个计数器此前只增不查（声明了却没有断言）—— 补上。它锁的是「ping 只打一次
+    // /users/{id}」：若哪天真变成「先返 cache 再后台补一发」这里会亮。
+    expect(userCalls).toBe(1)
   })
 })
 
@@ -1160,7 +1163,9 @@ describe('ensureCookieSession — v0.8.9 fresh 真探测（Fix G）', () => {
     mockJsonRes({ status: 'success', token: 'tok-1', user: { id: 42, account: 'alice', realname: '爱丽丝' } })
 
   it('① fresh=true：暖缓存下 login fetch 真发生（强制真探测）', async () => {
-    const fetchMock = vi.fn(async () => loginRes())
+    // 形参不能省：零参 `vi.fn(async () => ...)` 的 mock.calls 被推成 `[]`（长度 0 的 tuple），
+    // 下面断言 calls[1][0] 会直接 TS2493。声明出 fetch 的入参后 calls 才是 `[unknown][]`。
+    const fetchMock = vi.fn(async (_input: unknown) => loginRes())
     vi.stubGlobal('fetch', fetchMock)
     // 先 ensure 一次建暖缓存（token + userCache）
     const warm = await ensureCookieSession(env)
@@ -1176,7 +1181,9 @@ describe('ensureCookieSession — v0.8.9 fresh 真探测（Fix G）', () => {
   })
 
   it('② 不带 fresh：暖缓存 0 新增 fetch（快路径不回归）', async () => {
-    const fetchMock = vi.fn(async () => loginRes())
+    // 形参不能省：零参 `vi.fn(async () => ...)` 的 mock.calls 被推成 `[]`（长度 0 的 tuple），
+    // 下面断言 calls[1][0] 会直接 TS2493。声明出 fetch 的入参后 calls 才是 `[unknown][]`。
+    const fetchMock = vi.fn(async (_input: unknown) => loginRes())
     vi.stubGlobal('fetch', fetchMock)
     await ensureCookieSession(env)
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -1188,7 +1195,9 @@ describe('ensureCookieSession — v0.8.9 fresh 真探测（Fix G）', () => {
   })
 
   it('③ fresh=true 但 login 失败 → 返 error（不再吐缓存的假「✓」）', async () => {
-    const fetchMock = vi.fn(async () => loginRes())
+    // 形参不能省：零参 `vi.fn(async () => ...)` 的 mock.calls 被推成 `[]`（长度 0 的 tuple），
+    // 下面断言 calls[1][0] 会直接 TS2493。声明出 fetch 的入参后 calls 才是 `[unknown][]`。
+    const fetchMock = vi.fn(async (_input: unknown) => loginRes())
     vi.stubGlobal('fetch', fetchMock)
     await ensureCookieSession(env)                      // 暖缓存
     // 服务端 session 体系已挂：login 开始报密码错（或账号锁定）

@@ -32,7 +32,9 @@ import type { ConsoleError } from '@/types/errors'
 // 一份预设响应，组件那一侧零改动。
 const params = new URLSearchParams(window.location.search)
 const failMode = params.get('fail') === 'true'
-const successMode = params.get('success') === 'true'
+// 注：`?success=true` **故意不解析** —— harness 的默认路径就是成功（见下面 SUBMIT_BUG 分支），
+// e2e specs 里带上它只是把「我在测成功」写到 URL 上自文档化（dialog-submit.spec.ts:124 等）。
+// 要模拟失败用 `?fail=true`。之前这里 `const successMode = ...` 解析完从未被读，属死绑定。
 const queuedFlag = params.get('queued') === 'true'
 
 const origSendMessage = chrome.runtime.sendMessage.bind(chrome.runtime)

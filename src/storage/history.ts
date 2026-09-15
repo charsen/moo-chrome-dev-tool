@@ -95,7 +95,7 @@ interface WriteResult {
 async function write(list: BugHistoryEntry[]): Promise<WriteResult> {
   // 写入失败（一般是配额超出）时，**逐条**丢最旧的（list[0] 是最新，pop 末尾 = 最旧）。
   // 之前的做法是二分丢一半 + 兜底清空，单次配额触顶可能直接掉掉一大半历史。
-  let attempt = list.slice()
+  const attempt = list.slice()
   const initialLen = attempt.length
   while (attempt.length > 0) {
     try {
@@ -154,10 +154,18 @@ function withWriteMutex<T>(fn: () => Promise<T>): Promise<T> {
   return next
 }
 
-export async function removeHistory(id: string): Promise<void> {
-  await withWriteMutex(async () => {
+/**
+ * 按 id 删一条。
+ * @returns 是否真删到了（false = 那条本来就不在，属正常竞态结果而非错误；UI 据此区分
+ *          「没删到」和「删失败」—— 跟 retryQueue 的 removeQueueItem 同口径）
+ */
+export async function removeHistory(id: string): Promise<boolean> {
+  return withWriteMutex(async () => {
     const list = await read()
-    await write(list.filter((e) => e.id !== id))
+    const next = list.filter((e) => e.id !== id)
+    if (next.length === list.length) return false
+    await write(next)
+    return true
   })
 }
 

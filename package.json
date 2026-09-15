@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit",
     "type-check:tests": "vue-tsc --noEmit -p tsconfig.tests.json",
+    "lint": "eslint .",
     "check:versions": "node scripts/check-version-consistency.mjs",
     "check:bundle-size": "node scripts/check-bundle-size.mjs",
     "test": "vitest run",
@@ -22,21 +23,25 @@
     "prepare": "simple-git-hooks"
   },
   "simple-git-hooks": {
-    "pre-commit": "pnpm check:versions && pnpm type-check && pnpm test"
+    "pre-commit": "pnpm check:versions && pnpm type-check && pnpm type-check:tests && pnpm test"
   },
   "dependencies": {
     "vue": "^3.4.21"
   },
   "devDependencies": {
-    "@crxjs/vite-plugin": "^2.0.0-beta.23",
+    "@crxjs/vite-plugin": "^2.4.0",
     "@playwright/test": "^1.60.0",
     "@types/chrome": "^0.0.263",
     "@types/node": "^25.7.0",
     "@vitejs/plugin-vue": "^5.0.4",
     "@vitest/coverage-v8": "^1.6.1",
+    "eslint": "^10.10.0",
+    "eslint-plugin-vue": "^10.11.0",
+    "globals": "^17.12.0",
     "sharp": "^0.34.5",
     "simple-git-hooks": "^2.13.1",
     "typescript": "^5.4.2",
+    "typescript-eslint": "^8.70.0",
     "vite": "^5.2.0",
     "vitest": "^1.6.1",
     "vue-tsc": "^2.0.6"

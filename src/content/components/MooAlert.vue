@@ -34,7 +34,9 @@ import { useFocusTrap } from '@/composables/useFocusTrap'
 let uid = 0
 const localId = ++uid
 
-const props = withDefaults(defineProps<{
+// 不接返回值：模板里按名字直接用 props（title / message / confirmText…），
+// script 内不读 props.xxx。留着 `const props =` 只会变成 ESLint 的 unused。
+withDefaults(defineProps<{
   /** 标题（必填）。如「放弃标注？」 */
   title: string
   /** 消息体（必填）。简短说明后果。 */

@@ -59,7 +59,7 @@ const baseReq = (overrides: Partial<SubmitBugReq> = {}): SubmitBugReq => ({
   image: '',
   url: 'https://example.com/page',
   userAgent: 'UA',
-  viewport: { w: 1280, h: 800 },
+  viewport: '1280x800',
   timestamp: '2026-05-24T08:00:00Z',
   requests: [],
   errors: [],
@@ -75,7 +75,7 @@ const webhookProject = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     payloadTemplate: '{"title":"{{title}}"}',
-    imageFormat: 'inline',
+    imageFormat: 'base64',
     imageField: 'image'
   }],
   defaultServerId: 's1',
@@ -102,7 +102,8 @@ async function importHandler() {
 describe('handleSubmitBug — host permission 未授权', () => {
   it('chrome.permissions.contains 返 false → 直接返 error 不调 fetch', async () => {
     // 覆盖 makeChrome 默认 mock，让 contains 返 false
-    ;(globalThis as { chrome: { permissions: { contains: () => Promise<boolean> } } })
+    // globalThis 与这个 mock 形状不重叠 → 必须双层断言（仓内既有写法见 tests/history.test.ts:183）
+    ;(globalThis as unknown as { chrome: { permissions: { contains: () => Promise<boolean> } } })
       .chrome.permissions.contains = async () => false
     const { handleSubmitBug } = await importHandler()
     const r = await handleSubmitBug(baseReq())

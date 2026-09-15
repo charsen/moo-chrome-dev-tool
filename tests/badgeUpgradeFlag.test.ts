@@ -35,15 +35,19 @@ afterEach(() => {
 })
 
 const makeHistory = (failureCount: number): BugHistoryEntry[] =>
-  Array.from({ length: failureCount }, (_, i) => ({
+  // 显式标注返回类型、去掉 `as BugHistoryEntry` 断言 —— 断言会顺手放过「生产造不出的形状」。
+  // 这里 viewport 真实形态是 `${innerWidth}x${innerHeight}` 字符串（SubmitDialog.vue:771），
+  // 之前写成 {w,h} 对象、image/requests/errors 也缺，TS 一直被断言蒙住。
+  Array.from({ length: failureCount }, (_, i): BugHistoryEntry => ({
     id: `h${i}`,
     timestamp: Date.now() - 60_000,
     projectId: 'p1', projectName: 'p',
     serverId: 's1', serverName: 'svr',
     title: 't', description: '',
-    url: '', userAgent: '', viewport: { w: 0, h: 0 },
+    image: '', requests: [], errors: [],
+    url: '', userAgent: '', viewport: '0x0',
     result: { ok: false, error: 'boom' }
-  } as BugHistoryEntry))
+  }))
 
 describe('updateActionBadge — upgrade flag 优先级', () => {
   it('flag=true → 显 \'!\' amber，不读 failure 计数', async () => {
@@ -76,7 +80,7 @@ describe('updateActionBadge — upgrade flag 优先级', () => {
   })
 
   it('storage.get throw → 兜底走 failure 计数', async () => {
-    ;(globalThis as { chrome: { storage: { local: { get: () => Promise<unknown> } } } })
+    ;(globalThis as unknown as { chrome: { storage: { local: { get: () => Promise<unknown> } } } })
       .chrome.storage.local.get = async () => { throw new Error('storage err') }
     const { updateActionBadge } = await import('@/utils/badge')
     await updateActionBadge(makeHistory(3))

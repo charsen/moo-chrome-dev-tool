@@ -96,12 +96,13 @@
 
 <script setup lang="ts">
 import { computed, onActivated, onBeforeUnmount, onDeactivated, ref, watch } from 'vue'
-import { clearHistory, listHistory, onHistoryChanged, removeHistory } from '@/storage/history'
+import { listHistory, onHistoryChanged } from '@/storage/history'
 import { loadConfig } from '@/storage/config'
-import { MSG, type SubmitBugReq, type SubmitBugRes } from '@/types/messages'
+import { MSG, type SubmitBugReq, type SubmitBugRes, type HistoryRemoveRes, type HistoryClearRes } from '@/types/messages'
 import type { BugHistoryEntry } from '@/types/history'
 import { formatSubmitResult } from '@/utils/submitMessage'
 import { safeSendMessage, MessagingError } from '@/utils/messaging'
+import { remoteStatusLabel } from '@/utils/remoteStatus'
 import type { Project } from '@/types/config'
 import { useToast } from '@/composables/useToast'
 import { confirmDialog } from '../components/confirm'
@@ -131,9 +132,9 @@ function showToast(msg: string, kind: 'success' | 'error' | 'info' = 'info') {
   showToastRaw(msg, kind, kind === 'error' ? 5000 : 2600)
 }
 
-function remoteStatusLabel(s: string): string {
-  return { open: '待处理', in_progress: '处理中', done: '已完成', deleted: '已删除' }[s] ?? s
-}
+// remoteStatusLabel 已收到 src/utils/remoteStatus.ts（唯一来源，popup 同一份）——
+// 原来这里内联了一份 `{ open: '待处理', ... }[s] ?? s`，跟 popup 那份漂成了
+// 「已完成」vs「完成」，且 fallback 直接回显英文原始值（'done' 当文案显示）。
 
 // force=true（手动按钮）绕过 SW 端 60s 扫描冷却 —— 用户明示要刷就给刷；
 // 自动触发（进 Tab）不带 force，吃冷却防来回切 Tab 对后端打请求风暴
@@ -282,7 +283,23 @@ async function remove(id: string) {
     confirmText: '确认删除'
   })
   if (!ok) return
-  await removeHistory(id)
+  // 写路径必须路由到 SW 执行 —— storage/history.ts 的 withWriteMutex 是各 JS 上下文一把
+  // 内存锁，devtools 直调 removeHistory 会跟 SW 正在跑的 addHistoryEntry /
+  // updateHistoryEntry 写回交错，让刚删掉的条目被旧快照写回复活。
+  // v0.8.9 给 retryQueue 修过同款（MSG.RETRY_QUEUE_REMOVE），history 这条当时漏了。
+  const res = await safeSendMessage<HistoryRemoveRes>({
+    type: MSG.HISTORY_REMOVE,
+    source: 'devtools',
+    payload: { id }
+  })
+  if (!res?.ok) {
+    showToast(`删除失败：${res?.error ?? '后台没有响应，请重试'}`, 'error')
+    return
+  }
+  // 真删掉了 → SW 写完 storage 会让 onHistoryChanged 自动 reload，不必再手动拉一次。
+  // 没删到（removed=false，通常另一窗口先删了）→ storage 没变化、事件不会 fire，
+  // 这时才需要显式重载把列表拉到最新。
+  if (!res.removed) await reload()
 }
 
 async function clearAll() {
@@ -293,7 +310,12 @@ async function clearAll() {
     confirmText: '确认清空'
   })
   if (!ok) return
-  await clearHistory()
+  // 同 remove()：清空也必须走 SW，别在 devtools 上下文里跟 SW 的并发写抢同一份数组
+  const res = await safeSendMessage<HistoryClearRes>({ type: MSG.HISTORY_CLEAR, source: 'devtools' })
+  if (!res?.ok) {
+    showToast(`清空失败：${res?.error ?? '后台没有响应，请重试'}`, 'error')
+  }
+  // 成功路径靠 onHistoryChanged 自动 reload
 }
 
 async function resubmit(e: BugHistoryEntry) {

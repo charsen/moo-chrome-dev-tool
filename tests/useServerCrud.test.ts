@@ -46,7 +46,7 @@ describe('addServer', () => {
 
   it('已有 defaultServerId → 不覆盖', () => {
     const { activeProject, crud } = mount(makeProject({
-      servers: [{ id: 's-existing', name: 'old', endpoint: 'http://x', method: 'POST', headers: {}, payloadTemplate: '', imageFormat: 'inline', imageField: 'image' } as BugServer],
+      servers: [{ id: 's-existing', name: 'old', endpoint: 'http://x', method: 'POST', headers: {}, payloadTemplate: '', imageFormat: 'base64', imageField: 'image' } as BugServer],
       defaultServerId: 's-existing'
     }))
     crud.addServer()
@@ -64,7 +64,7 @@ describe('removeServer', () => {
   const baseServer = (id: string, name = 'srv'): BugServer => ({
     id, name,
     endpoint: 'http://x', method: 'POST', headers: {},
-    payloadTemplate: '', imageFormat: 'inline', imageField: 'image'
+    payloadTemplate: '', imageFormat: 'base64', imageField: 'image'
   })
 
   it('confirm 通过 → 删除', async () => {
@@ -110,7 +110,7 @@ describe('header CRUD', () => {
     id: 's', name: 'svr',
     endpoint: 'http://x', method: 'POST',
     headers: { Authorization: 'Bearer foo', 'X-Trace': 'abc' },
-    payloadTemplate: '', imageFormat: 'inline', imageField: 'image'
+    payloadTemplate: '', imageFormat: 'base64', imageField: 'image'
   })
 
   it('onHeaderKeyChange 改 key → 删旧 + 加新', () => {
@@ -182,7 +182,7 @@ describe('template editor', () => {
     const { crud } = mount(makeProject())
     const srv: BugServer = {
       id: 's', name: 'svr', endpoint: '', method: 'POST', headers: {},
-      payloadTemplate: 'old', imageFormat: 'inline', imageField: 'image'
+      payloadTemplate: 'old', imageFormat: 'base64', imageField: 'image'
     }
     crud.openTemplateEditor(srv)
     expect(crud.editingTemplate.value?.server.id).toBe('s')
@@ -193,7 +193,7 @@ describe('template editor', () => {
     const { crud } = mount(makeProject())
     const srv: BugServer = {
       id: 's', name: 'svr', endpoint: '', method: 'POST', headers: {},
-      payloadTemplate: 'old', imageFormat: 'inline', imageField: 'image'
+      payloadTemplate: 'old', imageFormat: 'base64', imageField: 'image'
     }
     crud.openTemplateEditor(srv)
     crud.onTemplateSave('new template')

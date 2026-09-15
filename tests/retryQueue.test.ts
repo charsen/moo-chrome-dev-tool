@@ -767,3 +767,148 @@ describe('isPermanentFailure · 7+ keyword 永久错全覆盖', () => {
     expect(isPermanentFailure(errorMsg)).toBe(false)
   })
 })
+
+/**
+ * v0.8.17 后复盘 F2 — flush 进度**增量落盘**。
+ *
+ * 旧实现只在循环末尾 reconcile 写回一次，网络段却可能跑很久（单条禅道 multipart 80s
+ * 超时 × 最多 50 条）。SW 中途终止（浏览器退出 / 扩展 reload / 极端长队列）时整轮进度
+ * 零持久化：已成功的条还留在队列里、attempts / lastAttemptAt 也没写进去 → 90s 全局冷却
+ * 一过就重发 → 远端多出重复工单（v0.7.6 P2-4 dogfood 撞过）。
+ *
+ * 现在每个终局（成功 / 永久放弃）立刻落盘，失败条在收尾统一落。以下用例锁这个行为，
+ * 并守住「增量写不能误删还没轮到的条 / 不能吞掉 flush 期间新入队的条」。
+ */
+describe('retryQueue — flush 进度增量落盘（F2）', () => {
+  let storage: MockStorage
+
+  beforeEach(() => {
+    storage = makeChrome()
+    stubChromeRuntime()
+    __resetForTest()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    __resetForTest()
+  })
+
+  it('第 1 条成功后立刻从 storage 移除 —— 第 2 条还挂在网络上时就能看到', async () => {
+    storage.data.mooRetryQueue = [
+      { enqueuedAt: 1, attempts: 0, endpoint: 'http://x/fast', method: 'POST', headers: {}, bodyString: '{}' },
+      { enqueuedAt: 2, attempts: 0, endpoint: 'http://x/slow', method: 'POST', headers: {}, bodyString: '{}' }
+    ]
+    let releaseSlow!: () => void
+    const slowGate = new Promise<void>((resolve) => { releaseSlow = resolve })
+    const fetchMock = vi.fn(async (url: unknown) => {
+      if (String(url).includes('/slow')) await slowGate
+      return new Response('{"ok":true,"id":7}', { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const p = flushRetryQueue()
+    // 等到第 2 条真的进了网络等待 —— 此刻第 1 条的处理已完成、第 2 条还没回
+    await vi.waitFor(() => {
+      expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('/slow'))).toBe(true)
+    })
+
+    // ★ 核心断言：假设此刻 SW 被杀（进程终止），队列里必须已经没有第 1 条。
+    // 旧实现这时 storage 里还是 [1, 2]，下次 flush 会重发第 1 条 → 远端重复工单。
+    expect((storage.data.mooRetryQueue as Array<{ enqueuedAt: number }>).map((q) => q.enqueuedAt))
+      .toEqual([2])
+
+    releaseSlow()
+    const n = await p
+    expect(n.processed).toBe(2)
+    expect(storage.data.mooRetryQueue).toEqual([])
+  })
+
+  it('增量写不误删「还没轮到」的条（尾部队列必须在）', async () => {
+    storage.data.mooRetryQueue = [
+      { enqueuedAt: 1, attempts: 0, endpoint: 'http://x/1', method: 'POST', headers: {}, bodyString: '{}' },
+      { enqueuedAt: 2, attempts: 0, endpoint: 'http://x/2', method: 'POST', headers: {}, bodyString: '{}' },
+      { enqueuedAt: 3, attempts: 0, endpoint: 'http://x/3', method: 'POST', headers: {}, bodyString: '{}' }
+    ]
+    let release2!: () => void
+    const gate2 = new Promise<void>((resolve) => { release2 = resolve })
+    vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
+      if (String(url).endsWith('/2')) await gate2
+      return new Response('{"ok":true}', { status: 200 })
+    }))
+
+    const p = flushRetryQueue()
+    await vi.waitFor(() => {
+      // 第 3 条还没轮到 → 它必须还在队列里（不能被当成"该删的"）
+      expect((storage.data.mooRetryQueue as Array<{ enqueuedAt: number }>).map((q) => q.enqueuedAt))
+        .toEqual([2, 3])
+    })
+
+    release2()
+    const n = await p
+    expect(n.processed).toBe(3)
+    expect(storage.data.mooRetryQueue).toEqual([])
+  })
+
+  it('增量写不吞掉 flush 期间新入队的条', async () => {
+    storage.data.mooRetryQueue = [
+      { enqueuedAt: 1, attempts: 0, endpoint: 'http://x/1', method: 'POST', headers: {}, bodyString: '{}' },
+      { enqueuedAt: 2, attempts: 0, endpoint: 'http://x/slow', method: 'POST', headers: {}, bodyString: '{}' }
+    ]
+    let releaseSlow!: () => void
+    const slowGate = new Promise<void>((resolve) => { releaseSlow = resolve })
+    vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
+      if (String(url).includes('/slow')) await slowGate
+      return new Response('{"ok":true}', { status: 200 })
+    }))
+
+    const p = flushRetryQueue()
+    await vi.waitFor(() => {
+      expect((storage.data.mooRetryQueue as Array<{ enqueuedAt: number }>).map((q) => q.enqueuedAt))
+        .toEqual([2])
+    })
+    // flush 还在跑，用户又失败了一条 → 入队
+    const accepted = await enqueueRetry('http://x/new', 'POST', {}, '{}')
+    expect(accepted).toBe(true)
+
+    releaseSlow()
+    await p
+    // 新条不能被第 2 条的增量写 / 收尾写回吞掉
+    const left = storage.data.mooRetryQueue as Array<{ endpoint: string }>
+    expect(left.map((q) => q.endpoint)).toEqual(['http://x/new'])
+  })
+
+  it('失败条在收尾统一落盘：attempts / lastStatus / lastError 都写回', async () => {
+    storage.data.mooRetryQueue = [
+      { enqueuedAt: 1, attempts: 0, endpoint: 'http://x/a', method: 'POST', headers: {}, bodyString: '{}' },
+      { enqueuedAt: 2, attempts: 0, endpoint: 'http://x/b', method: 'POST', headers: {}, bodyString: '{}' }
+    ]
+    // 第 1 条成功、第 2 条 503 → 成功条移除、失败条带 attempts=1 留队
+    vi.stubGlobal('fetch', vi.fn(async (url: unknown) =>
+      String(url).endsWith('/b') ? new Response('boom', { status: 503 }) : new Response('{"ok":true}', { status: 200 })
+    ))
+
+    const n = await flushRetryQueue()
+    expect(n.processed).toBe(1)
+    expect(n.dropped).toBe(0)
+    const left = storage.data.mooRetryQueue as Array<{ enqueuedAt: number; attempts: number; lastStatus?: number }>
+    expect(left).toHaveLength(1)
+    expect(left[0]?.enqueuedAt).toBe(2)
+    expect(left[0]?.attempts).toBe(1)
+    expect(left[0]?.lastStatus).toBe(503)
+  })
+
+  it('达 attempts 上限的条被登记为终局，收尾后彻底出队（不会永远留着）', async () => {
+    storage.data.mooRetryQueue = [
+      { enqueuedAt: 1, attempts: 5, endpoint: 'http://x/a', method: 'POST', headers: {}, bodyString: '{}' },
+      { enqueuedAt: 2, attempts: 0, endpoint: 'http://x/b', method: 'POST', headers: {}, bodyString: '{}' }
+    ]
+    const fetchMock = vi.fn(async () => new Response('{"ok":true}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const n = await flushRetryQueue()
+    expect(n.dropped).toBe(1)      // 只有达上限那条被放弃
+    expect(n.processed).toBe(1)    // 另一条正常成功
+    expect(fetchMock).toHaveBeenCalledTimes(1)  // 达上限那条不发网
+    expect(storage.data.mooRetryQueue).toEqual([])
+  })
+})

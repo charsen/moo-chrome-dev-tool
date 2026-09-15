@@ -15,8 +15,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
  *   - ping cookie 走 ensureCookieSession 不同路径
  */
 
-import type { ZentaoEnv } from '@/background/zentao/client'
-
 function jsonRes(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 }

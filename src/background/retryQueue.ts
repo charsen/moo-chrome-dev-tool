@@ -134,7 +134,11 @@ async function readQueue(): Promise<QueuedItem[]> {
 // doFlush 写回若交错会 last-write-wins 丢条（同 history.ts withWriteMutex 思路）。
 // 注意：flushPromise 只挡「并发 flush」，挡不住「flush 网络段进行中、用户提交新失败条入队」——
 // 那条新条会被 doFlush 用旧快照写回覆盖吞掉。所以这里给每个写路径套共享锁，且 doFlush 把慢的
-// 网络段留在锁外、只在锁内做「重读 + reconcile 写回」（见下方）。
+// 网络段留在锁外、只在锁内做「重读 + reconcile 写回」（见下方 doFlush 的 persistProgress）。
+//
+// ⚠ 本锁只在**当前 JS 上下文**内有效（模块级 promise 链）。devtools / popup 的写路径因此
+// 必须经消息路由到 SW 执行（MSG.RETRY_QUEUE_REMOVE / RETRY_QUEUE_CLEAR + background/index.ts 的
+// 两个 case），读路径可直调。history 那边同款（MSG.HISTORY_REMOVE / HISTORY_CLEAR）。
 let queueMutex: Promise<unknown> = Promise.resolve()
 function withQueueMutex<T>(fn: () => Promise<T>): Promise<T> {
   const next = queueMutex.then(fn, fn)
@@ -329,28 +333,73 @@ async function doFlush(): Promise<FlushResult> {
   // 真要发网络了才武装 90s cooldown —— 空队列轮不算（否则 SW spin-up 的空 flush
   // 把用户随后的「立即重试」静默挡掉）
   await markFlushStart()
-  const remaining: QueuedItem[] = []
+
+  // ---------- 本轮进度（随时可落盘的三件套） ----------
+  // 快照里的 enqueuedAt（识别「这条属于本轮」）
+  const snapshotIds = new Set(list.map((q) => q.enqueuedAt))
+  // 本轮已定终局的条：成功 → 移除；永久放弃 → 移除
+  const terminalIds = new Set<number>()
+  // 本轮失败、需留在队列的条 → 带更新后的 attempts / lastStatus / lastError
+  const remainingById = new Map<number, QueuedItem>()
+
   let processed = 0
   let dropped = 0
   let deferred = 0
+
+  /**
+   * 把「本轮到目前为止的进度」落盘。
+   *
+   * **为什么不能等到循环结束再一次性写回**：旧实现只在循环末尾 reconcile 一次，
+   * 而这段网络段可能跑很久（单条禅道 multipart 80s 超时 × 最多 50 条）。SW 一旦中途
+   * 终止（浏览器退出 / 扩展 reload / 极端长队列），**整轮进度零持久化** —— 已经成功
+   * 重试的条目还留在队列里、`attempts` / `lastAttemptAt` 也没写进去（per-item 60s 冷却
+   * 因此失效），等 90s 全局冷却一过就重发 → 远端多出重复工单（v0.7.6 P2-4 dogfood
+   * 撞过的正是这个）。
+   *
+   * **为什么可以随时调（幂等 + 安全）**：锁内**重读**当前队列再按三件套归并 ——
+   *   · 不在快照里的 → flush 期间新入队的，原样保留
+   *   · 在 terminalIds 里的 → 移除（成功 / 永久放弃）
+   *   · 在 remainingById 里的 → 用更新过的版本覆盖
+   *   · 快照里「还没轮到」的 → 原样保留（**这点很关键**：不能当成"该删"，否则会把
+   *     队列尾部还没处理的条全部误删）
+   * 于是任何时候调用都等价于「把已定局的部分落地，其余不动」。
+   */
+  async function persistProgress(): Promise<void> {
+    await withQueueMutex(async () => {
+      const current = await readQueue()
+      const merged: QueuedItem[] = []
+      for (const q of current) {
+        if (!snapshotIds.has(q.enqueuedAt)) {
+          merged.push(q)  // flush 期间新入队，保留
+          continue
+        }
+        if (terminalIds.has(q.enqueuedAt)) continue  // 成功 / drop → 移除
+        merged.push(remainingById.get(q.enqueuedAt) ?? q)  // 失败更新 / 未处理 → 原样保留
+      }
+      await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: merged })
+    })
+  }
+
   // zentao 路径要 loadConfig 才能拿到 project；webhook 也接 project（adapter 自决要不要用）
   let configCache: Awaited<ReturnType<typeof loadConfig>> | null = null
   const getConfig = async () => configCache ?? (configCache = await loadConfig())
 
   for (const q of list) {
-    if (q.attempts >= RETRY_MAX_ATTEMPTS) { dropped++; continue }
+    // 到上限 / adapter 缺失都直接放弃 → 必须登记进 terminalIds，否则会被 persistProgress
+    // 当成「还没轮到」原样保留，永远出不了队列
+    if (q.attempts >= RETRY_MAX_ATTEMPTS) { dropped++; terminalIds.add(q.enqueuedAt); continue }
     // v0.7.6 P2-4：per-item cooldown — 防同条在远端慢响应（zentao multipart 80s）
     // + flush 90s cooldown 之后立即重发让远端产生重复 bug（dogfood 撞过）
     if (q.lastAttemptAt && Date.now() - q.lastAttemptAt < PER_ITEM_RETRY_COOLDOWN_MS) {
       deferred++
-      remaining.push(q)  // 留在队列等下次 alarm，不丢
-      continue
+      continue  // 不动它 = 留在队列等下次 alarm，不丢也不重发
     }
     const adapter = getAdapter(q.kind)
     if (!adapter) {
       // 未注册 adapter（历史 storage 残留 kind） → drop
       console.warn('[Moo] retry: adapter not found for kind', q.kind)
       dropped++
+      terminalIds.add(q.enqueuedAt)
       continue
     }
     // zentao 路径需要 project 查 baseUrl；webhook payload 自带 endpoint，project undefined 也行
@@ -360,6 +409,13 @@ async function doFlush(): Promise<FlushResult> {
     const outcome = await adapter.retryFromPayload(q, project)
     if (outcome.kind === 'ok') {
       processed++
+      terminalIds.add(q.enqueuedAt)
+      // **顺序要紧**：先把这条从队列落盘移除，再回填 history。
+      // 反过来的话，若 SW 在两步之间被杀：history 已翻成功、队列里却还有这条 →
+      // 下次 flush 重发 → 远端多一张单。按现在这个顺序，最坏结果只是 history 暂时
+      // 显示「失败」+ 红 badge 多留一会儿（下次状态回查 / 手动同步会纠正），
+      // 不会产生重复工单。
+      await persistProgress()
       // 把首次失败写的 history entry 翻成成功 + 回填 remoteId。不回填的话该条永远显示
       // 「失败」、红 badge 24h 不消、用户照着「失败」手动重提 → 远端重复 bug 单。
       // 老条目无 historyId → 跳过（行为同旧版）。回填失败不影响队列移除。
@@ -368,32 +424,17 @@ async function doFlush(): Promise<FlushResult> {
       }
       continue
     }
-    if (outcome.kind === 'drop') { dropped++; continue }
+    if (outcome.kind === 'drop') { dropped++; terminalIds.add(q.enqueuedAt); continue }
     q.attempts++
     q.lastStatus = outcome.status
     q.lastError = outcome.error
-    remaining.push(q)
+    remainingById.set(q.enqueuedAt, q)
   }
-  // 写回 reconcile（锁内重读）：上面的网络段在锁外跑了几十秒，期间 pushItem 可能已入队新失败条 /
-  // removeQueueItem 可能已删条。直接 set(remaining) 会用 flush 开始时的旧快照覆盖 → 新条被吞 /
-  // 已删条复活。所以只把「本轮快照处理过的条目」按 remaining 结果落地，其余（flush 期间新入队、
-  // 不在快照里的）原样保留；快照里被并发删掉的（current 已无）不复活。
-  await withQueueMutex(async () => {
-    const snapshotIds = new Set(list.map((q) => q.enqueuedAt))
-    const remainingById = new Map(remaining.map((q) => [q.enqueuedAt, q]))
-    const current = await readQueue()
-    const merged: QueuedItem[] = []
-    for (const q of current) {
-      if (!snapshotIds.has(q.enqueuedAt)) {
-        merged.push(q)  // flush 期间新入队，保留
-        continue
-      }
-      const updated = remainingById.get(q.enqueuedAt)
-      if (updated) merged.push(updated)  // 仍需重试：用更新过 attempts/lastError 的版本
-      // else：本轮成功 / drop → 不保留（移除）
-    }
-    await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: merged })
-  })
+
+  // 收尾：把失败条的 attempts / lastError 一并落地（成功条在上面已经逐步落过了）。
+  // 仍是「锁内重读 + reconcile」，所以期间新入队的条 / 被用户删掉的条都不会被旧快照写回。
+  await persistProgress()
+
   // 有重试成功（history 已翻成功）→ 刷 badge 让 24h 失败计数立即缩水，不等下次提交
   if (processed > 0) {
     try { await refreshBadge() } catch { /* badge 失败不影响 flush 结果 */ }

@@ -164,6 +164,21 @@ export async function loadConfig(): Promise<MooConfig> {
  *  改字段时 silent 丢）。现在 catch 后写 flag 让 popup 弹「⚠ 配置写入失败：存储已满，请清理历史」 */
 export const QUOTA_FAIL_FLAG_KEY = 'mooConfigQuotaFailed'
 
+/**
+ * 整份 config 覆写。
+ *
+ * ⚠ **已知残留风险（跨上下文 last-write-wins，v0.8.17 后那次复盘记下，尚未修）**：
+ * config 没有 history / retryQueue 那样的互斥边界（那两处的 `withWriteMutex` / `withQueueMutex`
+ * 是模块内存锁，天然只在单上下文内有效，所以它们的写路径已经路由到 SW）。而本函数是
+ * **整份覆写**，调用方分布在 popup（`quickEnableHere` 的 read→modify→save）、devtools 的
+ * Environment / Settings（`useConfig().save()`）、options 三处，SW 侧还有 `loadConfig()`
+ * 里的 migration 落盘。两个上下文同时改不同字段时会互相整份回滚。
+ *
+ * 当前判断是**暂不改**：migration 落盘是「写刚读到的派生值」、且只在该 config 形态第一次
+ * 命中时写一次（很快收敛）；`quickEnableHere` 的读改窗口是毫秒级；`useConfig` 用 lastSavedJson
+ * 快照挡掉了自写回声（见 composables/useConfig.ts 头注释）。真要收口得先定「按字段（或按项目）
+ * 合并」还是「写路径全走 SW」，属于会改变用户数据语义的改动 —— 立项前先评估，别顺手改。
+ */
 export async function saveConfig(config: MooConfig): Promise<void> {
   // Vue 响应式对象在结构化克隆时可能丢字段，先解到纯对象再写入
   const plain = JSON.parse(JSON.stringify(config)) as MooConfig

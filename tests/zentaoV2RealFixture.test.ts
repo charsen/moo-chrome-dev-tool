@@ -7,7 +7,6 @@ import {
   discoverProduct,
   listProjects,
   listUsers,
-  getBug,
   _clearZentaoCaches,
   type ZentaoEnv
 } from '@/background/zentao/client'
@@ -26,6 +25,12 @@ import {
  *
  * Graceful skip：如果 anon/ 目录空（没 fixture），测试 skip 而不是 fail —— 这样 CI 在 fixture
  * 还没到位时也能 green。fixture 到位后才有「真实多实例方差」验证。
+ *
+ * ⚠ 2026-09-15：这个 skip 是**沉默**的 —— anon/ 从 2026-05-24 建目录起只躺着一个 .gitkeep，
+ * 整套 Tier 2 已经静默跳过 4 个月，而 HANDOFF 一直写着「禅道回归走 schema fuzz + 真实 fixture」，
+ * 等于对外宣称了这一半覆盖实际不存在。所以这里补一条显式提示：skip 时把原因打在输出里，
+ * 让人一眼看到「Tier 2 没在跑」，而不是把它当成 green。真补上 fixture 前，别再在任何文档里
+ * 把 Tier 2 写成已完成能力。
  *
  * 见 [[feedback_zentao_v2_dual_track_rule]]
  */
@@ -70,6 +75,15 @@ beforeEach(() => {
 
 const sets = fixtureSetsAvailable()
 const describer = sets.length > 0 ? describe : describe.skip
+
+// 让 skip 不再是沉默的：跑测试时能直接看到 Tier 2 到底有没有生效（见文件头 ⚠ 说明）
+if (sets.length === 0) {
+  console.warn(
+    '[Moo:test] Tier 2（真实禅道 fixture 回放）未激活：' +
+    `${ANON_DIR} 下找不到 01-login.json，本文件全部用例会被 skip。` +
+    '要激活：同事跑 scripts/dump-zentao-fixtures.sh → 脱敏入 anon/。在此之前不要在任何文档里把它当已覆盖。'
+  )
+}
 
 describer('Tier 2 · 真实禅道响应 fixture 回放（同事 curl dump 后入仓）', () => {
   const loginFixture = loadFixture('01-login.json')

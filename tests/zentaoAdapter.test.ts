@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Project } from '@/types/config'
+import { DEFAULT_CAPTURE, DEFAULT_REDACT, DEFAULT_ZENTAO, type Project, type ZentaoProjectConfig } from '@/types/config'
 import type { SubmitBugReq } from '@/types/messages'
 
 // thumbnailize 用 OffscreenCanvas（浏览器 only），node 里 mock 成带标记的转换 ——
@@ -67,25 +67,28 @@ async function importAdapter() {
 const baseReq = (): SubmitBugReq => ({
   projectId: 'p1', serverId: 'zentao',
   title: 'bug', description: 'desc',
-  image: '', url: '', userAgent: '', viewport: { w: 0, h: 0 },
+  image: '', url: '', userAgent: '', viewport: '0x0',
   timestamp: '2026-05-24T08:00:00Z',
   requests: [], errors: [], elements: []
 })
 
-const zentaoProject = (overrides: Partial<Project['zentao']> = {}): Project => ({
+const zentaoProject = (overrides: Partial<ZentaoProjectConfig> = {}): Project => ({
   id: 'p1', name: 'zentao', matchPatterns: [],
   kind: 'zentao',
   servers: [], defaultServerId: '',
+  // 原 fixture 的 zentao 只有 5 个字段、capture/redact 也不是真类型，全靠结尾 `as Project` 蒙过。
+  // 现在基于生产默认值展开 —— DEFAULT_ZENTAO 已含 defaultSeverity/Pri/Type/Keywords。
   zentao: {
+    ...DEFAULT_ZENTAO,
     baseUrl: 'https://z.example.com',
     account: 'a', password: 'b',
     projectId: 1, moduleId: 0,
     ...overrides
   },
-  capture: { storageKeys: [], requestBufferSize: 50 },
-  redact: { bodyKeys: [], cookies: [], headers: [] },
+  capture: { ...DEFAULT_CAPTURE, requestBufferSize: 50 },
+  redact: { ...DEFAULT_REDACT, headerKeys: [], bodyKeys: [] },
   enabled: true
-} as Project)
+})
 
 describe('zentaoAdapter.submit', () => {
   it('login 失败 → submitToZentao 早返 error，adapter 透传', async () => {

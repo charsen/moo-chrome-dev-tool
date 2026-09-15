@@ -42,6 +42,7 @@ import {
 import { handleCaptureScreenshot, handleMatchProject, handlePreviewPayload } from '@/background/handlers/simple'
 import { handleSubmitBug } from '@/background/handlers/submit'
 import { handleRefreshHistoryStatus } from '@/background/handlers/historyStatus'
+import { handleHistoryRemove, handleHistoryClear } from '@/background/handlers/historyWrite'
 import { t } from '@/i18n'
 
 const RETRY_ALARM = 'mooRetry'
@@ -162,6 +163,13 @@ chrome.storage.session?.setAccessLevel?.({
 void rehydrateRecordingFromOffscreen()
 
 ;(async () => {
+  // 未发版批次：syncContentScripts 从 flush 之后挪到前面并行 kick off。
+  // 原因：它跟重试队列没有任何关系（只读 config + scripting），而 flush 的网络段可以很长
+  // ——单条禅道 multipart 超时 80s、队列最多 50 条。原先它排在 `await flushRetryQueue()` 之后，
+  // 结果「扩展 reload 后已打开 tab 的动态注入 self-heal」会被队列网络段整整挡住几十秒。
+  // 顺序约束只有一条且不受影响：rehydrate 仍在模块同步求值期启动（见上方注释）。
+  void syncContentScripts()
+
   try {
     const n = await getQueueLength()
     if (n > 0) {
@@ -172,12 +180,16 @@ void rehydrateRecordingFromOffscreen()
     console.warn('[Moo] SW boot flush 失败', e)
   }
   // SW 每次 spin-up 都同步一次 badge：onStartup 只触发于浏览器启动，
-  // SW 30s 闲置回收后再次唤醒时 onStartup 不会再触发，badge 状态会过期
+  // SW 30s 闲置回收后再次唤醒时 onStartup 不会再触发，badge 状态会过期。
+  // ⚠ 必须留在 flush 之后：flush 成功回填会让 history 里失败条翻成功（flush 自身收尾也调
+  // refreshBadge），提前跑会读到 flush 之前的旧计数、把 badge 短暂写错。
   void refreshBadge()
-  // v0.4.5：offscreen track-ended 时如果 SW 刚回收，sendMessage 会丢。spin-up 时读 storage flag 兜底
+  // v0.4.5：offscreen track-ended 时如果 SW 刚回收，sendMessage 会丢。spin-up 时读 storage flag 兜底。
+  // ⚠ 也必须留在 flush 之后：本函数靠「读 flag 时 currentRecording 已非 null」才广播
+  // RECORD_AUTO_STOPPED（record.ts 内 `if (currentRecording)`），而 currentRecording 由
+  // 上面同步启动的 rehydrate 填。提前跑会在 rehydrate 还没回来时空转一次
+  // ——flag 被 remove 掉但用户从没收到通知。flush 这段等待恰好是无偿的 rehydrate 让位。
   void checkOffscreenAutoStoppedFlag()
-  // v0.7.0：SW spin-up 兜底 sync content scripts（onInstalled 不会再 fire 但 SW 30s 回收后唤醒需要确认）
-  void syncContentScripts()
 })()
 
 // 录屏入口必须由用户手势触发：chrome.commands 命中算手势，并直接把当前 tab 传进来。
@@ -268,6 +280,16 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
         case MSG.REFRESH_HISTORY_STATUS: {
           // force=true（手动点按钮）绕过 60s 扫描冷却；自动触发（进 History tab）吃冷却
           sendResponse(await handleRefreshHistoryStatus(message.payload?.force === true))
+          break
+        }
+        // history 写路径统一在本上下文执行 —— devtools 直调会绕过本上下文的 withWriteMutex，
+        // 跟 submit / status 回查的写回交错让已删条目复活（同 RETRY_QUEUE_REMOVE 的理由）
+        case MSG.HISTORY_REMOVE: {
+          sendResponse(await handleHistoryRemove(message.payload))
+          break
+        }
+        case MSG.HISTORY_CLEAR: {
+          sendResponse(await handleHistoryClear())
           break
         }
         case MSG.RETRY_QUEUE_FLUSH: {

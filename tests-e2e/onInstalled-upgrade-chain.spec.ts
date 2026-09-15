@@ -1,4 +1,4 @@
-import { test, expect, readBadgeText, waitForBadgeText } from './fixtures'
+import { test, expect, waitForBadgeText } from './fixtures'
 
 /**
  * lab-tester 二审 v0.6.3 复盘 — 锁住 onInstalled / upgrade flag / badge / popup banner 链路。
@@ -197,16 +197,17 @@ test('C2 · popup 跨 SW 同步：SW 写 mooLatestVersionInfo → popup 实时�
   await expect(popup.locator('.update-banner')).toHaveCount(0)
 
   // 模拟 SW runVersionCheck 命中新版 → 写 flag（chrome.storage.onChanged 跨进程触发 popup 监听）
-  await sw.evaluate(async () => {
+  // key 由外面传进去 —— evaluate 的回调在 SW 上下文里跑，读不到本文件的 const
+  await sw.evaluate(async (flag) => {
     await chrome.storage.local.set({
-      mooLatestVersionInfo: {
+      [flag]: {
         latest: '9.9.9',
         current: '0.6.3',
         url: 'https://example.com/releases/v9.9.9',
         checkedAt: Date.now()
       }
     })
-  })
+  }, VERSION_FLAG)
 
   // popup 的 storage.onChanged listener 应 fire → updateInfo.value 赋值 → 渲染 update-banner
   await popup.waitForSelector('.update-banner', { timeout: 5000 })
@@ -217,9 +218,9 @@ test('C2 · popup 跨 SW 同步：SW 写 mooLatestVersionInfo → popup 实时�
   await expect(popup.locator('.update-banner .update-title')).toContainText(`v${liveVersion}`)
 
   // 反向链路：SW 清 flag → popup 也应隐藏 banner
-  await sw.evaluate(async () => {
-    await chrome.storage.local.remove('mooLatestVersionInfo')
-  })
+  await sw.evaluate(async (flag) => {
+    await chrome.storage.local.remove(flag)
+  }, VERSION_FLAG)
   await expect(popup.locator('.update-banner')).toHaveCount(0, { timeout: 3000 })
 
   await popup.close()

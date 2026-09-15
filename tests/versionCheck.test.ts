@@ -40,8 +40,8 @@ describe('isNewer', () => {
 })
 
 describe('fetchLatestVersion', () => {
-  beforeEach(() => vi.unstubAllGlobals())
-  afterEach(() => vi.unstubAllGlobals())
+  beforeEach(() => { vi.unstubAllGlobals() })
+  afterEach(() => { vi.unstubAllGlobals() })
 
   it('happy path：返 tag + url', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({

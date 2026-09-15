@@ -156,7 +156,7 @@ describe('exportConfig · 含密钥开关', () => {
     return { exportConfig, confirmDialog }
   }
 
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => { vi.unstubAllGlobals() })
 
   it('默认导出 → token / 禅道密码 / 敏感 header 全剥空，文件名不带 -with-secrets', async () => {
     const { exportConfig, confirmDialog } = harness()

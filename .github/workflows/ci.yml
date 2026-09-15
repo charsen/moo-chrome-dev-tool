@@ -33,9 +33,17 @@ jobs:
       - name: Type check (TypeScript + Vue)
         run: pnpm type-check
 
-      - name: Type check (tests, 宽松版)
+      # v0.8.18：摘掉 continue-on-error —— 测试类型债已清零（原 41 处 / 15 个文件：mock 造
+      # 生产不可能产出的形状、globalThis cast 单层断言、vi.fn 零参导致 mock.calls 空 tuple 等）。
+      # 清零的意义就在这一步：不摘掉的话下次又是一个 41 处，且「测试绿」不代表测的是真形态。
+      - name: Type check (tests)
         run: pnpm type-check:tests
-        continue-on-error: true  # 测试代码累积类型债，warn-only 不阻塞 master push
+
+      # v0.8.18 新引入（此前仓里没有任何 linter，却有 2 条对着空气说的 eslint-disable）。
+      # 只开「写错了」类规则，不含排版规则 —— 理由与边界见 eslint.config.js 文件头。
+      # 从 warn 起步的规则（no-explicit-any）不挡 CI；error 才挡。
+      - name: Lint (ESLint)
+        run: pnpm lint
 
       - name: Unit tests
         run: pnpm test
@@ -43,6 +51,9 @@ jobs:
       - name: Build (produces dist/)
         run: pnpm build
 
+      # check:bundle-size 读的是 dist/，dist/ 是 gitignore 的构建产物 —— 所以它
+      # 只在这里和 pnpm release 跑，pre-commit 故意不含它（本地没 build 就没 dist，
+      # 硬塞进 hook 只会得到一堆误报，见 scripts/check-bundle-size.mjs 的 dist 缺失分支）。
       - name: Bundle size check
         run: pnpm check:bundle-size
 
@@ -53,7 +64,9 @@ jobs:
       # 不上传 artifact —— dist/ 由本地 pnpm release 流程产出；CI 这里仅做"能 build"验证。
 
   e2e:
-    # 并行跑（不 needs: test）—— 跑 13 个 Playwright case，真起 chromium + 真加载 dist 当扩展
+    # 并行跑（不 needs: test）—— 真起 chromium + 真加载 dist 当扩展
+    # case 数不写死在这里：改一次 e2e 就要回来同步一次，写到第五年必然漂成谎话
+    # （本文件曾长期写「13 个 Playwright case」，实际已 ~169）。数字看 HANDOFF 顶部「一句话现状」。
     # 加载扩展必须 launchPersistentContext + --headless=new；headless 老模式装不了扩展
     runs-on: ubuntu-latest
     steps:
@@ -74,7 +87,7 @@ jobs:
       - name: Install Playwright chromium (+ Linux 系统依赖)
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Build + E2E (13 case)
+      - name: Build + E2E
         run: pnpm test:e2e
 
       - name: Upload Playwright traces on failure

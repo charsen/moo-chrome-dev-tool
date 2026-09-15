@@ -35,6 +35,60 @@ function clip(s: string): string {
   return s.length > MAX_BODY ? s.slice(0, MAX_BODY) + `…[truncated, total ${s.length}b]` : s
 }
 
+// ---------- 响应体读取闸门 ----------
+// 为什么要闸门：下面 fetch / XHR 是「先把整个 body decode 成 JS 字符串，再 clip 到 20KB」——
+// clip 是在读完之后才截的，挡不住读取本身。宿主页任何一次大响应（下载文件 / 大 JSON / 二进制）
+// 都会被完整解码成字符串 → 内存峰值抬高、主线程卡顿，几十 MB 能把 tab 顶 OOM。
+// 而且本文件是 MAIN world：拿不到 chrome.* 也读不到用户配置，所以「用户在 Settings 关了采集」
+// 也救不了它。v0.8.17 后那次复盘实测这条。
+
+/** 超过这个字节数就不读内容，只回一句摘要（唯一权威实现 + 单测在 src/utils/bodyGate.ts） */
+const MAX_BODY_READ_BYTES = 1024 * 1024
+/** 能当文本读的 mime（text/* 与 +json / +xml 后缀在 isTextualMime 里另判） */
+const TEXTUAL_MIMES = [
+  'application/json',
+  'application/xml',
+  'application/javascript',
+  'application/ecmascript',
+  'application/x-www-form-urlencoded',
+  'application/graphql',
+  'application/x-ndjson',
+  'application/ld+json'
+]
+
+function mimeOf(contentType: string | null | undefined): string {
+  if (!contentType) return ''
+  return (contentType.split(';')[0] ?? '').trim().toLowerCase()
+}
+
+function isTextualMime(mime: string): boolean {
+  if (!mime) return false
+  if (mime.indexOf('text/') === 0) return true
+  if (mime.slice(-5) === '+json' || mime.slice(-4) === '+xml') return true
+  return TEXTUAL_MIMES.indexOf(mime) >= 0
+}
+
+/**
+ * 判断这次响应体要不要真读。
+ * 保守策略：只有「content-type 明确非文本」或「content-length 明确超上限」才跳过；
+ * 两者拿不到（no-cors / 分块 / opaque）一律放行 —— 误判成不读会直接丢采集。
+ */
+function gateBody(contentType: string | null, contentLength: string | null): { skip: boolean; bytes: number; mime: string } {
+  const parsed = contentLength ? Number(contentLength) : NaN
+  const bytes = isFinite(parsed) && parsed > 0 ? parsed : 0
+  const mime = mimeOf(contentType) || '未知类型'
+  if (contentType && !isTextualMime(mime)) return { skip: true, bytes, mime }
+  if (bytes > MAX_BODY_READ_BYTES) return { skip: true, bytes, mime }
+  return { skip: false, bytes, mime }
+}
+
+/** 跳过时替用户看到的"响应体"。会直接显示在提交弹窗 / DevTools，必须自解释。 */
+function skippedBodyNote(g: { bytes: number; mime: string }): string {
+  const sizeStr = g.bytes > 0 ? ` · ${g.bytes >= 1024 * 1024 ? (g.bytes / 1024 / 1024).toFixed(1) + ' MB' : Math.max(1, Math.round(g.bytes / 1024)) + ' KB'}` : ''
+  const capStr = `${MAX_BODY_READ_BYTES / 1024 / 1024} MB`
+  return `[Moo 未读取响应体：${g.mime}${sizeStr}，非文本类型或超过 ${capStr} 读取上限。要看内容请用 DevTools → Network]`
+}
+
 function post(p: Payload) {
   try {
     window.postMessage({ __moo: true, tag: TAG, payload: p }, location.origin)
@@ -140,12 +194,20 @@ const mooFetch = async function (this: typeof globalThis, input: RequestInfo | U
     const duration = performance.now() - startTime
     let respBody: string | null = null
     let size = 0
-    try {
-      const cloned = resp.clone()
-      const text = await cloned.text()
-      size = text.length
-      respBody = clip(text)
-    } catch {}
+    const gate = gateBody(resp.headers.get('content-type'), resp.headers.get('content-length'))
+    if (gate.skip) {
+      // 不读内容：二进制 / 超大响应走 text() 解码纯属浪费（见 gateBody 上方注释）。
+      // responseSizeBytes 用 content-length（比之前的 text.length 更贴近字段名语义）。
+      respBody = skippedBodyNote(gate)
+      size = gate.bytes
+    } else {
+      try {
+        const cloned = resp.clone()
+        const text = await cloned.text()
+        size = text.length
+        respBody = clip(text)
+      } catch {}
+    }
     const respHeaders: Record<string, string> = {}
     resp.headers.forEach((v, k) => (respHeaders[k] = v))
     post({
@@ -234,9 +296,17 @@ const mooSend = function (this: MooXHR, body?: Document | XMLHttpRequestBodyInit
         let size = 0
         try {
           if (this.responseType === '' || this.responseType === 'text') {
-            const text = this.responseText
-            size = text.length
-            respBody = clip(text)
+            // 同 fetch 路径的闸门：读 responseText 会强制浏览器把整份 body 解码成字符串，
+            // 对大响应（尤其二进制）是纯浪费（见 gateBody 上方注释）
+            const gate = gateBody(this.getResponseHeader('content-type'), this.getResponseHeader('content-length'))
+            if (gate.skip) {
+              respBody = skippedBodyNote(gate)
+              size = gate.bytes
+            } else {
+              const text = this.responseText
+              size = text.length
+              respBody = clip(text)
+            }
           } else if (this.response) {
             respBody = '[' + this.responseType + ']'
           }

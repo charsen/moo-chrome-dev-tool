@@ -29,3 +29,7 @@ tests/fixtures/zentao-real/raw/
 
 # Claude Code 本地设置（每台机器/每人不同的权限允许列表，不入仓；.claude/agents 与 commands 才入仓）
 .claude/settings.local.json
+
+# Agent 工作区（本地记忆 + 复盘/评审草稿）。公开仓尤其要挡 —— 一次 git add -A
+# 就可能把本地笔记连同可能的真实项目信息带进公开历史，与脱敏防线的方向相反。
+.workbuddy/

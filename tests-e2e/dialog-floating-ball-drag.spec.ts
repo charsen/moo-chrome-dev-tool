@@ -11,7 +11,7 @@
  * 这一组 case 要精确控制「up 不发」的边角，dispatchEvent 才能精确驱动。
  */
 
-import { test, expect, openExtensionPage } from './fixtures'
+import { test, expect } from './fixtures'
 
 function harnessUrl(extensionId: string): string {
   return `chrome-extension://${extensionId}/src/content/dialog-harness.html?case=floating-ball`
@@ -84,7 +84,8 @@ async function readBallPos(page: import('@playwright/test').Page): Promise<{ x: 
 async function setupBall(
   context: import('@playwright/test').BrowserContext,
   extensionId: string,
-  sw: import('@playwright/test').Worker
+  // 位置参数保持不动（调用方按位传 sw）；本函数体里没用到 SW，前导下划线是 lint 约定
+  _sw: import('@playwright/test').Worker
 ): Promise<import('@playwright/test').Page> {
   // 用 init script 把 moo-ball-pos 预置到视口左上角附近（200, 200），后续 move +100px
   // 不会撞到 viewport 1280×720 的 clamp 边界（max x = 1280-170 = 1110）

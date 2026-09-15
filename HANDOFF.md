@@ -40,7 +40,9 @@
 
 为啥要 harness：BodyViewer / Panel.vue 平时挂 DevTools panel iframe 里，chrome:// 外部驱不动；SubmitDialog / Annotator / FloatingBall 平时挂宿主页注入的 closed shadow 里，⌘⇧B 全局快捷键 + content script 注入链路 Playwright 跨边界也驱不动。做独立 harness 页面 mock chrome.devtools.* / chrome.tabs.sendMessage / chrome.runtime.sendMessage，Playwright 直接开就能 DOM 断言 + dispatch 合成 pointer events 锁拖动契约。
 
-> 禅道集成**没有 E2E**——禅道 API 跨域 + cookie session + 真实 WAF 在 Playwright headless chromium 里没法可靠复现（mock 价值不大）。禅道侧回归保护走 `tests/` 里 client.ts / submit.ts 的纯单测（schema fuzz + 真实 fixture，覆盖主要分支）。
+> 禅道集成**没有 E2E**——禅道 API 跨域 + cookie session + 真实 WAF 在 Playwright headless chromium 里没法可靠复现（mock 价值不大）。禅道侧回归保护走 `tests/` 里 client.ts / submit.ts 的纯单测（**Tier 1 schema fuzz** 在人造异常 schema 上覆盖主要分支）。
+>
+> ⚠ **Tier 2（真实禅道响应 fixture 回放，`tests/zentaoV2RealFixture.test.ts`）当前没有激活** —— `tests/fixtures/zentao-real/anon/` 里只有 `.gitkeep`，`fixtureSetsAvailable()` 拿不到 `01-login.json` 就整文件 `describe.skip`（7 条用例）。文件里已有显式 console.warn 提示，跑测试时能看到。也就是说「多实例 v2 schema 不一致」这个已知风险目前只有 fuzz 在兜、没有真实实例方差证据；别再把这块当成已覆盖。要激活：同事跑 `scripts/dump-zentao-fixtures.sh` → `scripts/anonymize-fixtures.mjs` 脱敏 → 入 `anon/`。
 
 ## 你最该知道的几个坑
 
@@ -123,10 +125,10 @@ v0.8.14 已发完。**当前没有强迫性 todo**。本版主体是 🔴 **修�
 
 **Backlog（被动等待 / 非阻塞）**：
 
-- **3 个 npm 依赖漏洞**（rollup / esbuild / vite）：都是 dev-time only 不影响用户运行；需要 vite 5→6 + @crxjs 2.0-beta→2.4 major bump，单独升级波
+- **3 个 npm 依赖漏洞**（rollup / esbuild / vite）：都是 dev-time only 不影响用户运行；`@crxjs/vite-plugin` **已在 2.4.0**（lockfile 与 package.json 声明都对齐了，无需再动），只剩 **vite 5→6** 待做，单独升级波
 - **等禅道补 v2 Module 章节后收口 listModules**（被动等待）：当前唯一保留的 v1 endpoint
 - **knip / ts-prune 死代码扫**（手动定期跑）：v0.4.4 试过两个工具 false positive 严重，标 backlog，未来如果有更好工具再上 CI
-- **popup / History 各写一份 `remoteStatus → 中文` 映射**（低价值延后）：当前两处文案一致 + 状态枚举稳定，不主动收口
+- ~~popup / History 各写一份 `remoteStatus → 中文` 映射~~ ✅ **已收口**（未发版批次那次复盘）：两份文案其实已经漂了（popup「完成」/「已删」vs History「已完成」/「已删除」），已统一到 `src/utils/remoteStatus.ts` 唯一来源，popup 只保留自己的配色 class。Backlog 里「两处文案一致所以不修」的前提当时已过期。**副作用（用户可见）**：popup 状态 chip 文案跟着变成三字的「已完成」/「已删除」——这是收口取 History 口径的结果；若要 popup 保留两字短版，在 `remoteStatus.ts` 加 `labelCompact` 导出即可（仍是单一来源）。改这几个文案要同步 3 个断言面（1 个单测 + 2 个 e2e spec），见 NOTES.md。
 - **可能的禅道实例兼容跟进**（dogfood 反馈再说）：① 其他禅道版本（开源版 12 / 老版本）兼容回归 ② 附件大小阈值校准 ③ multipart 重试 IndexedDB blob 过期清理 ④ 自签证书 SSL 场景
 
 **审视过没看到优化机会的维度**：v0.4.5 大复盘验证过 postMessage 安全 / type 漏洞 / storage quota / UX 三态 / 长文件拆分 5 个维度无优化空间（除非业务变化，下次审视可跳过），明细已归档至 [docs/handoff-archive/v0.4.4-v0.4.9.md](docs/handoff-archive/v0.4.4-v0.4.9.md)。
@@ -148,7 +150,8 @@ v0.8.14 已发完。**当前没有强迫性 todo**。本版主体是 🔴 **修�
 
 ## 工程约束（必须遵守）
 
-- **不绕 hook**：`pnpm type-check && pnpm test` 是 pre-commit 跑的，过不了就修，不要 `--no-verify`。
+- **不绕 hook**：pre-commit 跑 `pnpm check:versions && pnpm type-check && pnpm type-check:tests && pnpm test`，过不了就修，不要 `--no-verify`。（`type-check:tests` 是本次未发版批次加进来的 —— 之前它只在 CI 跑且带 `continue-on-error`，于是测试类型债一路攒到 41 处没人管。）
+- **`pnpm lint` 是 CI 门禁**（本次未发版批次新引入 ESLint，此前仓里没有任何 linter）：只开「写错了」类规则，不含排版规则；边界与取舍见 `eslint.config.js` 文件头。当前基线 **0 error / 5 warning**（5 条全是 `main-world.ts` patch fetch/XHR 的签名边界 `any`，属正当用法）。**新增的 warning 要当回事** —— 基线只有这 5 条，多出来就是新债。
 - **不关 `noUncheckedIndexedAccess`**：写数组/对象索引时显式处理 `undefined`。
 - **改 `src/types/messages.ts` 要看清下游**：dispatch 走强类型，新增 message 要把所有 handler 补齐才能过编译。
 - **改 `injected/main-world.ts` 的 payload shape 必同步改 validator**：见上面坑 #2。

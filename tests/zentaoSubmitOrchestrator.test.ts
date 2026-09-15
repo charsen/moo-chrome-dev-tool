@@ -119,7 +119,7 @@ describe('submitToZentao · ensureCookieSession 失败分类', () => {
 
 describe('submitToZentao · submitBug 三路径', () => {
   it('正常成功路径 → ok=true + remoteId + viewUrl', async () => {
-    mockedEnsure.mockResolvedValue({ ok: true })
+    mockedEnsure.mockResolvedValue({ ok: true, data: { realname: '爱丽丝' } })
     mockedUpload.mockResolvedValue({ ok: false, error: 'skip' }) // 无附件
     mockedSubmit.mockResolvedValue({
       ok: true,
@@ -132,7 +132,7 @@ describe('submitToZentao · submitBug 三路径', () => {
   })
 
   it('submitBug 失败 + 0 个附件 → 无 orphan hint', async () => {
-    mockedEnsure.mockResolvedValue({ ok: true })
+    mockedEnsure.mockResolvedValue({ ok: true, data: { realname: '爱丽丝' } })
     mockedUpload.mockResolvedValue({ ok: false, error: 'no upload' })
     mockedSubmit.mockResolvedValue({ ok: false, error: '禅道 500' })
     // 没截图 / 视频 / requests / errors → 仅 1 个 context 附件，让 upload mock 全失败 → uploaded=0
@@ -144,7 +144,7 @@ describe('submitToZentao · submitBug 三路径', () => {
   })
 
   it('submitBug 失败 + N 个附件 → orphan hint 拼装（含 URL + displayName）', async () => {
-    mockedEnsure.mockResolvedValue({ ok: true })
+    mockedEnsure.mockResolvedValue({ ok: true, data: { realname: '爱丽丝' } })
     // 让 uploadEditorFile 全返成功 — uploadZentaoAttachments 会 push 进 uploaded[]
     mockedUpload.mockResolvedValue({
       ok: true,
@@ -161,7 +161,7 @@ describe('submitToZentao · submitBug 三路径', () => {
   })
 
   it('submitBug throw + N 个附件 → 网络错前缀 + orphan hint（双重信号）', async () => {
-    mockedEnsure.mockResolvedValue({ ok: true })
+    mockedEnsure.mockResolvedValue({ ok: true, data: { realname: '爱丽丝' } })
     mockedUpload.mockResolvedValue({ ok: true, data: { url: '/file-read-7.png' } })
     mockedSubmit.mockRejectedValue(new Error('ECONNRESET'))
     const reqWithImage: SubmitBugReq = { ...baseReq, image: 'data:image/png;base64,XX' }
@@ -172,7 +172,7 @@ describe('submitToZentao · submitBug 三路径', () => {
   })
 
   it('SubmitDialog 选了 zentaoModuleId / Severity / Pri → 优先于 project 默认值', async () => {
-    mockedEnsure.mockResolvedValue({ ok: true })
+    mockedEnsure.mockResolvedValue({ ok: true, data: { realname: '爱丽丝' } })
     mockedUpload.mockResolvedValue({ ok: false, error: 'no upload' })
     mockedSubmit.mockResolvedValue({ ok: true, data: { bugId: 1 } })
     const customReq: SubmitBugReq = {
@@ -208,7 +208,7 @@ describe('uploadZentaoAttachments · v0.8.10 多图', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('no network in test') }))
   })
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => { vi.unstubAllGlobals() })
 
   /** 取所有 uploadEditorFile 调用里 displayName 形如 moo-screenshot*.jpg 的列表（过滤掉 context 附件） */
   function screenshotNames(): string[] {
@@ -294,7 +294,7 @@ describe('uploadZentaoAttachments · v0.8.14 重编码 JPEG', () => {
     })
   }
 
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => { vi.unstubAllGlobals() })
 
   it('上传 blob.type=image/jpeg + 文件名 .jpg（真重编码，非兜底）', async () => {
     stubJpegCanvas()
@@ -306,7 +306,7 @@ describe('uploadZentaoAttachments · v0.8.14 重编码 JPEG', () => {
     const req: SubmitBugReq = { ...baseReq, image: PNG('A'), images: [PNG('A'), PNG('B')] }
     // submitToZentao 注入 dataUrlToBlob 闭包；这里用真 dataUrl 解码器验 blob.type
     const { dataUrlToBlob } = await import('@/utils/dataUrl')
-    mockedEnsure.mockResolvedValue({ ok: true })
+    mockedEnsure.mockResolvedValue({ ok: true, data: { realname: '爱丽丝' } })
     mockedSubmit.mockResolvedValue({ ok: true, data: { bugId: 1 } })
     await submitToZentao(req, project, dataUrlToBlob)
     expect(uploadedBlobs).toEqual([
@@ -318,7 +318,7 @@ describe('uploadZentaoAttachments · v0.8.14 重编码 JPEG', () => {
   it('不污染 req：提交后 req.images 仍是原 PNG dataUrl（history 走原 req）', async () => {
     stubJpegCanvas()
     mockedUpload.mockResolvedValue({ ok: true, data: { url: '/file-read-1.jpg' } })
-    mockedEnsure.mockResolvedValue({ ok: true })
+    mockedEnsure.mockResolvedValue({ ok: true, data: { realname: '爱丽丝' } })
     mockedSubmit.mockResolvedValue({ ok: true, data: { bugId: 1 } })
     const req: SubmitBugReq = { ...baseReq, image: PNG('A'), images: [PNG('A'), PNG('B')] }
     const { dataUrlToBlob } = await import('@/utils/dataUrl')

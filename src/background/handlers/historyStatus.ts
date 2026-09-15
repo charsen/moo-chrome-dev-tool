@@ -6,7 +6,6 @@
  * 加新 adapter（github / jira）只需要 adapter 实现 fetchStatus，本文件不动。
  */
 
-import type { BugHistoryEntry } from '@/types/history'
 import { listHistory, updateHistoryEntry } from '@/storage/history'
 import { loadConfig } from '@/storage/config'
 import { getAdapter } from '@/adapters'

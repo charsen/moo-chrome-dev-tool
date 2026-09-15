@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { BugServer } from '@/types/config'
 
 /**
  * v0.5.2 P0 重构第 3 阶段 — simple.ts 3 个 MSG case 抽出后的单测。
@@ -154,14 +155,16 @@ describe('handleMatchProject', () => {
 })
 
 describe('handlePreviewPayload', () => {
-  const server = {
+  // 标注 BugServer 而不是裸字面量：否则 method 被推成 string、imageFormat 靠 `as const`
+  // 单点续命，整份 fixture 只有一半受类型检查。
+  const server: BugServer = {
     id: 's1',
     name: 'test',
     endpoint: 'http://x',
     method: 'POST',
     headers: {},
     payloadTemplate: '{"title":"{{title}}"}',
-    imageFormat: 'inline' as const,
+    imageFormat: 'base64' as const,
     imageField: 'image'
   }
 

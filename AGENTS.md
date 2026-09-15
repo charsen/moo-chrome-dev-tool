@@ -17,6 +17,7 @@
 - 本扩展用于团队内部在问题页面一键收集截图/标注、近 30 秒录屏、网络请求、JS 错误和元素信息，并提交到 webhook 或禅道。
 - content script/shadow DOM 负责页面内 UI 与现场采集；MAIN world hook 捕获 fetch/XHR；background 负责消息编排、权限、提交和重试；offscreen 只承载录屏；devtools/popup/options 共享 storage 契约。
 - MV3 Service Worker 随时会停启，内存不是持久真相。队列、token cache、升级状态和任务恢复必须经 storage/明确重建。
+- **互斥锁只在单个 JS 上下文内有效**（`src/storage/*.ts` 的 `withWriteMutex`、`retryQueue` 的 `withQueueMutex` 都是模块内 promise 链）。devtools / popup / options / content 与 SW 各持一把互不相干的锁 → 任何**写** `mooHistory` / `mooRetryQueue` / `mooConfig` 的 read-modify-write 都必须经消息路由到 SW 执行，UI 侧只保留只读直调。历史教训：v0.8.9 为 retryQueue 落地了 `RETRY_QUEUE_REMOVE/CLEAR`，但 history 的 `removeHistory`/`clearHistory` 一直还是 devtools 直调 → 删掉的条目会被 SW 的并发写回复活。新增任何 storage 写 API 前先问「这把锁在几个上下文里各有一把」。
 - 网络请求采集只服务 bug 复现，不是监控 SDK。不要扩大到全量遥测、常驻录屏或未经用户选择的数据上传。
 
 ## 隐私、安全与消息边界
@@ -47,6 +48,7 @@
 - 页面内组件运行在 closed Shadow DOM，样式使用 `src/styles/tokens.css` 的真实 token；使用前先确认 token 存在，并同步检查 dark mode。
 - Teleport/dialog/annotator/element picker 不得把样式、监听或节点泄漏到宿主页；重复注入和销毁后重建都要验证。
 - 快捷键真相源分两类：全局命令看 manifest，页面级命令看 ContentApp 实现；文档修改要全仓对账。
+- 文案口径（别再逐次讨论）：`src/i18n/zh-CN.ts` 是**故意只覆盖一类**的地方 —— 只放用户可见的报错 / 关键交互提示（提交失败、权限未开、录屏启动失败这类），目前 19 条。devtools Tab、SubmitDialog/Annotator 的表单标签、options 页面等**按现状继续硬编码中文**，不要为了"一致"把它们搬进字典（收益低于 churn）。新写提示时：**报错类走 `t()`，纯 UI 标签/说明不必**。不接 `chrome.i18n`、不做 plural / 复杂语法，直到真要出英文版再说。
 - `vue-tsc` 不能证明扩展世界注入、service worker、offscreen 和真实权限正确；UI/交互变化需用 harness E2E 和真扩展断面分别验证。
 
 ## 公开仓与发布

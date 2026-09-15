@@ -75,7 +75,7 @@ describe('onHostPermissionAdded', () => {
   })
 
   it('storage.remove throw → 静默不传播（flag 残留 OK，不影响主流程）', async () => {
-    ;(globalThis as { chrome: { storage: { local: { remove: () => Promise<void> } } } })
+    ;(globalThis as unknown as { chrome: { storage: { local: { remove: () => Promise<void> } } } })
       .chrome.storage.local.remove = async () => { throw new Error('boom') }
     const { onHostPermissionAdded } = await import('@/background/index')
     await expect(onHostPermissionAdded({ origins: ['<all_urls>'] })).resolves.not.toThrow()

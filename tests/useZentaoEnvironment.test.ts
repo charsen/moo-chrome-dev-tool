@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ref } from 'vue'
+import { ref, type Ref } from 'vue'
+import { DEFAULT_ZENTAO, type ZentaoProjectConfig } from '@/types/config'
 
 /**
  * v0.5.3 P1 收尾：useZentaoEnvironment composable 单测。
@@ -31,8 +32,14 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-function makeZentaoRef(overrides: Partial<{ baseUrl: string; account: string; password: string; projectId: number; moduleId: number }> = {}) {
-  return ref({
+/**
+ * 造一份**完整**的 ZentaoProjectConfig——必须含 defaultSeverity/Pri/Type/Keywords 且显式
+ * 声明 `| undefined`，才能对上 useZentaoEnvironment 的 `Ref<ZentaoProjectConfig | undefined>`。
+ * 基于生产默认值 DEFAULT_ZENTAO 展开，避免又手写一份字段清单、下次类型加字段时再次漂移。
+ */
+function makeZentaoRef(overrides: Partial<ZentaoProjectConfig> = {}): Ref<ZentaoProjectConfig | undefined> {
+  return ref<ZentaoProjectConfig | undefined>({
+    ...DEFAULT_ZENTAO,
     baseUrl: 'https://z.example.com',
     account: 'alice',
     password: 'pwd',
@@ -181,7 +188,9 @@ describe('watch 副作用', () => {
     // 触发 ref 变化让 watch fire
     void env
     mockedSendMessage.mockResolvedValue({ ok: true })
-    zentao.value = { ...zentao.value, password: 'new-pwd' }
+    // zentao.value 的类型含 undefined（composable 契约就是「项目没配禅道」），
+    // 展开前先用生产默认值收敛，否则 spread 出全 optional 的对象赋不回去。
+    zentao.value = { ...DEFAULT_ZENTAO, ...zentao.value, password: 'new-pwd' }
     await new Promise(r => setTimeout(r, 0))
     // 应该调过 ZENTAO_CLEAR_CACHE
     const clearCallCalls = mockedSendMessage.mock.calls.filter(

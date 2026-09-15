@@ -9,11 +9,14 @@ import { test, expect, seedStorage } from './fixtures'
  * 7 种：
  * 1) 重试中 (!ok && queued)
  * 2) 失败 (!ok && !queued)
- * 3) 完成 (ok && remoteStatus='done')
+ * 3) 已完成 (ok && remoteStatus='done')
  * 4) 处理中 (ok && remoteStatus='in_progress')
- * 5) 已删 (ok && remoteStatus='deleted')
+ * 5) 已删除 (ok && remoteStatus='deleted')
  * 6) 待处理 (ok && remoteStatus='open')
  * 7) 已提交 (ok && remoteStatus=undefined / unknown)
+ *
+ * ⚠ 3/5 的文案以 utils/remoteStatus.ts 为唯一来源（popup 与 devtools History 同一份）。
+ * popup 早期自己那份是「完成」/「已删」，收口时统一成了更完整的「已完成」/「已删除」。
  */
 
 function entry(over: Record<string, unknown>): Record<string, unknown> {
@@ -43,17 +46,17 @@ const ALL_7: Array<{ override: Record<string, unknown>, label: string }> = [
   // 顺序按 timestamp 倒序：第 1 个最新（prominent 卡），后 6 个 compact 行（popup 只显前 3，所以这里只取 7 个的前 3）
   { override: { title: '7 已提交',  timestamp: Date.now() -  1 * 60_000, result: { ok: true } /* 无 remoteStatus */ },           label: '已提交' },
   { override: { title: '6 待处理',  timestamp: Date.now() -  2 * 60_000, result: { ok: true }, remoteStatus: 'open' },           label: '待处理' },
-  { override: { title: '5 已删',    timestamp: Date.now() -  3 * 60_000, result: { ok: true }, remoteStatus: 'deleted' },        label: '已删' },
+  { override: { title: '5 已删除',  timestamp: Date.now() -  3 * 60_000, result: { ok: true }, remoteStatus: 'deleted' },        label: '已删除' },
   { override: { title: '4 处理中',  timestamp: Date.now() -  4 * 60_000, result: { ok: true }, remoteStatus: 'in_progress' },    label: '处理中' },
-  { override: { title: '3 完成',    timestamp: Date.now() -  5 * 60_000, result: { ok: true }, remoteStatus: 'done' },           label: '完成' },
+  { override: { title: '3 已完成',  timestamp: Date.now() -  5 * 60_000, result: { ok: true }, remoteStatus: 'done' },           label: '已完成' },
   { override: { title: '2 失败',    timestamp: Date.now() -  6 * 60_000, result: { ok: false, error: '401' } },                  label: '失败' },
   { override: { title: '1 重试中',  timestamp: Date.now() -  7 * 60_000, result: { ok: false, queued: true } },                  label: '重试中' }
 ]
 
 // 一次只测 3 个（popup 只显 prominent + 2 compact = 3）；分 3 轮覆盖 7 种
 const ROUNDS = [
-  [ALL_7[0], ALL_7[1], ALL_7[2]], // 已提交 / 待处理 / 已删
-  [ALL_7[3], ALL_7[4], ALL_7[5]], // 处理中 / 完成 / 失败
+  [ALL_7[0], ALL_7[1], ALL_7[2]], // 已提交 / 待处理 / 已删除
+  [ALL_7[3], ALL_7[4], ALL_7[5]], // 处理中 / 已完成 / 失败
   [ALL_7[6], ALL_7[0], ALL_7[1]], // 重试中 + 复用已测过的
 ] as const
 
