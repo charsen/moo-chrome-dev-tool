@@ -65,3 +65,5 @@
 - 文档-only 至少运行 `git diff --check` 与相关一致性脚本。代码改动开发中按需先跑目标 Vitest；最终代码状态执行一次 `pnpm check:versions`、`pnpm type-check:tests`、`pnpm test` 和 `pnpm build`。`pnpm build` 已包含主源码 `vue-tsc --noEmit`，运行后不再重复 `pnpm type-check`；只有提前反馈或失败诊断时单独运行它。
 - UI/扩展链改动按 `docs/MCP_TESTING.md` 分断面：Playwright harness 做程序化交互，真实 Chrome/DevTools 验证 SW、权限、动态注入和真扩展行为；发版按 checklist 追加 dogfood/人工项。
 - 不主动 commit、push、bump、tag、release 或商店提交。提交前展示完整 diff 与真实验证结果并取得用户明确确认。
+
+- **本仓是公开仓**（GitHub 匿名可见）：文档、提交信息、注释与产物里**不得出现未开源扩展包名与内部项目名**，统一写 `moo-<name>`、"某个内部 Host" 等中性表述；含内部信息的清单/方案放私有 plan 库。
