@@ -56,6 +56,7 @@
 - 本仓公开，commit、CHANGELOG、HANDOFF、docs、源码/测试、图片、release 描述和 zip 全部必须脱敏。真实 PII deny list 只放 gitignored `.release-pii-deny`，绝不能把黑名单内容写入 tracked 文件。
 - 版本号在 package、manifest、文档/构建元数据之间保持一致，以 `pnpm check:versions` 为门禁。普通修复不自动 bump。
 - `pnpm release` 默认 dry-run；publish、tag、release 页面与商店提交都须用户明确要求。发布文案保持精炼，版本详情放 CHANGELOG。
+- 官网子站部署：`mooeen-com` 仓的 `public/chrome-dev-tool/`，页面相对引用 `downloads/moo-chrome-dev-tool-<version>.zip`；发版产出新 zip 后同步 zip、sha256 与页面里的版本/体积/SHA，刷新与自测步骤见该仓 `AGENTS.md` 的「Moo Dev Tool 子站」。
 - 不绕过 pre-commit。只有用户明确授权且理解共享历史影响时才允许 force push。
 
 ## 同类扫描与验证
