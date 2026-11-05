@@ -2,6 +2,49 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## v0.8.19
+
+2026-11-05。无 BREAKING —— 一批真机复现的交互 / 稳定性 / 隐私修复，并新增可见 Chrome 真机测试套件。
+
+### 🔴 修宿主页键盘守卫吞掉「删除」
+
+闭合 shadow 的键盘事件到宿主页时 `e.target` 被重定向成 host `<div>`，后台系统常见的 Backspace 防回退守卫因此误判「不在输入框」并 `preventDefault`，表现为弹窗里能打字、不能删字。现在在 shadow root 拦截冒泡，并对 capture 阶段抢先取消的情况补一次等价删除（emoji 代理对整字删）。回归：`tests-e2e/keyboard-isolation.spec.ts`。
+
+### 🔴 修「手动重试成功，定时重试又发一次」
+
+失败已进重试队列的单，用户在弹窗点「重试」或历史页「重新提交」成功后，旧队列项原本仍留着，5 分钟后 alarm 会再发一次 → 远端重复工单。现在重提会带 `replacesHistoryId`：先移除旧队列项，成功/失败都原地更新同一条 history（不再新增重复行）。回归：`tests-e2e/submit-real-flow.spec.ts` + 真机 R9。
+
+### 🟠 交互与状态机
+
+- 弹窗打开 400ms 的补焦不再从描述框/下拉抢回标题；`stealPageFocus` 不再 blur 自家输入框。
+- 标题框回车直接提交（描述框仍是换行，IME 组字放行）。
+- 多匹配页配置刷新不再清空已选项目（修复 `submitting` 但无弹窗可渲染的卡死）；从悬浮球换项目时同步 `consoleErrors` 开关。
+- 删光截图后「再截一张 / 标注取消」保留草稿并回到弹窗；chunk 加载失败走完整 reset；arming 支持 Esc；元素选择器支持触摸与点击坐标兜底；缩小态不再劫持宿主页粘贴；多项目 picker 支持 Esc / 再点 logo 关闭。
+- 预览请求体会在标题 / 描述 / 勾选 / 服务器变化后失效，避免拿旧 payload 当依据。
+
+### 🟠 采集、隐私与后台稳定性
+
+- 控制台错误的 message / stack / source 接入项目 redact（此前只有请求脱敏）。
+- 截图前密码遮罩递归同源 iframe 与 open shadow；跨域 iframe 无法读取，已在隐私文档写明。
+- 状态回查只合并 `remoteStatus`，不再整条写回旧快照覆盖并发「重试成功」。
+- 录屏 STOP 单飞、CANCEL 不拆正在编码的文档、auto-stop flag 在 SW 重启后仍广播。
+- 重试 payload 与 live submit 同样压缩（截图转 WebP）；队列满淘汰会在失败提示里告知 `trimmed`；坏队列数据归一；删/清队列失败不再报成成功。
+- 匹配规则严格校验（端口剥离、IDN 转 punycode、拒绝内部通配 / 下划线），避免一条坏规则导致整批注册失败却无提示；sync 加单飞锁。
+
+### 🟠 禅道与发布门禁
+
+- 禅道附件部分失败时成功视图显式提示（不再只显示大 ✓）；steps 中上传 URL 补转义；空附件进入 failed 列表。
+- 发布脚本：版本号必须 semver；`--publish` 缺 `.release-pii-deny` 硬停；PII grep 改 execFile；`--skip-build` 校验 `dist/manifest.json` 版本。
+
+### ✅ 测试
+
+- 新增 `pnpm test:real`（`tests-real/`）：可见 Chrome for Testing + 真扩展 + 真鼠标键盘 + 本地 webhook / 禅道 mock，覆盖悬浮球 / Annotator 全工具 / 提交弹窗全字段 / 多图 / 元素 / 粘贴 / 成功失败重试 / multipart / 禅道登录附件建单 / 密码遮罩像素 / 工作区四 Tab / 手动重试去重，共 10 条。
+- 单测 931、全量 e2e 191、真机 10 全绿；两路 type-check、lint、build、版本一致性通过。
+
+### 发版决策小记
+
+无 BREAKING、零迁移；本轮改动均有单测 / e2e / 真机回归。真机套件无法覆盖原生权限弹窗、真实快捷键录屏、F12 面板挂载、真实输入法与真实禅道实例，仍需人工抽查。
+
 ## v0.8.18
 
 2026-09-15。无 BREAKING —— **修三处数据/稳定性缺陷 + 补齐类型与 lint 门禁 + 依赖漏洞归零**。
