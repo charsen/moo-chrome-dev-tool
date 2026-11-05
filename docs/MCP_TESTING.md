@@ -160,3 +160,22 @@ MOO_E2E_INJECT_V071_BUG=1 pnpm test:e2e -- dynamic-register-real-inject
 - **v0.4.3 复盘**：明确双 MCP 分断面 + 加 Tier 1 schema fuzz + Tier 2 真实 fixture（不依赖 MCP）
 
 完整复盘见 `feedback_zentao_v2_dual_track_rule` memory。
+---
+
+## 真机自动化（`pnpm test:real`）
+
+除 harness e2e 外，仓库还有一层**可见真 Chrome** 的真机套件（`tests-real/`）：
+
+- `pnpm test:real`（= `pnpm build && playwright test -c playwright.real.config.ts`）
+- 用 Playwright 自带的 Chrome for Testing（headed）加载 `dist-real/`（host_permissions 提升为 mandatory），
+  真实打开窗口、真鼠标键盘、真 `captureVisibleTab`、真 SW、真 webhook / 禅道 mock 后端。
+- 覆盖：悬浮球/picker/拖拽、Annotator 全工具+复制/下载、提交弹窗全字段+多图+元素+粘贴、
+  成功/失败/重试队列/history、multipart、禅道登录+附件 cookie+建单+状态、密码遮罩像素级验证、
+  工作区四 Tab（Overview 真数据 / Environment 增删导入导出 / History 重提删清 / Settings）。
+- 系统 Google Chrome 从 137 起在正式渠道移除了 `--load-extension`，所以不能用 `channel: 'chrome'`
+  加载 unpacked 扩展 —— 真机套件用 CfT，查看窗口与真实 Chrome 引擎一致。
+- 截图证据输出到 `test-results/real-machine/`（gitignored）。
+
+仍无法自动化的真机项（必须人肉）：`chrome.permissions.request` / `tabCapture` 的 native 授权弹窗、
+真实 `chrome.commands` 快捷键触发的录屏、F12 内嵌 DevTools 面板挂载、真实输入法组字、以及真实
+禅道/云实例（本套件用本地 mock）。

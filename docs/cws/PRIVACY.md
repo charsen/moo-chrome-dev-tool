@@ -24,8 +24,8 @@ Moo Dev Tool 是一个本地 bug 上报工具，**不向 Moo 自有服务器发�
 
 匹配页面上的请求 / 报错会先写进**页面内存里的环形缓冲**（不落盘、不上传，关页即没）；**只在你主动提交时**才读取并发送，不持续上传 / 不后台收集：
 
-1. **当前网页的网络请求 / 控制台错误**：你点悬浮球或快捷键截图时，Moo 抓取你**事先配置匹配的网页**最近的 fetch/XHR 请求（环形缓冲，默认最近 50 条、可配 5-500 条）+ JS 报错（未捕获异常 / Promise rejection），作为 bug 报告的附带证据。敏感请求头 / 请求体字段（authorization、cookie、token 等）在进入缓冲前就已打码。
-2. **截图 / 录屏**：你按 ⌥⇧R 启动录屏，或点截图按钮时，Moo 调用 Chrome 标准 API 抓当前标签页画面。**任何时候不会自动后台录屏。**
+1. **当前网页的网络请求 / 控制台错误**：你点悬浮球或快捷键截图时，Moo 抓取你**事先配置匹配的网页**最近的 fetch/XHR 请求（环形缓冲，默认最近 50 条、可配 5-500 条）+ JS 报错（未捕获异常 / Promise rejection），作为 bug 报告的附带证据。敏感请求头 / 请求体字段（authorization、cookie、token 等）以及报错消息 / 堆栈里的同类字段，在进入缓冲前就已打码。
+2. **截图 / 录屏**：你按 ⌥⇧R 启动录屏，或点截图按钮时，Moo 调用 Chrome 标准 API 抓当前标签页画面。截图前会自动给页面中 `type=password` 的输入框盖灰条（含同源 iframe 与 open shadow DOM；**跨域 iframe 的 DOM 无法读取**，这部分画面需你自行确认）。**任何时候不会自动后台录屏。**
 3. **页面 localStorage / sessionStorage**：仅当你在项目配置里指定了「白名单 key」时，Moo 在你提交 bug 那一刻读取这些 key 的值。
 4. **UserAgent / 视口尺寸**：跟随 bug 报告一起发出。
 
@@ -87,8 +87,8 @@ Moo Dev Tool is a local bug-reporting utility. **It does not send any data to Mo
 
 Requests / errors on matched pages are first buffered **in page memory only** (never written to disk or uploaded; gone when the page closes); Moo reads and sends them **only when you actively submit**, never as background upload / collection:
 
-1. **Network requests / console errors of the current page**: when you click the floating ball or press the screenshot shortcut, Moo captures the most recent fetch/XHR requests (in-memory ring buffer, default last 50, configurable 5–500) + JS errors (uncaught exceptions / promise rejections) **of pages matching your configured patterns**, as evidence attached to the bug report. Sensitive header / body fields (authorization, cookie, token, …) are redacted before entering the buffer.
-2. **Screenshots / screen recording**: when you press ⌥⇧R or the screenshot button, Moo calls standard Chrome APIs to capture the current tab. **Moo never records in the background unbidden.**
+1. **Network requests / console errors of the current page**: when you click the floating ball or press the screenshot shortcut, Moo captures the most recent fetch/XHR requests (in-memory ring buffer, default last 50, configurable 5–500) + JS errors (uncaught exceptions / promise rejections) **of pages matching your configured patterns**, as evidence attached to the bug report. Sensitive header / body fields (authorization, cookie, token, …) — including the same fields inside error messages / stacks — are redacted before entering the buffer.
+2. **Screenshots / screen recording**: when you press ⌥⇧R or the screenshot button, Moo calls standard Chrome APIs to capture the current tab. Before capture, `type=password` inputs are automatically covered (including same-origin iframes and open shadow DOM; **cross-origin iframe DOM is unreadable**, so please verify those areas yourself). **Moo never records in the background unbidden.**
 3. **Page localStorage / sessionStorage**: only if you whitelist specific keys in project config — Moo reads those keys at the moment you submit a bug.
 4. **UserAgent / viewport**: sent as part of the bug report.
 

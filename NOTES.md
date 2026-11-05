@@ -9,6 +9,12 @@
 - 录屏启动依赖可信用户手势，页面悬浮按钮不能替代扩展命令上下文；录屏失败项因体积不进入自动 retry queue。
 - MAIN world 读响应体前必须先按 content-length / content-type 设闸。`resp.clone().text()` 与 `xhr.responseText` 都是「先把整份 body 解码成 JS 字符串，再 clip 到上限」，大响应（尤其二进制 text 化）会撑爆内存；闸门要在读取之前判，不是读完再截。
 - Service Worker 冷启动时，与重试队列无关的副作用（动态注入 self-heal、badge、录屏孤儿恢复）不能排在 flush 的网络段之后 —— 单条禅道 multipart 超时 80s × 最多 50 条，会把它们挡几十秒。rehydrate 则相反，必须在模块同步求值期就启动（见 `background/index.ts` 注释）。
+- `stealPageFocus` 不能盲 blur `document.activeElement`：closed shadow 内焦点在我们 UI 时它也返回 host，blur(host) 会把用户正在输入的标题/描述一起失焦。必须先 `active.id === HOST_ID` 跳过。同理，延迟补焦点（`stealPageFocusRepeatedly` 的 onSettled）要检查 `shadow.activeElement` 是否已被用户接管（描述框 / 下拉 / 按钮），否则弹窗打开 400ms 内点描述会被拉回标题。
+- 闭合 shadow 的键盘事件冒泡到宿主页时 `e.target` 被重定向成 host `<div>`。后台系统常见的「Backspace 防回退」守卫按 `e.target` 判可编辑性 → 误判成「不在输入框」→ `preventDefault`，表现是弹窗里**能打字、不能删字**（真机复现）。修法：在 **shadow root** 上 stopPropagation（closed shadow 外部的 `composedPath()` 被裁成 host 起头，拿不到内部 input，监听必须挂 shadow 内）；document capture 阶段抢先取消的，事件派发结束后按 `defaultPrevented` 补一次等价删除（注意代理对整字删除）。回归见 `tests-e2e/keyboard-isolation.spec.ts`。
+
+- `chrome.scripting.registerContentScripts` 是**整批校验**：matches 里一条不合法，整个调用抛错 → 所有项目都不注入。Moo pattern → Chrome pattern 必须逐条严格校验（Chrome 不接受端口、内部 `*`、下划线 host；中文域名要转 punycode），不能只做「有没有 scheme + path」的宽正则；否则坏 pattern 被放进去时 `dropped` 是空数组，`mooDroppedMatchPatterns` 反而被清掉，popup 显示一切正常。
+- 录屏 STOP 在多个 tab 同时触发（30s 自动停撞在一起）时，第二个 STOP 会被 offscreen 状态机拒；此时**不能**无条件 `closeOffscreenDocument()`，否则销毁正在编码的文档 → 整段录像丢失且 STOP promise 永久挂起。STOP 要单飞；CANCEL 在 `stopping` 态必须忽略。
+- 控制台错误（message/stack/source）跟网络请求一样可能带 token/PII，必须走同一套 redact 后再进 buffer / history / 上报体（此前只有 request 有脱敏）。
 
 ## 数据与并发
 
@@ -16,6 +22,11 @@
 - retry queue 的入队和 flush 若不共用锁会在并发时吞条；所有读改写操作必须走同一互斥边界。
 - flush 的进度必须**增量落盘**：成功条立即从队列移除、失败条立即写回 attempts/lastStatus。只在循环末尾写回一次的话，SW 中途被杀会让「已重试成功」的条留在队列，冷却一过重发 → 远端重复工单。落盘顺序也要紧 —— **先从队列移除、再回填 history**，反了最坏是多一条重复单。
 - 模块内存锁只在**单个 JS 上下文**内有效。history / retryQueue 的锁都在 SW 侧，所以 devtools / popup 的**写**路径必须经消息路由到 SW 执行（只读路径可直调）。
+- 状态回查（逐条网络请求）手里是几秒前的 history 快照：**只能合 `remoteStatus` 两个字段**。整条 `updateHistoryEntry` 写回会把并发发生的「重试成功」翻回失败 → 红 badge 复活 → 用户手动重提 → 远端重复单。
+- storage 写失败不能折叠成业务语义：`removeQueueItem` 吞异常返 false 会被 UI 说成「这条已经不在队列里」，实际条还在、下轮 alarm 照发；清空队列也必须检查 `res.ok` 再 toast「已丢弃」。
+- 手动「重试 / 历史重提」成功后必须移除旧重试队列项（`replacesHistoryId` → 按 historyId 删队列项并原地更新 history）。否则旧队列项在 5 分钟 alarm 后照样发出 → 远端重复工单，用户还觉得自己只提了一次。
+- 入重试队列的 payload 必须跟 live submit 同款压缩（截图重编码成 WebP）：live 压了、retry 没压时，带截图的 5xx 永远过不了 1MB 入队上限，自动重试形同虚设。队列满 FIFO 淘汰也要把 `trimmed` 数报给 UI，不能静默丢最旧。
+- 截图密码遮罩要递归同源 iframe（坐标叠加 frame rect + 边框）和 open shadow root；跨域 iframe DOM 读不到，只能在隐私文档里明示「这部分画面需自行确认」。
 - 动态配置、历史记录和重试快照有不同生命周期；重试必须使用提交当时的项目/server/adapter 快照，不能被后来的设置改写语义。
 
 ## 禅道与页面注入
