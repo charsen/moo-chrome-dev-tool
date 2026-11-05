@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.8.19 待发**（版本号已 bump、CHANGELOG 已写，提交在 `master` 本地未 push / 未 tag）。无 BREAKING —— 一批真机复现的交互 / 稳定性 / 隐私修复 + 真机测试套件：宿主页 Backspace 守卫不再吞掉标题/描述删除；弹窗补焦不再抢用户已选字段，标题回车可提交；多匹配页刷新不再清空已选项目；删光截图后「再截一张/标注取消」保留草稿；控制台错误与截图密码遮罩（同源 iframe / open shadow）补齐脱敏；手动重试/历史重提会移除旧重试队列项并原地更新 history，杜绝定时重试造成远端重复工单；禅道附件失败在成功视图提示；发布与匹配规则门禁收紧。新增 `pnpm test:real` 可见 Chrome 全功能套件（10 条）。验证：单测 931、e2e 191、真机 10 全绿。真发用 `pnpm release --publish`（需 `export GITEE_TOKEN`，本轮已跳过 e2e，因其已在本次会话全量跑过）。详情见 CHANGELOG v0.8.19 段。
+**v0.8.19 已发**（2026-11-05）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.19/moo-chrome-dev-tool-0.8.19.zip)（sha256 `3d35e257efa1c82c67927d4683a2e8919bb8ffbba527e0661b2904d22e37c669`）。无 BREAKING —— 一批真机复现的交互 / 稳定性 / 隐私修复 + 新增真机测试套件。🔴 **修宿主页 Backspace 守卫吞掉删除**：闭合 shadow 事件 target 被重定向成 host div，页面守卫误判「不在输入框」→ `preventDefault`；改为 shadow root 拦截冒泡 + capture 抢先取消时补等价删除。🔴 **修手动重试后定时重试再发**：弹窗「重试」/历史「重新提交」成功后旧队列项仍留 → 5 分钟 alarm 造远端重复工单；现在带 `replacesHistoryId` 移除旧队列项并原地更新 history（不新增重复行）。🟠 另有：弹窗补焦不再抢描述框、标题回车提交、多匹配刷新不清空已选项目、删光截图后取消保留草稿、arming Esc、元素选择触摸兜底、缩小态不劫持宿主页粘贴；控制台错误接入 redact；密码遮罩覆盖同源 iframe / open shadow；状态回查只合 `remoteStatus`；录屏 STOP 单飞 / CANCEL 不拆编码；重试 payload 同步 WebP 压缩、队列满淘汰可见；匹配规则严格校验；禅道附件失败在成功视图提示。验证：单测 931、全量 e2e 191、真机 10 全绿 + 两路 type-check + build。**真机套件覆盖不到：原生权限弹窗、真实快捷键录屏、F12 面板挂载、真实输入法、真实禅道/云实例，留人工抽查。** 详情见 CHANGELOG v0.8.19 段。
 
 **v0.8.18 已发**（2026-09-15）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.18/moo-chrome-dev-tool-0.8.18.zip)（sha256 `982a6799d19b67c4dff1a0535c59c600ba2028dd6d8f0f69104a02610ae1e546`）。无 BREAKING —— 三处数据/稳定性修复 + 工具链收口。🐛 **修 history 被并发写覆盖**：`withWriteMutex` 只在单个 JS 上下文有效，devtools / popup 直调写 API 绕过了 SW 侧那把锁 → 已删记录被 SW 写回「复活」；改为经 `HISTORY_REMOVE` / `HISTORY_CLEAR` 路由（retryQueue 早已这么修，history 漏了）。🐛 **修重试队列 flush 中途被杀 → 远端重复工单**：改增量落盘（成功 / 放弃条立即落），并把顺序改成「先从队列移除 → 再回填 history」。⚡ **MAIN world 读响应体前先过闸**（`content-length` + `content-type` 双闸），不再无条件把整份 body 解码成字符串再截断。另：SW 冷启动的 `syncContentScripts()` 从重试队列网络段（最长 80s × 50 条）之后前移并行；删掉从未接线的 `CaptureConfig.userInfo`；补 `passwordMask` / `bodyGate` / `retryQueue` / `remoteStatus` 测试；测试类型债 **41 → 0**；引入 ESLint（基线 0 error / 5 warning）；依赖漏洞 **18 → 0**（vite 6.4.3 / vitest 4.1.11 / sharp 0.35.4 / crxjs 2.7.1，刻意停在 vite 6 不升 8 —— vite 8 换 rolldown 引擎会让 `esbuild.drop` 防 token 泄漏控制静默失效）。913 单测 + 全量 e2e 182 passed + 两路 type-check + build 全绿。**⚠ 唯一用户可见变化：popup 状态 chip 文案「完成 / 已删」→「已完成 / 已删除」**（两处中文映射收口到 `src/utils/remoteStatus.ts` 的必然结果）。**dogfood 不足，用户明示放行；三处修复均有单测（含「假设此刻 SW 被杀」显式用例）+ e2e 锁回归。留观：① devtools / popup 删历史记录后不再复活；② 重试冷却后不再出现远端重复工单；③ 大文件 / 二进制响应不再让页面卡顿；④ popup 状态 chip 显示「已完成 / 已删除」。** 详情见 CHANGELOG v0.8.18 段。
 
@@ -35,6 +35,7 @@
 结构：
 
 - `playwright.config.ts` + `tests-e2e/fixtures.ts`（launchPersistentContext + 抓 extensionId + 抓 SW worker + `waitForBadgeText` 轮询助手 + `openExtensionPage` retry helper）
+- `pnpm test:real` + `tests-real/`（可见 Chrome for Testing + 真扩展 + 本地 webhook/禅道 mock；见 docs/MCP_TESTING.md）
 - `tests-e2e/*.spec.ts` 按面分组：popup / badge / body-viewer / panel（4 Tab）/ dialog（SubmitDialog、Annotator、悬浮球拖动）/ 动态注册与注入幂等 / 升级链 / 录屏控制
 - `src/devtools/body-viewer-harness.{html,ts}` + `src/devtools/panel-harness.{html,ts}` + `src/content/dialog-harness.{html,ts}`（三个 harness，按 `?case=` / `?tab=&seed=` / `?case=&fail=&success=` 切场景）
 
@@ -109,15 +110,15 @@
 
 ## 现在最值得做的下一件事
 
-**v0.8.18 已发（2026-09-15）**。本版三块 + 一批门禁收口（明细见顶部「一句话现状」与 CHANGELOG v0.8.18 段）：
+**v0.8.19 已发（2026-11-05）**。本版是多轮「真机复现 → 修复 → 回归」的收口（明细见顶部「一句话现状」与 CHANGELOG v0.8.19 段）：
 
-- 🔴 **修 history 被并发写覆盖**：devtools / popup 直调写 API 绕过了 SW 的内存锁（锁只在单上下文有效）→ 已删记录会被 SW 写回「复活」。改为经 `HISTORY_REMOVE` / `HISTORY_CLEAR` 路由（retryQueue 早已这么修，history 漏了）。
-- 🔴 **修重试队列 flush 中途被杀 → 远端重复工单**：改增量落盘（成功/放弃条立即落），并把顺序改成「先从队列移除 → 再回填 history」。
-- ⚡ **MAIN world 读响应体前先过闸**（`content-length` + `content-type` 双闸），不再无条件把整份 body 解码成字符串再截断。
-- 🔧 SW 冷启动把 `syncContentScripts()` 从重试队列网络段（最长 80s × 50 条）之后前移并行 —— 动态注入自愈不再被挡；`refreshBadge()` / `checkOffscreenAutoStoppedFlag()` 刻意留原位（代码里写明原因）。
-- 🧹 删掉从未接线的 `CaptureConfig.userInfo`；补 `passwordMask` / `bodyGate` / `retryQueue` / `remoteStatus` 测试；测试类型债 **41 → 0**；引入 ESLint（基线 0 error / 5 warning）；依赖漏洞 **18 → 0**（vite 6.4.3 / vitest 4.1.11 / sharp 0.35.4 / crxjs 2.7.1，刻意停在 vite 6）。
+- 🔴 **宿主页键盘守卫不再吞删除**：shadow root 冒泡拦截 + capture 抢先取消的等价删除兜底。
+- 🔴 **手动重试/历史重提不再被定时重试重复发送**：`replacesHistoryId` 移除旧队列项并原地更新 history。
+- 🟠 弹窗焦点/回车提交/多匹配刷新/草稿保留/arming Esc/元素选择触摸/缩小态粘贴等交互修复。
+- 🟠 控制台错误脱敏、密码遮罩同源 iframe/open shadow、状态回查只合状态字段、录屏 STOP/CANCEL 竞态、匹配规则严格校验。
+- ✅ 新增 `pnpm test:real` 可见 Chrome 真机套件（10 条，本地 webhook + 禅道 mock）。
 
-非 BREAKING、零迁移，dogfood 不足（三处修复均有单测 + e2e 锁回归，理由见 CHANGELOG v0.8.18「发版决策小记」）。**唯一用户可见变化**：popup 状态 chip 文案「完成 / 已删」→「已完成 / 已删除」（两处中文映射收口到 `remoteStatus.ts` 的必然结果）。**当前没有强迫性 todo** —— 等真实 dogfood 反馈再决定是 hotfix 还是新 feature；未办项（含 3 路 review 留下的 🟢 项）见下方「Backlog」段。
+非 BREAKING、零迁移，所有修复均有单测 / e2e / 真机回归。**当前没有强迫性 todo** —— 等真实 dogfood 反馈再决定 hotfix 还是新 feature；未办项（含 3 路 review 留下的 🟢 项）见下方「Backlog」段。
 
 > **截图重编码链路速记**（v0.8.14 加，碰截图上传体积/丢图先看）：截图体积有**两个收口点，别混**。① **降采样收口在 SW 截图 handler 截完即缩**（`downscaleToMaxWidth`，≤2560 宽 PNG）—— 给标注/预览/history/上传**全链路同一张**用，保 PNG 无损（文字清晰 + alpha）。② **格式重编码收口在各 adapter 上传前**（不在截图入口！）—— 因为目标已知才能选对格式 + 给禅道正确文件名：webhook/cloud → **WebP q0.9**（cloud `extractBinary` MIME 白名单含 webp，最清晰），禅道 → **JPEG q0.9**（老版禅道不一定支持 webp，jpeg 通吃；JPEG 无 alpha 必须**先铺白底**否则透明区变黑，文件名同步 `.jpg`）。为啥不在入口就转有损：history 回看要无损 PNG，转早了 history 也跟着糊。**根因教训**：降采样只缩尺寸不降格式，复杂内容（满屏文字/细节）2560px PNG 仍 10–13MB，超云端 8MB/张上限被**静默 skip**（不建附件、请求仍 200、history 列表只显封面图所以看不出丢）→ 多图只落 1 张。改截图链路**必须同时想「上传那一刻这张图多大、目标接受什么格式」**，不能只盯尺寸。失败（无 canvas / createImageBitmap throw / toBlob null）一律兜底返原图（宁可发大也别丢截图）。另一类「只存 1 张」根因在服务端迁移正则（漏匹配 cloud 单图模板结构 → 多图字段没补进去），见 moo-scaffold-cloud。
 
