@@ -179,3 +179,40 @@ test('SubmitDialog · D7 · 失败横幅 × 只关横幅，dialog 仍在', async
   const emits = await readEmits(page)
   expect(emits.filter((e) => e.event === 'cancel').length).toBe(0)
 })
+
+test('SubmitDialog · D8 · 标题框回车提交（描述框回车仍是换行）', async ({ context, extensionId, sw }) => {
+  const page = await openExtensionPage(context, sw, harnessUrl(extensionId))
+  await page.waitForSelector('#moo-title', { timeout: 5000 })
+
+  // 先验描述框：回车只换行、不提交（成功视图会替换 body，必须在提交前测）
+  const desc = page.locator('#moo-desc')
+  await desc.click()
+  await page.keyboard.type('a')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('b')
+  await expect(desc).toHaveValue('a\nb')
+  await expect(page.locator('.moo-submit-success')).toHaveCount(0)
+
+  await page.locator('#moo-title').fill('回车提交')
+  await page.locator('#moo-title').press('Enter')
+
+  await expect(page.locator('.moo-submit-success')).toBeVisible({ timeout: 3000 })
+})
+
+test('SubmitDialog · D9 · 打开后立刻点描述输入：400ms 自动聚焦不回抢', async ({ context, extensionId, sw }) => {
+  const page = await openExtensionPage(context, sw, harnessUrl(extensionId))
+  const desc = page.locator('#moo-desc')
+  await desc.waitFor({ timeout: 5000 })
+
+  // 在 stealPageFocusRepeatedly 的 50/100/200/400ms 窗口内接管焦点
+  await desc.click()
+  await page.keyboard.type('描述')
+  await page.waitForTimeout(600)  // 越过后一次 steal 定时器
+
+  // ① 文本进了描述框 ② 定时器跑完后焦点仍在描述框，没被拉回标题
+  await expect(desc).toHaveValue('描述')
+  await expect.poll(() => page.evaluate(() => {
+    const shadow = (window as unknown as { __mooHarnessShadow?: ShadowRoot }).__mooHarnessShadow
+    return shadow?.activeElement?.id ?? null
+  }), { timeout: 2000 }).toBe('moo-desc')
+})

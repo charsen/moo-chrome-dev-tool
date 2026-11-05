@@ -1,14 +1,29 @@
 import { computed, ref } from 'vue'
 import type { ConsoleError } from '@/types/errors'
+import { DEFAULT_REDACT, type RedactConfig } from '@/types/config'
+import { redactBody, redactUrl } from '@/utils/redact'
 
 const errors = ref<ConsoleError[]>([])
 let bufferSize = 50
 let started = false
 // v0.4.8：capture.consoleErrors 开关真生效（同 useRequests.ts 同款修）
 let captureEnabled = true
+// 错误消息/堆栈同样可能带密钥：axios 错误会回显请求 URL（含 access_token）、
+// 鉴权失败会带 Bearer/Authorization 原文、框架错误会打印组件 props。跟请求一样
+// 用项目 redact 配置处理，默认 DEFAULT_REDACT 兜住配置加载完成前的空窗期。
+let currentRedact: RedactConfig = DEFAULT_REDACT
+
+function redactError(e: ConsoleError): ConsoleError {
+  const keys = currentRedact.bodyKeys
+  const message = redactBody(e.message, keys) ?? e.message
+  const stack = e.stack ? (redactBody(e.stack, keys) ?? e.stack) : e.stack
+  const source = e.source ? redactUrl(e.source, keys) : e.source
+  if (message === e.message && stack === e.stack && source === e.source) return e
+  return { ...e, message, stack, source }
+}
 
 function push(e: ConsoleError) {
-  errors.value.push(e)
+  errors.value.push(redactError(e))
   while (errors.value.length > bufferSize) errors.value.shift()
 }
 
@@ -52,6 +67,11 @@ export function setErrorsEnabled(enabled: boolean): void {
   if (!enabled) errors.value = []  // 切到 off 时清已 buffer
 }
 
+/** 项目 redact 配置变化时同步：新抓的错误按新规则脱敏（已 buffer 的不回溯，同 useRequests） */
+export function setErrorsRedact(cfg: RedactConfig | undefined): void {
+  currentRedact = cfg ?? DEFAULT_REDACT
+}
+
 export function getCurrentErrors(): ConsoleError[] {
   return errors.value.slice()
 }
@@ -65,6 +85,7 @@ export function useErrors() {
     errors: computed(() => errors.value),
     start,
     setBufferSize(n: number) { bufferSize = n },
+    setRedact: setErrorsRedact,
     clear: clearErrors
   }
 }

@@ -85,6 +85,16 @@
       </div>
     </div>
 
+    <!-- 配置写入失败（storage 满）—— SW 侧一直有写 mooConfigQuotaFailed，但此前没有任何
+         读取方：用户在 popup 改开关看似成功、实际没保存，也没有提示。 -->
+    <div v-if="configQuotaFailed && !quotaDismissed" class="dropped-banner" role="alert">
+      <div class="dropped-title">⚠ 配置没能保存（本地存储写入失败，常见原因是已满）</div>
+      <div class="dropped-msg">
+        刚才的设置修改没有写入。请到 DevTools → Moo → 设置 清空历史 / 重试队列腾出空间后重试。
+      </div>
+      <button type="button" class="upgrade-dismiss" @click="quotaDismissed = true">知道了</button>
+    </div>
+
     <main>
     <div v-if="loading" class="state state--loading">
       <div class="spinner" /> 检测中…
@@ -149,6 +159,7 @@
         {{ quickEnableBusy ? '配置中…' : `+ 在此页面也启用「${quickEnableTarget.name}」` }}
       </button>
       <p class="hint">点上面按钮把 <code>{{ quickEnableHostPattern || '当前域名' }}</code> 加进项目；或去 DevTools → <b>Moo</b> → <b>环境</b> 手动改规则。</p>
+      <p v-if="quickEnableError" class="hint" role="alert" style="color: var(--moo-c-danger-fg)">{{ quickEnableError }}</p>
     </section>
 
     <!-- 3. 完全没配置 = 首次使用引导 -->
@@ -162,6 +173,9 @@
         </template>
         <template v-else>点底部 <b>⚙ 打开工作区</b> 新建项目。</template>
       </p>
+      <button v-if="firstRun" type="button" class="onboard-dismiss" @click="dismissOnboard">
+        知道了，开始使用
+      </button>
     </section>
 
     <!-- 最近提交（有任何 history 都显示，不限 matched / nomatch / empty 三态） -->
@@ -284,19 +298,24 @@ import { relativeTime } from '@/utils/relativeTime'
 import { remoteStatusLabel, remoteStatusTitle } from '@/utils/remoteStatus'
 import { t } from '@/i18n'
 import { UPGRADE_FLAG_KEY } from '@/utils/upgradeFlag'
+import { QUOTA_FAIL_FLAG_KEY } from '@/storage/config'
 import { VERSION_CHECK_FLAG_KEY, UPGRADED_TOAST_KEY, readValidStoredVersionInfo, type LatestVersionInfo, type UpgradedToastInfo } from '@/utils/versionCheck'
 import { useVersionCheck } from '@/composables/useVersionCheck'
 
 const version = ref(chrome.runtime.getManifest().version)
 // 显示尺寸 28px，用 32 比 48 更省字节 + 缩放损失更小（lighthouse image-size-responsive）
 const logoUrl = chrome.runtime.getURL('icons/icon-32.png')
-// ⚠ 这个 key **目前只有读、没有写**：曾经有个 dismissOnboard() 负责写它，但那次改动之后
-// 弹窗里的「知道了」入口没了、函数也一直没被调用（本仓启用 ESLint 时被 no-unused-vars 抓到）。
-// 现状 = 走到 637 行时 `!r[ONBOARD_KEY]` 恒为 true，所以空态文案恒为「欢迎使用」分支。
-// 要么补回一个真正的 dismiss 入口（重新写这个 key），要么把 key + firstRun 一起删掉 ——
-// 属产品决定，这里先只删掉那个死函数、把这个不对称写明，避免下次有人以为它在生效。
+// 首次引导：没有任何项目且从未 dismiss 时显示「欢迎使用」；用户点「知道了，开始使用」
+// 后写这个 key，后续空态回到普通的「还没有项目」。读写两端都在本文件。
 const ONBOARD_KEY = 'mooOnboardedAt'
 const firstRun = ref(false)
+
+async function dismissOnboard(): Promise<void> {
+  firstRun.value = false
+  try {
+    await chrome.storage.local.set({ [ONBOARD_KEY]: Date.now() })
+  } catch { /* storage 失败就下次再显示，不阻塞 */ }
+}
 
 const matched = ref<Project[]>([])
 const projects = ref<Project[]>([])
@@ -339,6 +358,9 @@ const droppedPatternsInfo = ref<DroppedPatternsInfo | null>(null)
 // 写的 expectedVersion 匹配后写 UPGRADED_TOAST_KEY。3 秒自动消 + 可手动 dismiss
 const upgradedToast = ref<UpgradedToastInfo | null>(null)
 let upgradedToastTimer: number | undefined
+// 配置写入失败 flag（storage 满）：SW 的 saveConfig 失败时写、成功时清。popup 只负责展示。
+const configQuotaFailed = ref(false)
+const quotaDismissed = ref(false)
 
 async function dismissDropped() {
   droppedPatternsInfo.value = null
@@ -402,6 +424,7 @@ let storageWatcher: ((c: Record<string, chrome.storage.StorageChange>, a: chrome
 const recent = ref<BugHistoryEntry[]>([])
 // v0.4.7：未匹配态快捷启用 —— 一键把当前 host wildcard 加进首个 enabled 项目的 matchPatterns
 const quickEnableBusy = ref(false)
+const quickEnableError = ref('')
 const quickEnableTarget = computed(() => projects.value.find(p => p.enabled) ?? null)
 // v0.4.8：chrome:// / file:// / about: 这些 protocol 没有有效 host，生成 `chrome:///*`
 // 这种非法 wildcard saveConfig 也不会验证 → 用户点按钮看似成功但 pattern 永远不匹配
@@ -419,6 +442,7 @@ async function quickEnableHere(): Promise<void> {
   const pattern = quickEnableHostPattern.value
   if (!target || !pattern) return
   quickEnableBusy.value = true
+  quickEnableError.value = ''
   try {
     const cfg = await loadConfig()
     const project = cfg.projects.find(p => p.id === target.id)
@@ -429,6 +453,11 @@ async function quickEnableHere(): Promise<void> {
     // 重新跑匹配（不刷 popup，让 chrome.storage.onChanged 自动触发？这里直接 close popup
     // 让用户切回 tab 时悬浮球自动出现更直观）
     window.close()
+  } catch (e) {
+    // saveConfig 在 quota 满时会 throw。旧代码直接让 rejection 逃出 click handler：
+    // 用户点了主 CTA 什么反馈都没有、popup 也不关（且 flag 已写入但没人展示）。
+    quickEnableError.value = `没能保存配置：${(e as Error).message}`
+    configQuotaFailed.value = true
   } finally {
     quickEnableBusy.value = false
   }
@@ -562,7 +591,7 @@ onMounted(async () => {
   // v0.4.8：5 步串行 IO → 并行（之前 popup 打开 < 200ms 期望易破）
   // tabs.query / loadConfig / permissions.contains / listHistory 互不依赖，能并发
   try {
-    const [tabResult, cfg, hasRecPerm, hasHostPerm, upgradeFlagObj, updateFlagObj, droppedFlagObj, upgradedToastObj, historyList] = await Promise.all([
+    const [tabResult, cfg, hasRecPerm, hasHostPerm, upgradeFlagObj, updateFlagObj, droppedFlagObj, upgradedToastObj, quotaFlagObj, historyList] = await Promise.all([
       chrome.tabs.query({ active: true, currentWindow: true }),
       loadConfig(),
       chrome.permissions.contains({ permissions: ['tabCapture'] }),
@@ -571,6 +600,7 @@ onMounted(async () => {
       chrome.storage.local.get(VERSION_CHECK_FLAG_KEY).catch(() => ({})),
       chrome.storage.local.get(DROPPED_FLAG_KEY).catch(() => ({})),
       chrome.storage.local.get(UPGRADED_TOAST_KEY).catch(() => ({})),
+      chrome.storage.local.get(QUOTA_FAIL_FLAG_KEY).catch(() => ({})),
       listHistory().catch(() => [])  // 历史读失败静默不挡核心
     ])
     const tab = tabResult[0]
@@ -616,6 +646,8 @@ onMounted(async () => {
         droppedPatternsInfo.value = d
       }
     }
+    // 配置写入失败 flag（storage 满）→ 顶部 banner；成功保存后 saveConfig 会清掉它
+    configQuotaFailed.value = !!(quotaFlagObj as Record<string, unknown>)[QUOTA_FAIL_FLAG_KEY]
     // v0.7.6：升级成功 toast — 5min 内 fresh 的才显示（超过当过期，防 chrome 关再开还弹）
     const rawUpgraded = (upgradedToastObj as Record<string, unknown>)[UPGRADED_TOAST_KEY]
     if (rawUpgraded && typeof rawUpgraded === 'object') {
@@ -664,6 +696,11 @@ onMounted(async () => {
           droppedPatternsInfo.value = d
         }
       }
+    }
+    // 配置写入失败 flag：写入失败时出现，下一次保存成功自动消失
+    if (QUOTA_FAIL_FLAG_KEY in changes) {
+      configQuotaFailed.value = changes[QUOTA_FAIL_FLAG_KEY]!.newValue !== undefined
+      if (!configQuotaFailed.value) quotaDismissed.value = false
     }
     // v0.7.6：SW onInstalled checkUpgradeFinished 写 toast flag → popup 弹「已升级」
     if (UPGRADED_TOAST_KEY in changes) {
@@ -899,6 +936,19 @@ onBeforeUnmount(() => {
   transition: background-color var(--moo-motion-fast);
 }
 .onboard-cta:hover { background: var(--moo-c-brand-hover); }
+
+.onboard-dismiss {
+  margin-top: 8px;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  color: var(--moo-c-text-muted);
+  font-family: inherit;
+  font-size: var(--moo-fs-xs);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.onboard-dismiss:hover { color: var(--moo-c-text); }
 
 .hint {
   margin: 10px 0 0;

@@ -49,15 +49,53 @@ export function toChromeMatchPatterns(mooPatterns: string[]): { valid: string[];
     const p = (raw || '').trim()
     if (!p) continue
     if (p.length > 256) { dropped.push(p); continue }
-    if (!/^https?:\/\/[^/]+\/.*$/.test(p)) {
-      dropped.push(p)
-      continue
-    }
-    if (seen.has(p)) continue
-    seen.add(p)
-    valid.push(p)
+    const translated = toChromeMatchPattern(p)
+    if (!translated) { dropped.push(p); continue }
+    if (seen.has(translated)) continue
+    seen.add(translated)
+    valid.push(translated)
   }
   return { valid, dropped }
+}
+
+/**
+ * 把一条 Moo pattern 翻成 Chrome 真能接受的 match pattern；不合法返 null。
+ *
+ * ⚠ Chrome 的 `registerContentScripts` 是**整批校验**：matches 里只要有一条不合法，
+ * 整个调用抛错 → 所有项目都注入不了（而旧的宽正则恰好放过了一堆 Chrome 不接受的形态：
+ * 内部 `*`、端口、中文域名、下划线 host）。这里按 Chrome 语法逐条严格校验：
+ *   - scheme 只接 http/https（与 translator 原策略一致）
+ *   - host 允许 `*`、`*.域名`、纯域名；不支持内部 `*`；**端口必须去掉**
+ *     （Chrome match pattern 不含端口，去掉后语义就是「该 host 任意端口命中」）
+ *   - 非 ASCII 域名转 punycode（中文域名是真实用户输入）
+ *   - 路径必须存在（`https://example.com` 这种无 path 的 chrome 会拒）
+ */
+function toChromeMatchPattern(pattern: string): string | null {
+  const m = /^(https?):\/\/([^/]+)(\/.*)$/i.exec(pattern)
+  if (!m) return null
+  const scheme = (m[1] as string).toLowerCase()
+  const rawHost = m[2] as string
+  const path = m[3] as string
+
+  let wildcard = false
+  let host = rawHost
+  if (host === '*') return `${scheme}://*${path}`
+  if (host.startsWith('*.')) { wildcard = true; host = host.slice(2) }
+  // 端口不合法（Chrome 未授权 host 内带端口）→ 去掉；host 部分不会含路径
+  host = host.replace(/:\d+$/, '')
+  if (!host) return null
+
+  let ascii: string
+  try {
+    ascii = new URL(`http://${host}`).hostname
+  } catch {
+    return null
+  }
+  // URL 会把中文域名转 punycode；之后只接受字母数字点和连字符，且不能有内部通配/下划线/空 label
+  if (!/^[a-z0-9.-]+$/i.test(ascii)) return null
+  if (ascii.startsWith('.') || ascii.endsWith('.') || ascii.includes('..')) return null
+  if (ascii.split('.').some((label) => !label || label.startsWith('-') || label.endsWith('-'))) return null
+  return `${scheme}://${wildcard ? '*.' : ''}${ascii}${path}`
 }
 
 /**
@@ -85,7 +123,28 @@ function getBuiltScriptPaths(): { mainWorld: string[]; iso: string[] } | null {
  *
  * 调用幂等：多次调返同样的最终状态。
  */
-export async function syncContentScripts(): Promise<void> {
+// install / startup / spin-up / config 变化多路触发时，registerContentScripts 的
+// getRegistered → unregister → register 不是原子的：两份并发跑会互相看到中间态，
+// 最坏两个都失败（一段窗口内没有任何脚本注册）。单飞锁 + 「跑完再补一轮」保证收敛。
+let syncInFlight: Promise<void> | null = null
+let syncQueued = false
+
+export function syncContentScripts(): Promise<void> {
+  if (syncInFlight) {
+    syncQueued = true
+    return syncInFlight
+  }
+  syncInFlight = doSyncContentScripts().finally(() => {
+    syncInFlight = null
+    if (syncQueued) {
+      syncQueued = false
+      void syncContentScripts()
+    }
+  })
+  return syncInFlight
+}
+
+async function doSyncContentScripts(): Promise<void> {
   try {
     const paths = getBuiltScriptPaths()
     if (!paths) {

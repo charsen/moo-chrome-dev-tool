@@ -63,6 +63,8 @@ export interface AdapterSubmitOutcome {
   status?: number
   /** 服务端响应 body（webhook: 原始 text；zentao: viewUrl）— 给 history.result.body 存 */
   body?: string
+  /** 提交成功但存在降级（如禅道附件部分上传失败）—— UI 必须在成功视图里告诉用户 */
+  warnings?: string[]
   /**
    * adapter 明确「这条 ok=false 是否值得入队重试」的信号：
    *   - `true` : 适合入队（瞬时网络错 / 5xx）—— retryQueue 仍可能因配额拒
@@ -142,7 +144,7 @@ export interface IssueAdapter<K extends AdapterKind = AdapterKind> {
    *
    * 返 null = adapter 拒绝入队（payload 太大 / multipart 不可序列化）。
    */
-  serializeForRetry(req: SubmitBugReq, project: Project): AdapterRetryPayload | null
+  serializeForRetry(req: SubmitBugReq, project: Project): Promise<AdapterRetryPayload | null>
 
   /**
    * retryQueue 触发 flush 时调用 —— payload 是 serializeForRetry 返的那个。

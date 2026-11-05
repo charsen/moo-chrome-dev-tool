@@ -235,7 +235,7 @@ describe('webhookAdapter.fetchStatus', () => {
 describe('webhookAdapter.serializeForRetry', () => {
   it('inline body → 拼出 WebhookRetryPayload', async () => {
     const { webhookAdapter } = await importAdapter()
-    const p = webhookAdapter.serializeForRetry(baseReq(), baseProject())
+    const p = await webhookAdapter.serializeForRetry(baseReq(), baseProject())
     expect(p).not.toBeNull()
     if (p) {
       const w = p as { kind: string; endpoint: string }
@@ -248,13 +248,13 @@ describe('webhookAdapter.serializeForRetry', () => {
     const project = baseProject()
     project.servers[0]!.imageFormat = 'multipart'
     const { webhookAdapter } = await importAdapter()
-    const p = webhookAdapter.serializeForRetry(baseReq(), project)
+    const p = await webhookAdapter.serializeForRetry(baseReq(), project)
     expect(p).toBeNull()
   })
 
   it('server 找不到 → 返 null', async () => {
     const { webhookAdapter } = await importAdapter()
-    const p = webhookAdapter.serializeForRetry(baseReq({ serverId: 'wrong' }), baseProject())
+    const p = await webhookAdapter.serializeForRetry(baseReq({ serverId: 'wrong' }), baseProject())
     expect(p).toBeNull()
   })
 
@@ -268,7 +268,7 @@ describe('webhookAdapter.serializeForRetry', () => {
     const SHOT_1 = 'data:image/png;base64,QQ=='
     const SHOT_2 = 'data:image/png;base64,QUE='
     const { webhookAdapter } = await importAdapter()
-    const p = webhookAdapter.serializeForRetry(
+    const p = await webhookAdapter.serializeForRetry(
       baseReq({ image: SHOT_1, images: [SHOT_1, SHOT_2] }), project
     )
     expect(p).not.toBeNull()

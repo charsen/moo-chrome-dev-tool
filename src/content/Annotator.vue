@@ -1,5 +1,5 @@
 <template>
-  <div class="moo-annotator">
+  <div class="moo-annotator" ref="rootEl" tabindex="-1">
     <div class="moo-canvas-wrap" ref="wrapEl" :style="wrapStyle">
       <canvas class="moo-canvas-bg" ref="bgEl" :width="canvasW" :height="canvasH" />
       <canvas
@@ -95,7 +95,12 @@
             :title="canCopyImage ? '复制标注后的图片到剪贴板（可直接粘进 IM / 文档 / 工单）' : '当前页面非安全上下文（需 HTTPS 或 localhost），浏览器不允许复制图片，请改用下载'"
           >{{ copyLabel }}</button>
           <button @click="download" title="下载标注后的图片到本地">下载</button>
-          <button class="primary" @click="finish">下一步</button>
+          <button
+            class="primary"
+            :disabled="canvasW === 0"
+            :title="canvasW === 0 ? '截图还在解码，请稍候' : '带着标注进入提交弹窗'"
+            @click="finish"
+          >下一步</button>
         </div>
       </div>
     </div>
@@ -106,6 +111,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { clone } from '@/utils/clone'
 import { stealPageFocus } from '@/utils/stealPageFocus'
+import { getActiveInShadowOrDoc, getFocusable } from '@/composables/useFocusTrap'
 import MooAlert from './components/MooAlert.vue'
 
 const props = defineProps<{ image: string }>()
@@ -115,6 +121,7 @@ const emit = defineEmits<{
   (e: 'cancel', reason?: 'error'): void
 }>()
 
+const rootEl = ref<HTMLDivElement>()
 const bgEl = ref<HTMLCanvasElement>()
 const drawEl = ref<HTMLCanvasElement>()
 const wrapEl = ref<HTMLDivElement>()
@@ -249,6 +256,9 @@ const modeHint = computed(() => {
 
 onMounted(async () => {
   stealPageFocus()
+  // 全屏 overlay 不接管焦点的话 Tab 会走回宿主页（键盘用户看不见焦点、还误操作页面）。
+  // 焦点先落在 overlay 自身，Tab 在 Annotator 内部循环（见 onKey 的 Tab 分支）。
+  rootEl.value?.focus()
   const img = new Image()
   img.onload = async () => {
     canvasW.value = img.naturalWidth
@@ -257,7 +267,11 @@ onMounted(async () => {
     const maxH = window.innerHeight - 140
     displayScale.value = Math.min(1, maxW / img.naturalWidth, maxH / img.naturalHeight)
     await nextTick()
-    const ctx = bgEl.value!.getContext('2d')!
+    // 解码期间用户可能已经取消/关闭 → 组件卸载、bgEl 为 null，不能再 draw
+    const bg = bgEl.value
+    if (!bg) return
+    const ctx = bg.getContext('2d')
+    if (!ctx) return
     ctx.drawImage(img, 0, 0)
     redraw()
   }
@@ -287,6 +301,7 @@ function detachPointer() {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey, true)
+  if (hoverRaf !== 0) { cancelAnimationFrame(hoverRaf); hoverRaf = 0 }
   detachPointer()
   // 卸载前如果还有 pending nudge action，立刻 commit；timer 也清
   if (nudgeCommitTimer) { clearTimeout(nudgeCommitTimer); nudgeCommitTimer = undefined }
@@ -316,6 +331,23 @@ function onKey(e: KeyboardEvent) {
   // v0.7.8：Annotator overlay 全屏接管 keyboard — 防 page 自己 keydown listener
   // 重复响应（如 ⌘Z 撤销 / 数字键工具切 / ⌘C ⌘V 等）造成 page 副作用
   e.stopImmediatePropagation()
+  // Tab 焦点循环：全屏 overlay 里 Tab 不能走回宿主页
+  if (e.key === 'Tab') {
+    const root = rootEl.value
+    if (!root) return
+    const list = getFocusable(root)
+    if (list.length === 0) { e.preventDefault(); root.focus(); return }
+    const first = list[0]!
+    const last = list[list.length - 1]!
+    const active = getActiveInShadowOrDoc(root)
+    if (e.shiftKey) {
+      if (active === first || !root.contains(active)) { e.preventDefault(); last.focus() }
+    } else if (active === last || !root.contains(active)) {
+      e.preventDefault()
+      first.focus()
+    }
+    return
+  }
   const mod = e.metaKey || e.ctrlKey
   // 数字键 1-6 切换工具（无修饰键，且不在输入框里）
   const mapped = TOOL_KEY_MAP[e.key]
@@ -378,7 +410,7 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
-function toCanvasCoord(e: PointerEvent): { x: number; y: number } {
+function toCanvasCoord(e: { clientX: number; clientY: number }): { x: number; y: number } {
   const rect = drawEl.value!.getBoundingClientRect()
   return {
     x: (e.clientX - rect.left) / displayScale.value,
@@ -527,10 +559,20 @@ function onUp() {
   }
 }
 
+// hover 命中检测要逐条 measureText / 距离计算，高刷鼠标下每帧可触发多次。
+// 合帧到 rAF：一帧最多算一次，标注多时鼠标移动明显更顺（同 ElementPicker 做法）。
+let hoverRaf = 0
+let hoverPoint = { clientX: 0, clientY: 0 }
+
 function onCanvasHover(e: PointerEvent) {
   if (moving || drawing || editing.value) return
-  const idx = hitTest(toCanvasCoord(e))
-  if (idx !== hoverIdx.value) hoverIdx.value = idx
+  hoverPoint = { clientX: e.clientX, clientY: e.clientY }
+  if (hoverRaf !== 0) return
+  hoverRaf = requestAnimationFrame(() => {
+    hoverRaf = 0
+    const idx = hitTest(toCanvasCoord(hoverPoint))
+    if (idx !== hoverIdx.value) hoverIdx.value = idx
+  })
 }
 
 function hitTest(p: { x: number; y: number }): number {
@@ -940,6 +982,9 @@ function composeCanvas(): HTMLCanvasElement {
 }
 
 function finish() {
+  // 图片还没解码完（canvasW/H = 0）时 toDataURL 会产出空图，后续缩略图/payload 全坏。
+  // 按钮已置灰，这里再兜一层防 Enter / 程序化调用。
+  if (canvasW.value === 0 || canvasH.value === 0) return
   if (editing.value) commitText()
   window.removeEventListener('keydown', onKey, true)
   emit('finish', composeCanvas().toDataURL('image/png'))

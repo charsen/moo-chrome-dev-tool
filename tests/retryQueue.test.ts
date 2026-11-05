@@ -42,7 +42,9 @@ const {
   enqueueZentaoRetry,
   flushRetryQueue,
   getQueueItems,
+  pushQueueItem,
   removeQueueItem,
+  removeQueueItemsByHistoryId,
   isPermanentFailure,
   __resetForTest
 } = await import('@/background/retryQueue')
@@ -910,5 +912,100 @@ describe('retryQueue — flush 进度增量落盘（F2）', () => {
     expect(n.processed).toBe(1)    // 另一条正常成功
     expect(fetchMock).toHaveBeenCalledTimes(1)  // 达上限那条不发网
     expect(storage.data.mooRetryQueue).toEqual([])
+  })
+})
+
+describe('queue normalizer 防御（脏 storage）', () => {
+  let storage: MockStorage
+  beforeEach(() => {
+    storage = makeChrome()
+    __resetForTest()
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('attempts / lastAttemptAt 类型损坏 → 归一（防无限重试 / 冷却失效）', async () => {
+    storage.data.mooRetryQueue = [{
+      enqueuedAt: 1,
+      endpoint: 'http://x/a',
+      method: 'POST',
+      headers: {},
+      bodyString: '{}',
+      attempts: {},
+      lastAttemptAt: '1712345678901'
+    }]
+    const items = await getQueueItems()
+    expect(items).toHaveLength(1)
+    expect(items[0]?.attempts).toBe(0)
+    expect(items[0]?.lastAttemptAt).toBeUndefined()
+  })
+
+  it('headers 非对象 → 归一成 {}（防 fetch 直接抛）', async () => {
+    storage.data.mooRetryQueue = [{
+      enqueuedAt: 2,
+      endpoint: 'http://x/a',
+      method: 'POST',
+      headers: 'not-an-object',
+      bodyString: '{}'
+    }]
+    const items = await getQueueItems()
+    expect(items[0]?.kind).toBe('webhook')
+    if (items[0]?.kind === 'webhook') expect(items[0].headers).toEqual({})
+  })
+
+  it('zentao 条目缺 req / projectId → 丢弃而不是带病重试', async () => {
+    storage.data.mooRetryQueue = [
+      { kind: 'zentao', enqueuedAt: 3, projectId: 'p', req: null },
+      { kind: 'zentao', enqueuedAt: 4, projectId: 42, req: {} }
+    ]
+    expect(await getQueueItems()).toEqual([])
+  })
+})
+
+describe('队列容量与淘汰可见性', () => {
+  let storage: MockStorage
+  beforeEach(() => {
+    storage = makeChrome()
+    __resetForTest()
+  })
+
+  it('超过 50 条 → FIFO 丢最旧并返回 trimmed（不再静默丢单）', async () => {
+    for (let i = 0; i < 50; i++) {
+      expect(await enqueueRetry('http://x/a', 'POST', {}, '{}')).toBe(true)
+    }
+    const r = await pushQueueItem({
+      kind: 'webhook', endpoint: 'http://x/a', method: 'POST', headers: {}, bodyString: '{}'
+    })
+    expect(r.queued).toBe(true)
+    expect(r.trimmed).toBe(1)
+    expect(await getQueueItems()).toHaveLength(50)
+    void storage
+  })
+})
+
+describe('removeQueueItemsByHistoryId（手动重提去重）', () => {
+  let storage: MockStorage
+  beforeEach(() => {
+    storage = makeChrome()
+    __resetForTest()
+  })
+
+  it('只删指向同一 history entry 的队列项，其余保留', async () => {
+    storage.data.mooRetryQueue = [
+      { enqueuedAt: 1, historyId: 'h1', endpoint: 'http://x/a', method: 'POST', headers: {}, bodyString: '{}' },
+      { enqueuedAt: 2, historyId: 'h2', endpoint: 'http://x/b', method: 'POST', headers: {}, bodyString: '{}' },
+      { enqueuedAt: 3, historyId: 'h1', endpoint: 'http://x/c', method: 'POST', headers: {}, bodyString: '{}' }
+    ]
+    const removed = await removeQueueItemsByHistoryId('h1')
+    expect(removed).toBe(2)
+    const left = await getQueueItems()
+    expect(left.map((q) => q.enqueuedAt)).toEqual([2])
+  })
+
+  it('没有匹配 → 返 0 且不改 storage', async () => {
+    storage.data.mooRetryQueue = [
+      { enqueuedAt: 1, historyId: 'h1', endpoint: 'http://x/a', method: 'POST', headers: {}, bodyString: '{}' }
+    ]
+    expect(await removeQueueItemsByHistoryId('nope')).toBe(0)
+    expect(await getQueueItems()).toHaveLength(1)
   })
 })

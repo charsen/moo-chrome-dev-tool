@@ -350,6 +350,8 @@ async function resubmit(e: BugHistoryEntry) {
       userAgent: e.userAgent,
       viewport: e.viewport,
       timestamp: new Date().toISOString(),
+      // 后台据此移除该条对应的重试队列项并原地更新记录（防定时重试造成远端重复单）
+      replacesHistoryId: e.id,
       requests: e.requests,
       errors: e.errors,
       // v0.7.6 P1-1：重提保持当时禅道字段选择（dogfood「我选了严重 2 重提变默认」修）

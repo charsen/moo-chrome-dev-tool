@@ -12,6 +12,14 @@
       <button class="moo-btn moo-btn--sm" @click="dismissSuggestion">不加</button>
     </div>
     <div class="save-bar" :class="`is-${saveState}`">
+      <!-- 多上下文整份覆写的已知风险（storage/config.ts saveConfig 注释）：本页有未保存
+           改动时，别处（popup / 另一个工作区窗口）写的新配置会被下一次自动保存整份覆盖。
+           这里至少让用户看见冲突，而不是静默丢别人的修改。 -->
+      <span
+        v-if="externalChangeWhileDirty"
+        class="status-msg"
+        style="color: var(--moo-c-warn-fg); flex: 0 0 auto"
+      >⚠ 别处刚改过配置；当前页有未保存改动，保存会覆盖那些修改</span>
       <span class="status-msg">
         <template v-if="saveState === 'saving'">保存中…</template>
         <template v-else-if="saveState === 'error'">
@@ -206,6 +214,7 @@ const { saveState, scheduleSave, flush: flushSave } = useAutoSave({
     config.value = clone(draft.value)
     await save()
     isDirty.value = false
+    externalChangeWhileDirty.value = false
   },
   onError: (e) => {
     showToast(`改动没保存成功：${e.message}。点击顶部的"重试"按钮再试一次`, 'error')
@@ -217,6 +226,8 @@ const { saveState, scheduleSave, flush: flushSave } = useAutoSave({
 // textarea 编辑时输入延迟肉眼可感。改成 ref + 三处显式 flip：
 //   watch(draft) 触发 → true；doSave 成功 → false；外部 config 应用 → false。
 const isDirty = ref(false)
+/** 本页脏期间外部（popup / 另一窗口）改过配置 → 提示保存会覆盖 */
+const externalChangeWhileDirty = ref(false)
 // 外部 config 应用 draft 时（reload / 多 tab 同步）抑制下一次 watch fire，
 // 避免「应用外部更新」自身被当成用户改动重新触发 scheduleSave + 死循环写回。
 let applyingExternal = false
@@ -227,7 +238,11 @@ watch(
   () => [loaded.value, config.value] as const,
   ([isLoaded]) => {
     if (!isLoaded) return
-    if (initialized.value && isDirty.value) return
+    if (initialized.value && isDirty.value) {
+      // 外部改动被丢：至少让用户知道下一次自动保存会覆盖它
+      externalChangeWhileDirty.value = true
+      return
+    }
     applyingExternal = true
     draft.value = clone(config.value)
     if (!activeId.value && draft.value.projects[0]) {
@@ -235,6 +250,7 @@ watch(
     }
     initialized.value = true
     isDirty.value = false
+    externalChangeWhileDirty.value = false
     // microtask 后放回，确保 draft 触发的 watch 已被本帧消化掉
     void Promise.resolve().then(() => { applyingExternal = false })
   },

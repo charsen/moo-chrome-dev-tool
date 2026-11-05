@@ -85,7 +85,12 @@ export async function uploadZentaoAttachments(
   const failed: FailedUpload[] = []
 
   const upload = async (kind: UploadedFile['kind'], displayName: string, blob: Blob) => {
-    if (blob.size === 0) return
+    // 空 blob（dataUrl 损坏 / 解码失败）以前直接 return：附件被静默丢掉，steps 里
+    // 连「上传失败」都不提，用户以为截图已经附上了。记进 failed[] 明示。
+    if (blob.size === 0) {
+      failed.push({ kind, displayName, error: '图片数据为空或已损坏（dataUrl 解析失败）' })
+      return
+    }
     const r = await uploadEditorFile(baseUrl, blob, displayName)
     if (r.ok) uploaded.push({ kind, displayName, url: r.data.url, bytes: blob.size })
     else failed.push({ kind, displayName, error: r.error })
@@ -181,7 +186,9 @@ export function buildZentaoStepsHtml(
     parts.push('<h3>📸 截图</h3>')
     for (const shot of screenshots) {
       parts.push(
-        `<p><img src="${shot.url}" alt="${escapeHtml(shot.displayName)}" `
+        // url 来自禅道上传响应，必须按属性值转义：MITM / 敌意实例返回
+        // `/x.png" onerror="...` 时能直接跳出 src 属性写进 bug 描述（存储型 XSS）
+        `<p><img src="${escapeHtml(shot.url)}" alt="${escapeHtml(shot.displayName)}" `
         + `style="max-width:100%;border:1px solid #ddd;border-radius:4px;" /></p>`
       )
     }
@@ -193,7 +200,7 @@ export function buildZentaoStepsHtml(
     parts.push('<h3>🎥 录像</h3>')
     parts.push(
       `<p>${labelForKind('recording')} `
-      + `<a href="${recording.url}" target="_blank">下载 ${escapeHtml(recording.displayName)}</a> `
+      + `<a href="${escapeHtml(recording.url)}" target="_blank">下载 ${escapeHtml(recording.displayName)}</a> `
       + `（${formatBytes(recording.bytes, 2)}）</p>`
     )
   }
@@ -207,7 +214,7 @@ export function buildZentaoStepsHtml(
       parts.push(
         `<p style="font-size:12px;color:#666;">下方 curl 代码仅供查看（含零宽空格绕禅道 WAF，复制粘不能直接跑）；`
         + `要复现请求请下载 `
-        + `<a href="${curlAttachment.url}" target="_blank">moo-requests.curl.sh</a> 执行。</p>`
+        + `<a href="${escapeHtml(curlAttachment.url)}" target="_blank">moo-requests.curl.sh</a> 执行。</p>`
       )
     }
     for (const r of req.requests) {
@@ -224,7 +231,7 @@ export function buildZentaoStepsHtml(
     parts.push('<ul>')
     for (const f of downloadLinks) {
       parts.push(
-        `<li><a href="${f.url}" target="_blank">${escapeHtml(f.displayName)}</a> `
+        `<li><a href="${escapeHtml(f.url)}" target="_blank">${escapeHtml(f.displayName)}</a> `
         + `— ${labelForKind(f.kind)}（${formatBytes(f.bytes, 2)}）</li>`
       )
     }
@@ -459,7 +466,12 @@ export async function submitToZentao(
       ok: true,
       status: 200,
       remoteId: r.data.bugId ? String(r.data.bugId) : undefined,
-      viewUrl: r.data.viewUrl
+      viewUrl: r.data.viewUrl,
+      // best-effort 附件上传失败时 bug 主体仍是成功的（失败明细写在 steps 里），
+      // 但成功视图必须提示，否则用户以为截图/录像都附上了。
+      warnings: failed.length > 0
+        ? [`${failed.length} 个附件上传失败（截图/录像可能没附到 bug 上），详情见 bug 描述里的「附件上传失败」段`]
+        : undefined
     }
   } catch (e) {
     const orphanHint = uploaded.length > 0

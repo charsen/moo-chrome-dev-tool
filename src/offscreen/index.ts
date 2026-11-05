@@ -330,7 +330,11 @@ function handleCancel() {
     }
     return
   }
-  // idle / stopping 态 CANCEL 是 no-op，但确保资源都释放
+  // stopping：STOP 已经在编码中，CANCEL 不能再把编码器/文档拆掉，否则
+  // ① STOP 的 resolver 永远不会 resolve（SW 侧 sendMessage 永久 pending）
+  // ② 已经录完的视频被丢弃。让 STOP 正常收尾。
+  if (state === 'stopping') return
+  // idle 态 CANCEL 是 no-op，但确保资源都释放
   cleanup('idle')
 }
 

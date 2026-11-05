@@ -121,14 +121,23 @@ useFocusTrap(dialogEl, {
 })
 
 const bumping = ref(false)
+// animationend 不是可靠收口：prefers-reduced-motion 下全局 animation:none !important
+// 会让 bump 动画根本不跑（永无 animationend）→ bumping 卡 true，之后点遮罩毫无反馈。
+// 定时器兜底清状态（正常动画 0.22s，留 80ms 余量）。
+let bumpTimer: number | undefined
+const BUMP_FALLBACK_MS = 300
 function onMaskClick() {
   if (props.maskClosable) { emit('close'); return }
   // 防误关反馈：轻微 scale 脉冲提示「弹窗还在，请用 ✕ / Esc / 取消 关闭」
   bumping.value = true
+  if (bumpTimer) clearTimeout(bumpTimer)
+  bumpTimer = window.setTimeout(() => { bumping.value = false; bumpTimer = undefined }, BUMP_FALLBACK_MS)
 }
 function onBumpEnd(e: AnimationEvent) {
   // 同元素还有 moo-dialog-in 入场动画的 animationend，必须按名过滤
-  if (e.animationName === 'moo-dialog-bump') bumping.value = false
+  if (e.animationName !== 'moo-dialog-bump') return
+  bumping.value = false
+  if (bumpTimer) { clearTimeout(bumpTimer); bumpTimer = undefined }
 }
 
 // ── header 拖拽（FloatingBall.vue 同款 pointer capture 模式）──────────────────
@@ -244,5 +253,6 @@ watch(
 onBeforeUnmount(() => {
   endDrag()
   window.removeEventListener('keydown', onMinimizedKeydown, true)
+  if (bumpTimer) { clearTimeout(bumpTimer); bumpTimer = undefined }
 })
 </script>

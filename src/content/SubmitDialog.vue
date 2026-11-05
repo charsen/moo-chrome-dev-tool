@@ -30,6 +30,10 @@
           rel="noopener noreferrer"
         >禅道里看 →</a>
         <div class="moo-success-msg">{{ successInfo.message }}</div>
+        <!-- 成功但降级（如禅道附件部分失败）：不能只显示大 ✓ 让用户以为截图都附上了 -->
+        <div v-if="successInfo.warnings?.length" class="server-warn" role="status">
+          <div v-for="w in successInfo.warnings" :key="w">⚠ {{ w }}</div>
+        </div>
       </div>
 
       <div v-else class="moo-dialog-body">
@@ -52,6 +56,7 @@
             ref="titleInput"
             v-model="title"
             placeholder="一句话描述问题"
+            @keydown.enter="onTitleEnter"
           />
         </div>
 
@@ -130,7 +135,10 @@
           <summary class="moo-attach-hd">
             <span class="moo-attach-chev" aria-hidden="true">▸</span>
             <span class="moo-attach-title">附带请求</span>
-            <span class="moo-attach-count">{{ selectedIds.size }} / {{ filtered.length }}</span>
+            <span
+              class="moo-attach-count"
+              :title="hiddenSelectedCount > 0 ? `另有 ${hiddenSelectedCount} 条已选但不在当前时间窗口/过滤条件内，提交时仍会附带` : undefined"
+            >{{ selectedCount }} / {{ filtered.length }}<template v-if="hiddenSelectedCount > 0"> · 含筛选外 {{ hiddenSelectedCount }}</template></span>
           </summary>
           <div class="moo-attach-bd">
             <div class="req-panel">
@@ -451,7 +459,7 @@ const titleInput = ref<HTMLInputElement | null>(null)
 // 让 trap 不抢初始焦点）。Esc 路径见 MooDialog 的 @close → onDialogClose。
 
 /** 提交成功后的内嵌反馈视图。设值即覆盖 body/footer 展示 ✓ 卡片。 */
-const successInfo = ref<{ message: string; remoteId?: string; viewUrl?: string } | null>(null)
+const successInfo = ref<{ message: string; remoteId?: string; viewUrl?: string; warnings?: string[] } | null>(null)
 const SUCCESS_VIEW_MS = 1500
 let successTimer: number | undefined
 
@@ -459,6 +467,9 @@ let successTimer: number | undefined
  *  的稳定锚点。cannotAutoRetry=true 时是「带录像且 body 超 1MB / multipart」这类
  *  background 没法入重试队列的场景，要明示用户「关闭窗口后只能去 历史 tab 重提」。 */
 const failureInfo = ref<{ message: string; cannotAutoRetry: boolean; queued?: boolean } | null>(null)
+/** 上一次失败落库的 history id —— 用户点「重试」时带回去，后台会移除旧重试队列项并
+ *  原地更新记录，避免「手动重试成功 + 定时重试又发一次」的远端重复单。 */
+let lastFailureHistoryId: string | undefined
 
 const windowMs = ref(30000)
 const urlFilter = ref('')
@@ -592,6 +603,12 @@ const filtered = computed(() => {
 
 const reversedErrors = computed(() => props.errors.slice().reverse())
 
+// 选中数只统计「仍在缓冲里」的 id：环形缓冲淘汰后 selectedIds 里会残留已消失的 id，
+// 直接显 size 会出现「14 / 3」这种自相矛盾的计数，而且用户看不见的条也会被提交。
+const selectedCount = computed(() => props.requests.filter((r) => selectedIds.value.has(r.id)).length)
+const selectedVisibleCount = computed(() => filtered.value.filter((r) => selectedIds.value.has(r.id)).length)
+const hiddenSelectedCount = computed(() => Math.max(0, selectedCount.value - selectedVisibleCount.value))
+
 // 默认勾选策略（同事 dogfood 反馈）：
 //   - dialog 打开瞬间：**只勾最新一条**（不偷偷全选 → 不污染 bug 描述、不影响判断）
 //   - dialog 打开期间新进来：自动勾上（很可能跟当前 bug 余波相关）
@@ -606,6 +623,11 @@ let isFirstRequestWatch = true
 watch(
   () => props.requests.slice(),
   (arr) => {
+    // 环形缓冲淘汰（bufferSize 超限 shift）后，选中集合里的 id 可能已经不在 props 里。
+    // 不清掉的话：计数虚高（size 含幽灵条）、提交时 selectedRequests() 又悄悄丢掉它们。
+    const alive = new Set(arr.map((r) => r.id))
+    const kept = [...selectedIds.value].filter((id) => alive.has(id))
+    if (kept.length !== selectedIds.value.size) selectedIds.value = new Set(kept)
     if (isFirstRequestWatch) {
       // 首次：只勾最新一条（props.requests 末尾是最新）。
       // 草稿恢复（截图循环重挂）时跳过 —— 用户上一轮的勾选就是答案，别覆盖
@@ -635,6 +657,10 @@ let isFirstErrorWatch = true
 watch(
   () => props.errors.slice(),
   (arr) => {
+    // 同 requests：淘汰掉的错误 id 不能继续留在选中集合里
+    const alive = new Set(arr.map((e) => e.id))
+    const kept = [...selectedErrIds.value].filter((id) => alive.has(id))
+    if (kept.length !== selectedErrIds.value.size) selectedErrIds.value = new Set(kept)
     if (isFirstErrorWatch) {
       // 同 requests：草稿恢复时不覆盖用户上一轮的勾选
       if (!restoredDraft) {
@@ -777,6 +803,23 @@ function buildContext() {
   }
 }
 
+// 预览一旦生成就只代表「生成那一刻」的内容。用户改了标题/描述/勾选/换服务器后再提交，
+// 看到的却是旧 payload —— 必须在下游输入变化时作废，不能让用户拿过期预览当依据。
+watch(
+  () => [
+    title.value,
+    description.value,
+    serverId.value,
+    props.images.length,
+    [...selectedIds.value].join(','),
+    [...selectedErrIds.value].join(','),
+    pickedElements.value.length,
+    windowMs.value,
+    urlFilter.value
+  ].join('\u0000'),
+  () => { if (preview.value) preview.value = '' }
+)
+
 const previewing = ref(false)
 async function onPreview() {
   if (previewing.value) return
@@ -822,6 +865,7 @@ async function onSubmit() {
       userAgent: ctx.userAgent,
       viewport: ctx.viewport,
       timestamp: ctx.timestamp,
+      replacesHistoryId: lastFailureHistoryId,
       requests: ctx.requests,
       errors: ctx.errors,
       elements: ctx.elements,
@@ -841,11 +885,13 @@ async function onSubmit() {
       payload: req
     })) as SubmitBugRes
     const { ok, message } = formatSubmitResult(res)
+    if (!ok && res.historyId) lastFailureHistoryId = res.historyId
     if (ok) {
+      lastFailureHistoryId = undefined
       // 成功：展示 1.5s 的 ✓ 内嵌反馈再关闭。比 toast 一闪有更明确的"动作完成"感。
       // 禅道路径会带 viewUrl —— 让用户点链接直接跳禅道看（带 viewUrl 时延长展示
       // 时间到 4s，给用户机会点链接；不带的 webhook 路径保持原 1.5s）。
-      successInfo.value = { message, remoteId: res.remoteId, viewUrl: res.viewUrl }
+      successInfo.value = { message, remoteId: res.remoteId, viewUrl: res.viewUrl, warnings: res.warnings }
       const dur = res.viewUrl ? 4000 : SUCCESS_VIEW_MS
       successTimer = window.setTimeout(() => {
         emit('submitted', true, message)
@@ -922,6 +968,9 @@ function onRemoveShot(index: number) {
 // 吃掉粘贴。无图（纯文本）不 preventDefault —— 让文本正常进 title/description textarea。
 async function onPaste(e: ClipboardEvent) {
   if (submitting.value || successInfo.value) return
+  // 缩小态 / 选元素态下弹窗只是 v-show 隐藏，页面是用户在操作的 —— 此时粘贴图片
+  // 必须留给宿主页（富文本 / 工单编辑器），不能被 Moo 半路拦走。
+  if (dialogMinimized.value || picking.value) return
   const file = imageFileFromClipboard(e.clipboardData)
   if (!file) return // 纯文本 / 无图：放行，不破坏文本粘贴
   // 图片粘不进 textarea，拦下默认行为是对的（否则部分浏览器会塞进 contenteditable）
@@ -933,6 +982,13 @@ async function onPaste(e: ClipboardEvent) {
     // 转码失败静默吞：reads 自宿主 clipboard 的 Blob 极少失败，且 ContentApp 那侧
     // 守卫/反馈不依赖此处；硬要提示反而要再引一条 emit，得不偿失。
   }
+}
+
+/** 标题框回车直接提交（描述框的回车仍是换行）。组字中的 Enter 是选字，放行给输入法。 */
+function onTitleEnter(e: KeyboardEvent) {
+  if (e.isComposing) return
+  e.preventDefault()
+  void onSubmit()
 }
 
 // 键盘快捷键：⌘/Ctrl+Enter 提交（Esc 走 MooDialog → onDialogClose 路径）
@@ -961,7 +1017,16 @@ onMounted(() => {
   // 挂载），onBeforeUnmount 同 flag removeEventListener 配对清理，天然 scoped。
   document.addEventListener('paste', onPaste, true)
   stealFocusCleanup = stealPageFocusRepeatedly(() => {
-    titleInput.value?.focus()
+    const el = titleInput.value
+    if (!el) return
+    // 400ms 窗口内用户可能已经点了描述框 / 下拉 / 按钮：此时把焦点强行拉回标题，
+    // 用户下一句就打到标题里去了（真机反馈过）。只在自己还没被用户接管时补焦点：
+    // 焦点陷阱最初把焦点放在 dialog 容器上（initialFocus='container'），视同「未被接管」。
+    const root = el.getRootNode()
+    const active = root instanceof ShadowRoot ? root.activeElement : document.activeElement
+    const container = el.closest('.moo-dialog')
+    if (active && active !== el && active !== container) return
+    el.focus()
   })
 })
 

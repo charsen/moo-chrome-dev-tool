@@ -6,7 +6,7 @@
  * 加新 adapter（github / jira）只需要 adapter 实现 fetchStatus，本文件不动。
  */
 
-import { listHistory, updateHistoryEntry } from '@/storage/history'
+import { listHistory, patchHistoryRemoteStatus } from '@/storage/history'
 import { loadConfig } from '@/storage/config'
 import { getAdapter } from '@/adapters'
 import { hasHostPermission } from '@/utils/hostPermission'
@@ -46,7 +46,9 @@ async function doRefreshHistoryStatus(): Promise<{ ok: true; updated: number }> 
   }
   const list = await listHistory()
   const config = await loadConfig()
-  let updated = 0
+
+  // 先筛出真正要发请求的条：孤儿条目（项目已删 / kind 切换）不该武装冷却，也不占并发
+  const tasks: Array<{ entry: (typeof list)[number]; project: NonNullable<(typeof config.projects)[number]> }> = []
   for (const entry of list) {
     if (!entry.remoteId) continue
     const project = config.projects.find((p) => p.id === entry.projectId)
@@ -56,26 +58,42 @@ async function doRefreshHistoryStatus(): Promise<{ ok: true; updated: number }> 
     const entryIsZentao = entry.serverId === 'zentao'
     const projectIsZentao = project.kind === 'zentao'
     if (entryIsZentao !== projectIsZentao) continue
-    const adapter = getAdapter(project.kind)
-    if (!adapter?.fetchStatus) continue
-    // 第一次**真要发请求**前才武装冷却 —— 按构造与发网条件对齐。早先在 `some(remoteId)`
-    // 时武装比这里的循环条件松：孤儿条目（项目已删 / kind 切换不匹配）会一个请求没发
-    // 却白武装 60s，把「刚向新项目提交后 60s 内进 Tab 的首次自动同步」静默挡掉
-    lastSweepAt = Date.now()
-    try {
-      const newStatus = await adapter.fetchStatus(project, entry.remoteId, {
-        remoteBase: entry.remoteBase,
-        serverId: entry.serverId  // v0.7.6 P1-4：让 webhookAdapter 反查正确 server
-      })
-      if (newStatus && newStatus !== entry.remoteStatus) {
-        entry.remoteStatus = newStatus
-        entry.remoteStatusUpdatedAt = new Date().toISOString()
-        await updateHistoryEntry(entry.id, entry)
-        updated++
-      }
-    } catch {
-      // ignore single failure；继续下一条
-    }
+    if (!getAdapter(project.kind)?.fetchStatus) continue
+    tasks.push({ entry, project })
   }
+  if (tasks.length === 0) return { ok: true, updated: 0 }
+
+  // 第一次**真要发请求**前才武装冷却 —— 按构造与发网条件对齐。早先在 `some(remoteId)`
+  // 时武装比这里的条件松：孤儿条目会一个请求没发却白武装 60s，把「刚向新项目提交后
+  // 60s 内进 Tab 的首次自动同步」静默挡掉
+  lastSweepAt = Date.now()
+
+  // 最多 3 路并发：30 条 × 单条几百 ms 的串行扫描会让打开 History Tab 等十几秒；
+  // 3 是对后端友好又能提速的数量级（仍受 60s 扫描冷却 + inflight 锁约束）。
+  let updated = 0
+  let cursor = 0
+  const workers = Array.from({ length: Math.min(3, tasks.length) }, async () => {
+    for (;;) {
+      const task = tasks[cursor++]
+      if (!task) return
+      const { entry, project } = task
+      const adapter = getAdapter(project.kind)
+      if (!adapter?.fetchStatus) continue
+      try {
+        const newStatus = await adapter.fetchStatus(project, entry.remoteId!, {
+          remoteBase: entry.remoteBase,
+          serverId: entry.serverId  // v0.7.6 P1-4：让 webhookAdapter 反查正确 server
+        })
+        if (newStatus && newStatus !== entry.remoteStatus) {
+          // 只合状态字段，不整条写回快照（详见 patchHistoryRemoteStatus 注释）
+          await patchHistoryRemoteStatus(entry.id, newStatus, new Date().toISOString())
+          updated++
+        }
+      } catch {
+        // ignore single failure；worker 继续下一条
+      }
+    }
+  })
+  await Promise.all(workers)
   return { ok: true, updated }
 }

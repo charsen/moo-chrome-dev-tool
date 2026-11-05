@@ -115,7 +115,7 @@ async function write(list: BugHistoryEntry[]): Promise<WriteResult> {
   return { trimmed: initialLen, allDropped: true }
 }
 
-export async function addHistoryEntry(entry: BugHistoryEntry): Promise<WriteResult> {
+async function shrinkEntryImages(entry: BugHistoryEntry): Promise<BugHistoryEntry> {
   // 入库前把截图压成缩略图。原始全分辨率早就 POST 给后端了，本地只为
   // 用户回顾用，没必要存 800KB 的 PNG base64 —— 否则 30 条历史轻松爆
   // chrome.storage.local 10MB 配额（实测能存的只有 5-8 条）。
@@ -126,6 +126,11 @@ export async function addHistoryEntry(entry: BugHistoryEntry): Promise<WriteResu
   if (entry.images?.length) {
     shrunk = { ...shrunk, images: await Promise.all(entry.images.map((i) => thumbnailize(i))) }
   }
+  return shrunk
+}
+
+export async function addHistoryEntry(entry: BugHistoryEntry): Promise<WriteResult> {
+  const shrunk = await shrinkEntryImages(entry)
   // v0.4.9：包 withWriteMutex（v0.4.8 修了 remove/clear/update 漏了 add）→ 防 tab A 提交时
   // tab B 删 entry，A 的 snapshot 写回让 X 复活。v0.4.7 4 个月 bug 路径之一仍开
   return withWriteMutex(async () => {
@@ -138,6 +143,20 @@ export async function addHistoryEntry(entry: BugHistoryEntry): Promise<WriteResu
     const capTrimmed = beforeCap - list.length
     const result = await write(list)
     return { ...result, trimmed: result.trimmed + capTrimmed }
+  })
+}
+
+/** 手动重试/历史重提成功后原地替换同 id 记录（不新增一条重复历史）；
+ *  记录已不存在则按新条插入。 */
+export async function upsertHistoryEntry(entry: BugHistoryEntry): Promise<void> {
+  const shrunk = await shrinkEntryImages(entry)
+  await withWriteMutex(async () => {
+    const list = await read()
+    const idx = list.findIndex((e) => e.id === entry.id)
+    if (idx >= 0) list[idx] = shrunk
+    else list.unshift(shrunk)
+    if (list.length > MAX_ENTRIES) list.length = MAX_ENTRIES
+    await write(list)
   })
 }
 
@@ -191,6 +210,44 @@ export async function markHistoryEntryRetrySuccess(id: string, remoteId?: string
       result: { ok: true, status: old.result.status, body: old.result.body },
       remoteId: remoteId ?? old.remoteId
     }
+    await write(list)
+  })
+}
+
+/**
+ * 只更新远程状态字段（History「同步远端状态」用）。
+ *
+ * 不能走 updateHistoryEntry(id, 旧快照)：状态回查在循环里逐条发网络请求，调用方手里的
+ * entry 是几秒前的 listHistory() 快照。若期间重试队列把同一条翻成成功
+ * （markHistoryEntryRetrySuccess 写了 result.ok=true + remoteId），整条写回会把结果
+ * 覆盖回「失败」→ 红 badge 复活 → 用户手动重提 → 远端重复单（正是回填机制要防的）。
+ * 这里在锁内重读再只合两个状态字段。
+ */
+export async function patchHistoryRemoteStatus(
+  id: string,
+  remoteStatus: BugHistoryEntry['remoteStatus'],
+  updatedAt: string
+): Promise<void> {
+  await withWriteMutex(async () => {
+    const list = await read()
+    const idx = list.findIndex((e) => e.id === id)
+    if (idx < 0) return
+    const cur = list[idx]
+    if (!cur) return
+    list[idx] = { ...cur, remoteStatus, remoteStatusUpdatedAt: updatedAt }
+    await write(list)
+  })
+}
+
+/** 失败条入队成功后打标，供 History / popup 显示「队列中」（之前只有类型和读取方，没人写）。 */
+export async function markHistoryEntryQueued(id: string): Promise<void> {
+  await withWriteMutex(async () => {
+    const list = await read()
+    const idx = list.findIndex((e) => e.id === id)
+    if (idx < 0) return
+    const cur = list[idx]
+    if (!cur) return
+    list[idx] = { ...cur, result: { ...cur.result, queued: true } }
     await write(list)
   })
 }

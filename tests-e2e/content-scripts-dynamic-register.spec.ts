@@ -99,9 +99,11 @@ test('E1 · dynamic register：合法 matchPattern → SW register 2 个 content
   const ids = registered.map(s => s.id).sort()
   expect(ids).toEqual([SCRIPT_ID_ISO, SCRIPT_ID_MAIN].sort())
 
-  // 两个 script 的 matches 都该包含我们设的 pattern
+  // 两个 script 的 matches 都该包含翻译后的 pattern。
+  // Chrome match pattern 不支持端口（带 :PORT 会被整批拒绝），translator 去掉端口后
+  // 语义仍是「该 host 任意端口命中」—— dynamic-register-real-inject 用真页面验证过。
   for (const s of registered) {
-    expect(s.matches).toContain(pattern)
+    expect(s.matches).toContain('http://localhost/*')
   }
 
   // dropped flag 不应被写入（合法 pattern 全 valid）

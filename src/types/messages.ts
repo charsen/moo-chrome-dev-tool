@@ -46,6 +46,9 @@ export interface SubmitBugReq {
   requests: CapturedRequest[]    // 现场请求快照
   errors: ConsoleError[]         // 现场 console 错误
   elements?: unknown[]           // 用户点选的元素信息（ElementPicker 选中的）
+  /** 手动重试/历史重提时带上原失败 history entry id：
+   *  后台会移除该条对应的重试队列项并原地更新 history，避免定时重试给远端造重复单。 */
+  replacesHistoryId?: string
   video?: {
     dataUrl: string              // data:video/webm;base64,...
     bytes: number
@@ -74,11 +77,18 @@ export interface SubmitBugRes {
   queued?: boolean
   /** 本地历史因 storage quota 不够被自动丢弃的最旧条数（>0 时 UI 应提示用户） */
   trimmedHistory?: number
+  /** 重试队列满导致被 FIFO 丢弃的最旧条数（>0 时 UI 必须提示，否则用户以为都还在队列里） */
+  retryQueueTrimmed?: number
+  /** 提交成功但存在需要用户知道的降级（如禅道附件部分上传失败） */
+  warnings?: string[]
   /** storage 整体异常导致连本次新条都没保存到本地（仅服务端收到了）。
    *  UI 必须区别于"丢了几条旧的"——后者新条还在，前者连新条也不在。 */
   historyAllDropped?: boolean
   /** 仅 zentao kind 路径：成功时返禅道 bug 查看 URL，SubmitDialog 用它显示「禅道里看」 */
   viewUrl?: string
+  /** 本次提交落库的 history entry id —— 失败时 SubmitDialog 用它做「重试/重提」去重：
+   *  下次提交带 replacesHistoryId，后台移除旧队列项并原地更新记录。 */
+  historyId?: string
 }
 
 export interface PreviewPayloadReq {

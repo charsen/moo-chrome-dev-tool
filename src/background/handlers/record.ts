@@ -120,11 +120,12 @@ export async function checkOffscreenAutoStoppedFlag(): Promise<void> {
       await chrome.storage.local.remove('mooOffscreenAutoStopped')
       return
     }
-    if (currentRecording) {
-      console.log('[Moo] SW boot: 从 storage flag 感知到 offscreen auto-stopped，广播给 tabs')
-      currentRecording = null
-      await broadcastAutoStopped('chrome-ui')
-    }
+    // 不再要求 currentRecording 非空：SW 重启后 rehydrate 查 offscreen 时它已经是 idle，
+    // currentRecording 必然为 null —— 旧代码在这个「正需要它」的场景反而不广播，
+    // 各 tab 的 rec-bar 永远退不掉。广播幂等（不在 recording 态的 tab 直接忽略）。
+    console.log('[Moo] 从 storage flag 感知到 offscreen auto-stopped，广播给 tabs')
+    currentRecording = null
+    await broadcastAutoStopped('chrome-ui')
     await chrome.storage.local.remove('mooOffscreenAutoStopped')
   } catch (e) {
     console.warn('[Moo] checkOffscreenAutoStoppedFlag failed:', (e as Error).message)
@@ -325,16 +326,50 @@ async function startTabRecording(tabId?: number): Promise<{ ok: boolean; error?:
   return { ok: true }
 }
 
+// STOP 单飞：所有加入录屏的 tab 都挂着 rec-bar，30s 自动停可能让两三个 tab 在几十毫秒内
+// 同时发 STOP。并发 STOP 的第二个会被 offscreen 状态机拒（stopping），旧代码随后
+// closeOffscreenDocument() 会把正在编码的文档整个销毁 → 整段录像丢失。
+let stopInFlight: Promise<RecordStopRes> | null = null
+
 async function stopTabRecording(): Promise<RecordStopRes> {
+  if (stopInFlight) return stopInFlight
+  stopInFlight = doStopTabRecording().finally(() => { stopInFlight = null })
+  return stopInFlight
+}
+
+async function doStopTabRecording(): Promise<RecordStopRes> {
   // v0.5.0：先清 tripwire alarm 防误触发
   try { await chrome.alarms.clear(OFFSCREEN_TRIPWIRE_ALARM) } catch { /* ignore */ }
-  const res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'STOP' })
-  await closeOffscreenDocument()
+  let res: RecordStopRes | null = null
+  try {
+    res = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'STOP' })
+  } catch (e) {
+    console.warn('[Moo] STOP offscreen 失败:', (e as Error).message)
+  }
+  // 只有确认文档已经不在录制/编码中才关。失败响应可能是「另一条 STOP 正在编码」，
+  // 无条件关会把别人的视频销毁（递归引发 sendMessage 端口关闭）。
+  if (res?.ok) {
+    await closeOffscreenDocument()
+  } else {
+    try {
+      const st = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'QUERY_STATE' }) as { state?: string } | undefined
+      if (!st?.state || st.state === 'idle') await closeOffscreenDocument()
+    } catch {
+      // offscreen 已经没了 / 查询不通 → 清掉残留文档
+      await closeOffscreenDocument()
+    }
+  }
   return res ?? { ok: false, error: t('record.stop.no-response') }
 }
 
 async function cancelTabRecording(): Promise<void> {
   try { await chrome.alarms.clear(OFFSCREEN_TRIPWIRE_ALARM) } catch { /* ignore */ }
   try { await chrome.runtime.sendMessage({ target: 'offscreen', type: 'CANCEL' }) } catch { /* ignore */ }
-  await closeOffscreenDocument()
+  // CANCEL 在 stopping 态会被 offscreen 忽略（编码不能中途拆）→ 这里也不能关文档
+  try {
+    const st = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'QUERY_STATE' }) as { state?: string } | undefined
+    if (!st?.state || st.state === 'idle') await closeOffscreenDocument()
+  } catch {
+    await closeOffscreenDocument()
+  }
 }

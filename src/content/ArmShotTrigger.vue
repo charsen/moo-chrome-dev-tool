@@ -28,7 +28,7 @@
         @click.stop="onCancel"
       >取消</button>
     </div>
-    <div class="moo-arm-hint" aria-hidden="true">切好页面（滚动 / 切 tab）再点截图 · 可拖动</div>
+    <div class="moo-arm-hint" aria-hidden="true">切好页面（滚动 / 切 tab）再点截图 · 可拖动 · Esc 取消</div>
   </div>
 </template>
 
@@ -36,7 +36,7 @@
 // 拖拽实现照搬 FloatingBall.vue 的 pointer-capture 模式：4px 阈值区分点击/拖动，
 // 跨阈值后 setPointerCapture 让 pointermove/up 强制路由到 row（跨 iframe 不丢），
 // 多渠道（pointerup / pointercancel / blur）收口走同一个 idempotent 的 endDrag。
-import { onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 const emit = defineEmits<{
   /** 点「现在截图」：隐藏 Moo UI → captureVisibleTab → 标注 */
@@ -137,7 +137,32 @@ function onCancel() {
   emit('cancel')
 }
 
+/** 视口变小时（DevTools 停靠 / 分屏 / 旋转）把触发器夹回可视区，否则 arming 态
+ *  既没有弹窗也没有悬浮球，按钮跑到屏幕外就彻底没法退出。 */
+function clampIntoViewport(): void {
+  pos.value = {
+    x: Math.max(0, Math.min(window.innerWidth - ROW_W, pos.value.x)),
+    y: Math.max(0, Math.min(window.innerHeight - ROW_H, pos.value.y))
+  }
+}
+
+/** arming 态没有弹窗也没有悬浮球，Esc 必须能退回提交弹窗（等同「取消」）。 */
+function onKeydown(e: KeyboardEvent) {
+  if (e.isComposing) return
+  if (e.key !== 'Escape') return
+  e.preventDefault()
+  e.stopPropagation()
+  onCancel()
+}
+
+onMounted(() => {
+  window.addEventListener('resize', clampIntoViewport)
+  window.addEventListener('keydown', onKeydown, true)
+})
+
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', clampIntoViewport)
+  window.removeEventListener('keydown', onKeydown, true)
   // drag 进行中被卸载（点「现在截图」切到 capturing 那刻正好在拖）也走 endDrag 摘干净
   endDrag(false)
   if (dragResetTimer) { clearTimeout(dragResetTimer); dragResetTimer = undefined }

@@ -14,7 +14,7 @@
     <div
       ref="overlayEl"
       class="picker-overlay"
-      @mousemove="onMove"
+      @pointermove="onMove"
       @click="onClick"
       @contextmenu.prevent="onCancel"
     />
@@ -84,7 +84,7 @@ let rafId = 0
 let pendingClientX = 0
 let pendingClientY = 0
 
-function onMove(e: MouseEvent) {
+function onMove(e: PointerEvent) {
   pendingClientX = e.clientX
   pendingClientY = e.clientY
   if (rafId !== 0) return
@@ -112,6 +112,10 @@ function resolveHover(x: number, y: number) {
 function onClick(e: MouseEvent) {
   e.preventDefault()
   e.stopPropagation()
+  // 触摸 / 手写笔 / 程序化 click 可能没有 pointermove：按点击坐标同步命中一次，
+  // 否则 currentEl 为 null 时整个 picker 静默无反应（触摸用户完全没法选元素）。
+  // 同步命中也能修「一帧内移过去就点」拿到上一个 hover 元素的陈旧问题。
+  if (!currentEl) resolveHover(e.clientX, e.clientY)
   if (!currentEl) return
   emit('pick', describe(currentEl))
 }

@@ -77,7 +77,7 @@ import { guardFocusForHost } from '@/utils/stealPageFocus'
 import { useRequests } from './useRequests'
 import { useErrors, setErrorsEnabled } from './useErrors'
 import { HOST_ID } from './styles'
-import { clearDialogDraft, MAX_SHOTS } from './dialogDraft'
+import { clearDialogDraft, hasDialogDraft, MAX_SHOTS } from './dialogDraft'
 
 // 'arming'（v0.8.12）：点弹窗「＋ 再截一张」后的待截图态。弹窗已卸载（草稿存好），
 // 屏上浮起可拖动的「📷 现在截图」触发器，用户可先操作页面（切 SPA tab / 滚动 / 展开）
@@ -184,14 +184,31 @@ async function refreshProject() {
     },
     { fallback: { matches: [], project: null } satisfies MatchProjectRes }
   )) as MatchProjectRes
+  // await 期间流程可能已经开始（onRecapture / onArmedCapture 会先切 idle 再起截屏，
+  // 而 watch(state) 的 idle 回调会走到这里）。此刻再写 project/matches 会把多匹配页
+  // 用户已选的项目清成 null → SubmitDialog 的 v-if (submitting && project) 卸载后
+  // 没有任何复位入口 = 整页 Moo 卡死。发现状态已变就推迟刷新。
+  if (state.value !== 'idle') {
+    projectRefreshDeferred = true
+    return
+  }
+  const prevSelectedId = project.value?.id
   matches.value = res.matches ?? (res.project ? [res.project] : [])
-  // 唯一匹配 → 直接 active；多匹配 → 留空，等用户在悬浮球里选
+  // 唯一匹配 → 直接 active；多匹配 → 优先保住用户已经选过的项目（悬浮球的
+  // activeProjectId 也是这个语义，两边不能一个记得一个忘掉），没有则留空等选择。
+  if (matches.value.length === 1) {
+    project.value = matches.value[0] ?? null
+  } else {
+    project.value = prevSelectedId
+      ? (matches.value.find((p) => p.id === prevSelectedId) ?? null)
+      : null
+  }
   // 抓取配置始终走 matches[0]（同一 URL 命中的项目，抓取/脱敏通常一致；
   // 即使有差异，submit 时仍用用户选定的 active project，所以问题可控）
-  project.value = matches.value.length === 1 ? (matches.value[0] ?? null) : null
   const cfgSrc = project.value ?? matches.value[0]
   if (cfgSrc) {
     reqApi.setConfig({ capture: cfgSrc.capture, redact: cfgSrc.redact })
+    errApi.setRedact(cfgSrc.redact)
     // v0.4.8：consoleErrors 开关真生效（之前 Settings UI 显示但代码无读点）
     setErrorsEnabled(cfgSrc.capture.consoleErrors !== false)
   } else {
@@ -199,7 +216,6 @@ async function refreshProject() {
     // v0.7.0：main-world 也走 dynamic register 不再 all_urls 全站注入，理论上没匹配的 URL
     // 不会跑到这分支；但保留这层防御兜底 race（用户改 pattern 后 SW reregister 跟 content
     // 双向通信窗口期 + 用户在某 tab 取消选中已匹配 project）
-
     reqApi.setConfig({ capture: { requests: false, consoleErrors: false, storageKeys: [], requestBufferSize: 50 } })
     setErrorsEnabled(false)
   }
@@ -210,6 +226,10 @@ function onSelectProject(id: string) {
   if (p) {
     project.value = p
     reqApi.setConfig({ capture: p.capture, redact: p.redact })
+    errApi.setRedact(p.redact)
+    // 跟 refreshProject 同款：用户从悬浮球换项目后，该项目的 consoleErrors 开关必须生效
+    // （之前只同步了 requests 配置，errors 仍沿用旧项目的开关 → 关了开关的项目照样采集）
+    setErrorsEnabled(p.capture.consoleErrors !== false)
   }
 }
 
@@ -244,6 +264,14 @@ function onRuntimeMessage(raw: unknown, sender?: chrome.runtime.MessageSender) {
     if (typeof msg.ok !== 'boolean') return
     if (!msg.ok) {
       showToast(typeof msg.error === 'string' ? msg.error : '录屏没能开始（可能浏览器拒了授权）。请按 ⌥⇧R 重试', 'error')
+      return
+    }
+    // 快捷键在后台已经真起了 tabCapture。如果本 tab 正在截图/标注/填写弹窗，
+    // 旧代码直接 return（beginRecordingFromCommand 的 idle 守卫）→ 页面被静默录 30 秒
+    // 然后丢弃，用户只觉得"按了没反应"。立刻取消并说明原因。
+    if (state.value !== 'idle') {
+      void safeSendMessage({ type: MSG.RECORD_CANCEL, source: 'content' }, { fallback: undefined })
+      showToast('当前正在截图 / 填写提交弹窗，录屏已取消。请先关掉弹窗再按 ⌥⇧R', 'info')
       return
     }
     // 录屏由快捷键触发，没有 UI 让用户挑项目；多匹配时 default 到首个，
@@ -334,8 +362,10 @@ async function adoptRemoteRecording(): Promise<void> {
   if (state.value !== 'idle') return  // 极小概率：等 SW 期间用户已开始操作
   // 多匹配且未选项目时 default 首个，跟快捷键路径对齐
   if (!project.value && matches.value[0]) onSelectProject(matches.value[0].id)
+  const seq = ++recordingSeq
   state.value = 'recording'
   const result = await recorder.startExternally(res.startedAt)
+  if (seq !== recordingSeq) return // 用户已取消 / 新录屏接管
   if (!result) {
     // STOP/CANCEL 是别的 tab 操作的 → AUTO_STOPPED 广播让我们 externallyStopped
     // → result=null。state 应该已经被 onRuntimeMessage 切到 idle 了；再防一下。
@@ -344,7 +374,7 @@ async function adoptRemoteRecording(): Promise<void> {
   }
   // 同样小概率：本 tab 自己拿到 dataUrl（即本 tab 上点了停止）。走 SubmitDialog。
   recordedVideo.value = result
-  state.value = 'submitting'
+  enterSubmittingOrReset()
 }
 
 onBeforeUnmount(() => {
@@ -413,6 +443,11 @@ watch(state, (s, old) => {
 
 async function startCapture() {
   if (state.value !== 'idle') return
+  // 多匹配页未选项目时不能开始截图：redact 配置取不到，后续 onAnnotated 会进提交态而无弹窗
+  if (!project.value) {
+    showToast('请先在悬浮球里选择要提交的项目', 'info')
+    return
+  }
   state.value = 'capturing'
   // 等一帧让悬浮球隐藏后再截图
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
@@ -466,8 +501,10 @@ function bailCaptureFailure() {
 function onAnnotatorCancel(reason?: 'error') {
   pendingRaw.value = ''
   captureTarget = { mode: 'append' }
-  if (shots.value.length || recordedVideo.value) {
-    state.value = 'submitting'
+  // 有草稿说明用户是从提交弹窗过来的（再截一张 / 重截 / 重标）：取消这一张要回到弹窗，
+  // 不能因为这一轮没图就把已填的表单 reset 掉（之前删光缩略图后再截再取消 = 表单静默丢光）。
+  if (shots.value.length || recordedVideo.value || hasDialogDraft()) {
+    enterSubmittingOrReset()
   } else {
     reset()
   }
@@ -496,7 +533,19 @@ function onAnnotated(dataUrl: string) {
   }
   pendingRaw.value = ''
   captureTarget = { mode: 'append' }
-  state.value = 'submitting'
+  enterSubmittingOrReset()
+}
+
+/** 进入提交态的唯一入口：确认 project 还在。多匹配页如果 project 被清空，直接切
+ *  'submitting' 会让 `v-if="state==='submitting' && project"` 什么都不渲染，悬浮球被
+ *  hidden、快捷键又被 state!=='idle' 拦住 → 整个 tab 的 Moo 卡死到刷新为止。 */
+function enterSubmittingOrReset(): void {
+  if (project.value) {
+    state.value = 'submitting'
+    return
+  }
+  showToast('当前页面没有可用的上报项目（配置可能刚被修改）。请刷新页面后重试', 'error')
+  reset()
 }
 
 // 悬浮球点录屏 —— 受 Chrome MV3 限制无法在 content script 链路保留 user gesture，
@@ -512,17 +561,24 @@ function startRecord() {
   showToast('录屏需要键盘启动：按 ⌥⇧R（Mac）/ Alt+Shift+R（Win）。\nChrome 安全规则限制录屏必须由快捷键触发，悬浮球点击无法启动。\n如需改键：chrome://extensions/shortcuts', 'info')
 }
 
+// 录屏代次：cancel / 新一段录屏开始时自增，用来让「在 await startExternally 的续体」
+// 失效。否则用户点取消后，旧续体还会再弹一次「已取消」toast，甚至把新一段录屏的
+// state 改回 idle（启动/取消挨得近时必现）。
+let recordingSeq = 0
+
 async function beginRecordingFromCommand() {
   if (state.value !== 'idle') return
+  const seq = ++recordingSeq
   state.value = 'recording'
   const result = await recorder.startExternally()
+  if (seq !== recordingSeq) return // 已被取消 / 已被新录屏接管
   if (!result) {
     showToast(recorder.error.value || '录制已取消（或浏览器中断了屏幕共享）', 'info')
     state.value = 'idle'
     return
   }
   recordedVideo.value = result
-  state.value = 'submitting'
+  enterSubmittingOrReset()
 }
 
 function stopRecording() {
@@ -530,6 +586,7 @@ function stopRecording() {
 }
 
 function cancelRecording() {
+  recordingSeq++ // 让在飞的 startExternally 续体失效（不再 toast / 不再改 state）
   void recorder.cancel()
   state.value = 'idle'
 }
@@ -539,13 +596,12 @@ function fmtDuration(s: number): string {
   return `${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
 }
 
-function onSubmitted(ok: boolean, message: string) {
-  // 成功时 SubmitDialog 已经在内嵌反馈面板里展示了 ✓，不再用 toast 抢戏；
-  // 失败时弹窗保留打开，toast 提示原因，方便用户改后重提。
+function onSubmitted(ok: boolean) {
+  // 成功：SubmitDialog 已内嵌展示 ✓，reset 收尾。
+  // 失败：弹窗保留打开，并且已经用持久失败横幅展示同一条消息（role=alert，读屏会播报）。
+  // 此前这里再弹一次 6s toast，同一段多行错误在屏幕上出现两份，反而看不到重点。
   if (ok) {
     reset()
-  } else {
-    showToast(message, 'error')
   }
 }
 
@@ -569,6 +625,8 @@ async function onRecapture(index: number) {
   state.value = 'idle'
   // 等 Vue 卸载 SubmitDialog 一帧，再走 startCapture 的"等悬浮球隐藏 → 截屏"流程
   await new Promise((r) => requestAnimationFrame(r))
+  if (state.value !== 'idle') return // 期间被别的动作接管
+  if (!project.value) { enterSubmittingOrReset(); return }
   void startCapture()
 }
 
@@ -590,14 +648,18 @@ async function onArmedCapture() {
   captureTarget = { mode: 'append' }
   state.value = 'idle'
   await new Promise((r) => requestAnimationFrame(r))
+  if (state.value !== 'idle') return
+  if (!project.value) { enterSubmittingOrReset(); return }
   void startCapture()
 }
 
-// 'arming' 态点「取消」：退回弹窗、不加图、草稿仍在（同 onAnnotatorCancel 的「有 shots
-// 回 submitting」语义）。零内容理论上不会发生（再截一张前必有 ≥1 张 / 录像），兜底退 idle。
+// 'arming' 态点「取消」：退回弹窗、不加图、草稿仍在。
+// ⚠ 不能按「有没有 shots」决定回不回弹窗：用户可能已经把缩略图删光才点再截一张，
+// 这时直接退 idle 会把草稿留在模块单例里，下次**别的**提交流程开局就诈尸恢复。
+// 取消按钮文案承诺「回到提交弹窗」，只要项目还在就回去。
 function onArmCancel() {
   captureTarget = { mode: 'append' }
-  state.value = (shots.value.length || recordedVideo.value) ? 'submitting' : 'idle'
+  enterSubmittingOrReset()
 }
 
 // 删除第 i 张：弹窗开着原地 splice，不切状态。删到 0 张允许 —— 无图提交本就合法
@@ -663,7 +725,9 @@ function makeAsyncWithFallback<T extends Component>(
       console.error(`[moo] async load failed: ${what}`, err)
       fail()
       showToast('扩展刚重载，请刷新当前页面（⌘R / F5）', 'error')
-      state.value = 'idle'
+      // 必须走 reset()：只切 idle 会把草稿和 shots/录像留下来，
+      // 下次一轮全新提交流程会带着上一轮的截图和表单"诈尸"。
+      reset()
     }
   })
 }

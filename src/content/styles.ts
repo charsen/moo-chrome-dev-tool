@@ -1648,6 +1648,9 @@ export const SHADOW_CSS = `
   cursor: crosshair;
   background: transparent;
   pointer-events: auto;
+  /* 触摸设备上让 pointermove 持续派发给覆层（不被浏览器接管成滚动/缩放），
+     否则手指移动时 hover 高亮不跟随；单击仍走 click + 坐标兜底命中。 */
+  touch-action: none;
 }
 .picker-hover {
   position: fixed;

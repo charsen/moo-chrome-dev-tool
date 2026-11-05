@@ -157,3 +157,59 @@ describe('maskPasswordInputs', () => {
     expect(appended[0]!.style.borderRadius).toBe('999px')
   })
 })
+
+describe('maskPasswordInputs — 跨 iframe / shadow DOM（v0.8.19）', () => {
+  it('同源 iframe 内密码框：overlay 位置累计 iframe 偏移 + 边框', () => {
+    const appended: FakeEl[] = []
+    const inner = fakeEl('input', { left: 5, top: 6, width: 100, height: 20 })
+    const innerDoc = {
+      querySelectorAll: (sel: string) => (sel === 'input[type=password]' ? [inner] : [])
+    }
+    const frame = fakeEl('iframe', { left: 200, top: 100, width: 400, height: 300 })
+    Object.assign(frame, { contentDocument: innerDoc, clientLeft: 1, clientTop: 2 })
+
+    vi.stubGlobal('document', {
+      querySelectorAll: (sel: string) => (sel === 'iframe' ? [frame] : []),
+      createElement: (tag: string) => fakeEl(tag),
+      documentElement: { appendChild: (el: FakeEl) => { appended.push(el) } }
+    })
+    vi.stubGlobal('getComputedStyle', () => ({ borderRadius: '4px' }))
+
+    maskPasswordInputs()
+
+    expect(appended).toHaveLength(1)
+    expect(appended[0]!.style.left).toBe('206px') // 5 + 200 + 1
+    expect(appended[0]!.style.top).toBe('108px')  // 6 + 100 + 2
+    expect(appended[0]!.style.width).toBe('100px')
+  })
+
+  it('open shadow root 内密码框也被遮罩；跨域 iframe（contentDocument=null）跳过不抛', () => {
+    const appended: FakeEl[] = []
+    const inner = fakeEl('input', { left: 10, top: 20, width: 120, height: 24 })
+    const shadow = {
+      querySelectorAll: (sel: string) => (sel === 'input[type=password]' ? [inner] : [])
+    }
+    const host = fakeEl('div')
+    Object.assign(host, { shadowRoot: shadow })
+    const crossFrame = fakeEl('iframe', { left: 0, top: 0, width: 10, height: 10 })
+    Object.assign(crossFrame, { contentDocument: null })
+
+    vi.stubGlobal('document', {
+      querySelectorAll: (sel: string) => {
+        if (sel === '*') return [host]
+        if (sel === 'iframe') return [crossFrame]
+        return []
+      },
+      createElement: (tag: string) => fakeEl(tag),
+      documentElement: { appendChild: (el: FakeEl) => { appended.push(el) } }
+    })
+    vi.stubGlobal('getComputedStyle', () => ({ borderRadius: '2px' }))
+
+    const unmask = maskPasswordInputs()
+    expect(appended).toHaveLength(1)
+    expect(appended[0]!.style.left).toBe('10px')
+    expect(appended[0]!.style.top).toBe('20px')
+    expect(() => unmask()).not.toThrow()
+    expect(appended[0]!.removed).toBe(true)
+  })
+})

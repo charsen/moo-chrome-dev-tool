@@ -135,7 +135,7 @@ describe('zentaoAdapter.fetchStatus', () => {
 describe('zentaoAdapter.serializeForRetry', () => {
   it('正常 req → 返 ZentaoRetryPayload', async () => {
     const { zentaoAdapter } = await importAdapter()
-    const p = zentaoAdapter.serializeForRetry(baseReq(), zentaoProject())
+    const p = await zentaoAdapter.serializeForRetry(baseReq(), zentaoProject())
     expect(p).not.toBeNull()
     if (p) {
       const z = p as { kind: string; projectId: string }
@@ -149,7 +149,7 @@ describe('zentaoAdapter.serializeForRetry', () => {
     const req = baseReq()
     req.image = huge
     const { zentaoAdapter } = await importAdapter()
-    const p = zentaoAdapter.serializeForRetry(req, zentaoProject())
+    const p = await zentaoAdapter.serializeForRetry(req, zentaoProject())
     expect(p).toBeNull()
   })
 })
@@ -244,7 +244,7 @@ describe('v0.8.10 多图 estimateZentaoSize', () => {
     req.image = big
     req.images = [big, big, big]   // 合计 1.2MB+
     const { zentaoAdapter } = await importAdapter()
-    expect(zentaoAdapter.serializeForRetry(req, zentaoProject())).toBeNull()
+    expect(await zentaoAdapter.serializeForRetry(req, zentaoProject())).toBeNull()
   })
 })
 

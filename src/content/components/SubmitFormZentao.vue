@@ -163,12 +163,18 @@ const cookieMsg = ref('')
 // fresh=true（2 分钟复查路径）→ BG 强制真 login 探测，不吃暖缓存。
 // 否则 SW 长存活时缓存不清，复查每次都空转返「✓ 已登录」—— session 服务端早过期了
 // 也骗用户，提交时附件才挂（TOCTOU）。首检 fresh=false 保留快路径（缓存秒回）。
-async function pingCookie(fresh = false) {
+//
+// silent=true（后台复查）不把状态切 'unknown'：切 unknown 会让 canSubmit 变 false，
+// 每 2 分钟还没事锁一次提交按钮；且旧实现只在 ok 时复查 + 失败后永不重试，一次网络
+// 抖动就能把「已登录」永久锁成 fail（只能手动点重新检查）。
+async function pingCookie(fresh = false, silent = false) {
   const zz = z.value
   if (!zz?.baseUrl) return
-  cookieState.value = 'unknown'
-  emit('update:cookieState', 'unknown')
-  cookieMsg.value = '正在登录禅道…'
+  if (!silent) {
+    cookieState.value = 'unknown'
+    emit('update:cookieState', 'unknown')
+    cookieMsg.value = '正在登录禅道…'
+  }
   try {
     const res = await safeSendMessage<ZentaoPingCookieRes>({
       type: MSG.ZENTAO_PING_COOKIE,
@@ -183,8 +189,12 @@ async function pingCookie(fresh = false) {
       cookieMsg.value = res?.error ?? '禅道登录失败'
     }
   } catch (e) {
-    cookieState.value = 'fail'
-    cookieMsg.value = (e as Error).message
+    // 静默复查遇到「消息通道/网络」异常（SW 回收、瞬时断网）不是登录态失效：
+    // 保持原 ok 状态，下个周期自动再试；只有真正返回失败才降级。
+    if (!(silent && cookieState.value === 'ok')) {
+      cookieState.value = 'fail'
+      cookieMsg.value = (e as Error).message
+    }
   }
   emit('update:cookieState', cookieState.value)
 }
@@ -253,9 +263,10 @@ onMounted(() => {
     void loadUsers()
     void loadModules()
     // 长时间挂着 dialog 时 cookie 真过期，避免一直显示「✓ 已登录禅道」骗用户提交后才发现错。
-    // fresh=true：复查必须真探测（清缓存重 login），否则暖缓存下永远空转报 ✓
+    // fresh=true：复查必须真探测（清缓存重 login），否则暖缓存下永远空转报 ✓。
+    // silent=true：复查期间不 disable 提交按钮；失败后也继续按周期重试（自动恢复）。
     cookieRecheckTimer = window.setInterval(() => {
-      if (cookieState.value === 'ok') void pingCookie(true)
+      void pingCookie(true, true)
     }, 2 * 60_000)
   }
 })

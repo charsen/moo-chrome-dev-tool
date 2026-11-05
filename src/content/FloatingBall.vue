@@ -214,9 +214,13 @@ onMounted(() => {
   }
   autoPickIfSingle()
   window.addEventListener('resize', onResize)
+  // picker 之前没有任何退出方式（必须选一个项目、且可能连带触发截图/录屏）。
+  // Esc 关掉 picker 并把 pendingAction 一起清掉，不执行暂存动作。
+  window.addEventListener('keydown', onPickerKeydown, true)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)
+  window.removeEventListener('keydown', onPickerKeydown, true)
   // 组件被卸载时如果 drag 还在进行（罕见：state 切到 capturing 那一刻用户正在拖球），
   // 也走 endDrag 把 listener 摘干净，避免悬挂监听
   endDrag(false)
@@ -340,9 +344,25 @@ function ensureActive(action: PendingAction): boolean {
 function onLogoClick() {
   if (Date.now() - dragEndedAt < 250) return
   if (props.matches.length <= 1) return // 单匹配点 logo 无操作（拖动手柄）
+  // 再点一次 logo = 关掉 picker（之前只能选一个项目才能退出）
+  if (phase.value === 'picker') {
+    pendingAction.value = null
+    phase.value = 'menu'
+    return
+  }
   // 多匹配：进入 picker 让用户重选
   pendingAction.value = null  // 重选不带后续动作
   phase.value = 'picker'
+}
+
+/** picker 打开时 Esc = 关闭（不选项目、不执行暂存的截图/录屏动作） */
+function onPickerKeydown(e: KeyboardEvent) {
+  if (e.isComposing) return
+  if (e.key !== 'Escape' || phase.value !== 'picker') return
+  e.preventDefault()
+  e.stopPropagation()
+  pendingAction.value = null
+  phase.value = 'menu'
 }
 
 function onTriggerCapture() {

@@ -80,6 +80,34 @@ describe('toChromeMatchPatterns', () => {
     expect(r.valid).toEqual(['https://example.com/*'])
   })
 
+  it('端口 → 注册用 host 去掉端口（Chrome match pattern 不接受端口）', () => {
+    const r = toChromeMatchPatterns(['http://localhost:3000/*', 'https://example.com:8443/api/*'])
+    expect(r.valid).toEqual(['http://localhost/*', 'https://example.com/api/*'])
+    expect(r.dropped).toEqual([])
+  })
+
+  it('disabled：内部 * / 下划线 host / 空 label → drop（Chrome 整批校验会全挂）', () => {
+    const r = toChromeMatchPatterns([
+      'https://api*.example.com/*',
+      'https://foo_bar.com/*',
+      'https://example..com/*',
+      'https://*.example.com/*'
+    ])
+    expect(r.valid).toEqual(['https://*.example.com/*'])
+    expect(r.dropped).toEqual(['https://api*.example.com/*', 'https://foo_bar.com/*', 'https://example..com/*'])
+  })
+
+  it('中文域名 → punycode', () => {
+    const r = toChromeMatchPatterns(['https://例子.com/*'])
+    expect(r.valid).toEqual(['https://xn--fsqu00a.com/*'])
+    expect(r.dropped).toEqual([])
+  })
+
+  it('不同写法归一后重复 → 去重', () => {
+    const r = toChromeMatchPatterns(['http://example.com:8080/*', 'http://example.com/*'])
+    expect(r.valid).toEqual(['http://example.com/*'])
+  })
+
   it('混合输入 → valid + dropped 分流', () => {
     const r = toChromeMatchPatterns([
       'https://example.com/*',  // valid

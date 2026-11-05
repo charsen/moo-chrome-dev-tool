@@ -17,6 +17,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "pnpm build && playwright test",
+    "test:real": "pnpm build && playwright test -c playwright.real.config.ts",
     "mock": "node scripts/mock-server.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "release": "node scripts/release.mjs",

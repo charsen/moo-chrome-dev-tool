@@ -87,38 +87,51 @@ export type QueuedRequest = QueuedWebhook
  * 老 storage 里的 entry 没有 kind 字段（v0.1.x）。读出来时若无 kind 字段，
  * 默认按 'webhook' 处理。enqueue 写入永远带 kind，所以这步只对历史 storage 生效。
  */
+const finiteNumber = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) ? v : undefined
+
 function normalizeQueueItem(raw: unknown): QueuedItem | null {
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Partial<QueuedZentao> & Partial<QueuedWebhook>
+  const enqueuedAt = finiteNumber(r.enqueuedAt)
+  if (enqueuedAt === undefined) return null
+  // 数值字段必须显式校类型：attempts 被写成 {} / "x" 会让 `attempts >= 5` 永远 false
+  // → 该条无限重试、每次都可能在建单；lastAttemptAt 写成字符串会让 60s 冷却失效。
+  const attempts = finiteNumber(r.attempts) ?? 0
+  const lastAttemptAt = finiteNumber(r.lastAttemptAt)
+  const lastStatus = finiteNumber(r.lastStatus)
+  const lastError = typeof r.lastError === 'string' ? r.lastError : undefined
+  const historyId = typeof r.historyId === 'string' ? r.historyId : undefined
   if (r.kind === 'zentao') {
-    if (!r.projectId || !r.req || typeof r.enqueuedAt !== 'number') return null
+    if (typeof r.projectId !== 'string' || !r.projectId) return null
+    if (!r.req || typeof r.req !== 'object') return null
     return {
       kind: 'zentao',
-      enqueuedAt: r.enqueuedAt,
-      attempts: r.attempts ?? 0,
+      enqueuedAt,
+      attempts,
       // historyId 必须读回 —— normalizer 漏列 = read 时静默剥光（v0.8.7 history 同款教训）
-      historyId: typeof r.historyId === 'string' ? r.historyId : undefined,
-      lastAttemptAt: r.lastAttemptAt,
+      historyId,
+      lastAttemptAt,
       projectId: r.projectId,
       req: r.req,
-      lastStatus: r.lastStatus,
-      lastError: r.lastError
+      lastStatus,
+      lastError
     }
   }
   // 默认或 kind='webhook'：兼容 v0.1.x 老条目（无 kind）
-  if (typeof r.endpoint !== 'string' || typeof r.bodyString !== 'string' || typeof r.enqueuedAt !== 'number') return null
+  if (typeof r.endpoint !== 'string' || typeof r.bodyString !== 'string') return null
   return {
     kind: 'webhook',
-    enqueuedAt: r.enqueuedAt,
-    attempts: r.attempts ?? 0,
-    historyId: typeof r.historyId === 'string' ? r.historyId : undefined,
-    lastAttemptAt: r.lastAttemptAt,
+    enqueuedAt,
+    attempts,
+    historyId,
+    lastAttemptAt,
     endpoint: r.endpoint,
-    method: r.method ?? 'POST',
-    headers: r.headers ?? {},
+    method: typeof r.method === 'string' ? r.method : 'POST',
+    headers: (r.headers && typeof r.headers === 'object') ? r.headers as Record<string, string> : {},
     bodyString: r.bodyString,
-    lastStatus: r.lastStatus,
-    lastError: r.lastError
+    lastStatus,
+    lastError
   }
 }
 
@@ -154,19 +167,26 @@ function withQueueMutex<T>(fn: () => Promise<T>): Promise<T> {
  * （endpoint / bodyString vs projectId / req），只把 adapter 返的 payload envelope 投递即可。
  * adapter 已经做完 serializeForRetry 内的合法性检查（multipart 拒 / 大小估算）。
  */
-export async function pushQueueItem(payload: unknown, historyId?: string): Promise<boolean> {
-  if (!payload || typeof payload !== 'object') return false
+export interface QueuePushResult {
+  /** 新条是否真的写进 storage */
+  queued: boolean
+  /** 因队列满被 FIFO 丢掉的最旧条数（caller 要告诉用户，不能静默丢单） */
+  trimmed: number
+}
+
+export async function pushQueueItem(payload: unknown, historyId?: string): Promise<QueuePushResult> {
+  if (!payload || typeof payload !== 'object') return { queued: false, trimmed: 0 }
   const kind = (payload as { kind?: string }).kind
   if (kind === 'webhook') {
     const w = payload as WebhookPayloadShape
-    return enqueueRetry(w.endpoint, w.method, w.headers, w.bodyString, historyId)
+    return enqueueRetryDetailed(w.endpoint, w.method, w.headers, w.bodyString, historyId)
   }
   if (kind === 'zentao') {
     const z = payload as ZentaoPayloadShape
-    return enqueueZentaoRetry(z.projectId, z.req, historyId)
+    return enqueueZentaoRetryDetailed(z.projectId, z.req, historyId)
   }
   console.warn('[Moo] pushQueueItem: unknown adapter payload kind:', kind)
-  return false
+  return { queued: false, trimmed: 0 }
 }
 
 interface WebhookPayloadShape {
@@ -197,8 +217,18 @@ export async function enqueueRetry(
   body: BodyInit,
   historyId?: string
 ): Promise<boolean> {
-  if (typeof body !== 'string') return false // multipart 不重试
-  if (body.length > RETRY_MAX_BODY_BYTES) return false // 太大不入队
+  return (await enqueueRetryDetailed(endpoint, method, headers, body, historyId)).queued
+}
+
+async function enqueueRetryDetailed(
+  endpoint: string,
+  method: string,
+  headers: Record<string, string>,
+  body: BodyInit,
+  historyId?: string
+): Promise<QueuePushResult> {
+  if (typeof body !== 'string') return { queued: false, trimmed: 0 } // multipart 不重试
+  if (body.length > RETRY_MAX_BODY_BYTES) return { queued: false, trimmed: 0 } // 太大不入队
   const item: QueuedWebhook = {
     kind: 'webhook',
     enqueuedAt: Date.now(),
@@ -219,10 +249,18 @@ export async function enqueueRetry(
  * 跟 webhook multipart 不入队保持一致行为：用户得自己去 历史 Tab 手动重提。
  */
 export async function enqueueZentaoRetry(projectId: string, req: SubmitBugReq, historyId?: string): Promise<boolean> {
+  return (await enqueueZentaoRetryDetailed(projectId, req, historyId)).queued
+}
+
+async function enqueueZentaoRetryDetailed(
+  projectId: string,
+  req: SubmitBugReq,
+  historyId?: string
+): Promise<QueuePushResult> {
   // image 的 thumbnailize 由上游 router 的 preprocessZentaoForRetry 统一做（结果还喂给
   // serializeForRetry 的 size 检查）。这里只做队列自己的大小兜底，不重复缩略。
   const estimatedSize = estimateZentaoSize(req)
-  if (estimatedSize > RETRY_MAX_BODY_BYTES) return false
+  if (estimatedSize > RETRY_MAX_BODY_BYTES) return { queued: false, trimmed: 0 }
   const item: QueuedZentao = {
     kind: 'zentao',
     enqueuedAt: Date.now(),
@@ -234,7 +272,7 @@ export async function enqueueZentaoRetry(projectId: string, req: SubmitBugReq, h
   return pushItem(item)
 }
 
-async function pushItem(item: QueuedItem): Promise<boolean> {
+async function pushItem(item: QueuedItem): Promise<QueuePushResult> {
   return withQueueMutex(async () => {
     try {
       // pushItem 是写路径，storage 读失败也按"无现存队列"处理（兜底 []），
@@ -250,12 +288,16 @@ async function pushItem(item: QueuedItem): Promise<boolean> {
         if (item.enqueuedAt <= maxAt) item.enqueuedAt = maxAt + 1
       }
       list.push(item)
-      while (list.length > RETRY_MAX_QUEUE_LEN) list.shift()
+      let trimmed = 0
+      while (list.length > RETRY_MAX_QUEUE_LEN) {
+        list.shift()
+        trimmed++
+      }
       await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: list })
-      return true
+      return { queued: true, trimmed }
     } catch (e) {
       console.warn('[Moo] enqueueRetry storage set failed', (e as Error).message)
-      return false
+      return { queued: false, trimmed: 0 }
     }
   })
 }
@@ -277,10 +319,18 @@ const FLUSH_COOLDOWN_KEY = 'mooLastFlushAt'
 // 跨 SW 重启窗口期：老 fetch 还没回，新 SW 已读 mooLastFlushAt ≥30s 放行 → 重复发 bug 单
 const FLUSH_COOLDOWN_MS = 90_000
 
+/** 时间差是否落在 (0, ms) 的冷却窗口内。last 在未来（系统时钟回拨 / NTP 校正）返回
+ *  false —— 否则 `Date.now() - last` 为负会永远「在冷却中」，整条队列永久停在原地。 */
+function isWithinCooldown(last: number | undefined, ms: number): boolean {
+  if (typeof last !== 'number' || !Number.isFinite(last)) return false
+  const delta = Date.now() - last
+  return delta >= 0 && delta < ms
+}
+
 async function shouldSkipForCooldown(): Promise<boolean> {
   // 不吞 storage 错 —— storage 坏了让 caller 知道（跟 readQueue 一致语义）
   const { [FLUSH_COOLDOWN_KEY]: last } = await chrome.storage.local.get(FLUSH_COOLDOWN_KEY)
-  return typeof last === 'number' && Date.now() - last < FLUSH_COOLDOWN_MS
+  return isWithinCooldown(last as number | undefined, FLUSH_COOLDOWN_MS)
 }
 
 async function markFlushStart(): Promise<void> {
@@ -390,7 +440,7 @@ async function doFlush(): Promise<FlushResult> {
     if (q.attempts >= RETRY_MAX_ATTEMPTS) { dropped++; terminalIds.add(q.enqueuedAt); continue }
     // v0.7.6 P2-4：per-item cooldown — 防同条在远端慢响应（zentao multipart 80s）
     // + flush 90s cooldown 之后立即重发让远端产生重复 bug（dogfood 撞过）
-    if (q.lastAttemptAt && Date.now() - q.lastAttemptAt < PER_ITEM_RETRY_COOLDOWN_MS) {
+    if (isWithinCooldown(q.lastAttemptAt, PER_ITEM_RETRY_COOLDOWN_MS)) {
       deferred++
       continue  // 不动它 = 留在队列等下次 alarm，不丢也不重发
     }
@@ -406,6 +456,11 @@ async function doFlush(): Promise<FlushResult> {
     const projectId = q.kind === 'zentao' ? (q as QueuedZentao).projectId : undefined
     const project = projectId ? (await getConfig()).projects.find(p => p.id === projectId) : undefined
     q.lastAttemptAt = Date.now()  // 标记本次开始尝试（不管 outcome 都更新，避免 60s 内重试）
+    // 「开始尝试」要在网络调用前落盘：禅道 multipart 可能跑 80s，SW 在这期间被杀
+    // （扩展 reload / 浏览器退出）时内存里的 lastAttemptAt 随之消失，90s 全局冷却一过
+    // 同一条会被立刻重发 → 远端多一张单。落盘失败不阻断本轮（写不进去时无可避免）。
+    remainingById.set(q.enqueuedAt, q)
+    try { await persistProgress() } catch { /* 见上 */ }
     const outcome = await adapter.retryFromPayload(q, project)
     if (outcome.kind === 'ok') {
       processed++
@@ -461,16 +516,27 @@ export async function getQueueItems(): Promise<QueuedItem[]> {
  * Date.now() 在 SW 单线程同毫秒并发概率近 0，足够当唯一 id 用。
  */
 export async function removeQueueItem(enqueuedAt: number): Promise<boolean> {
+  // 不能把 storage 异常吞成 false —— UI 会把它当「这条本来就不在」，而条其实还在，
+  // 下次 alarm 照样发出去（用户以为已经丢弃）。让异常冒到 router，UI 收到 ok:false。
   return withQueueMutex(async () => {
-    try {
-      const list = await readQueue()
-      const next = list.filter((q) => q.enqueuedAt !== enqueuedAt)
-      if (next.length === list.length) return false
-      await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: next })
-      return true
-    } catch {
-      return false
-    }
+    const list = await readQueue()
+    const next = list.filter((q) => q.enqueuedAt !== enqueuedAt)
+    if (next.length === list.length) return false
+    await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: next })
+    return true
+  })
+}
+
+/** 手动重试/历史重提：删掉指向同一 history entry 的队列项，防止定时重试给远端造重复单。
+ *  storage 异常向上抛（调用方 best-effort catch）。 */
+export async function removeQueueItemsByHistoryId(historyId: string): Promise<number> {
+  if (!historyId) return 0
+  return withQueueMutex(async () => {
+    const list = await readQueue()
+    const next = list.filter((q) => q.historyId !== historyId)
+    if (next.length === list.length) return 0
+    await globalThis.chrome.storage.local.set({ [RETRY_QUEUE_KEY]: next })
+    return list.length - next.length
   })
 }
 

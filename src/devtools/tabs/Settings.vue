@@ -267,10 +267,15 @@ async function removeQueueOne(enqueuedAt: number) {
   try {
     const res = (await safeSendMessage({
       type: MSG.RETRY_QUEUE_REMOVE, source: 'devtools', payload: { enqueuedAt }
-    })) as { removed?: boolean } | undefined
-    const removed = res?.removed === true
+    })) as { ok?: boolean; removed?: boolean; error?: string } | undefined
     await refreshStats()
-    if (removed) showToast('已从队列移除 1 条', 'success')
+    if (res?.ok === false) {
+      // 写 storage 失败跟「本来就不在」必须分开说：后者用户可以放心，前者条还在、
+      // 下次 alarm 会照发，得让用户知道没删掉。
+      showToast(`没能移除：${res.error ?? '后台没有响应'}`, 'error')
+      return
+    }
+    if (res?.removed === true) showToast('已从队列移除 1 条', 'success')
     else showToast('这条已经不在队列里了（可能刚被重试掉）', 'info')
   } catch (e) {
     showToast(`没能移除：${(e as Error).message}`, 'error')
@@ -441,8 +446,16 @@ async function clearQueue() {
   if (!ok) return
   busy.value = 'clearQueue'
   try {
-    await safeSendMessage({ type: MSG.RETRY_QUEUE_CLEAR, source: 'devtools' })
+    const res = (await safeSendMessage({
+      type: MSG.RETRY_QUEUE_CLEAR, source: 'devtools'
+    })) as { ok?: boolean; error?: string } | undefined
     await refreshStats()
+    if (res?.ok !== true) {
+      // 之前完全不看响应：写失败也 toast「已丢弃」→ 队列还在，下一轮 alarm 把用户
+      // 明确丢弃过的 bug 照样发出去。必须如实报错。
+      showToast(`没能清空：${res?.error ?? '后台没有响应'}`, 'error')
+      return
+    }
     showToast(`已丢弃 ${n} 条`, 'success')
   } catch (e) {
     showToast(`没能清空：${(e as Error).message}`, 'error')

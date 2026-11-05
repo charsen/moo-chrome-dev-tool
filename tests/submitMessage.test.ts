@@ -41,6 +41,18 @@ describe('formatSubmitResult — 失败路径', () => {
     expect(r.message).toContain('重试队列')
   })
 
+  it('5xx 不再预设「已加入重试队列」（是否能入队由 queued 决定）', () => {
+    const r = formatSubmitResult({ ok: false, status: 503, queued: false })
+    expect(r.message).toContain('503')
+    expect(r.message).not.toContain('已自动加入重试队列')
+    expect(r.message).toContain('不会自动重试')
+  })
+
+  it('入队但队列满被 FIFO 淘汰 → 明确告知丢了几条', () => {
+    const r = formatSubmitResult({ ok: false, error: 'timeout', queued: true, retryQueueTrimmed: 2 })
+    expect(r.message).toContain('最早的 2 条被丢弃')
+  })
+
   it('queued=false 不加重试提示', () => {
     const r = formatSubmitResult({ ok: false, error: 'CORS', queued: false })
     expect(r.message).not.toContain('重试队列')

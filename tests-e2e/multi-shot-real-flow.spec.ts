@@ -459,6 +459,34 @@ test('F5 · arming 取消：触发器浮起→取消→回弹窗，shot 不变 +
 })
 
 // ═══════════════════════════════════════════════════════════════════════════
+// F6 · arming 态 Esc（v0.8.19）：触发器只有按钮没有键盘出口时，视口缩小/误触后
+//      用户会卡在 arming。Esc 必须等同「取消」——回弹窗且草稿仍在。
+// ═══════════════════════════════════════════════════════════════════════════
+test('F6 · arming 态 Esc → 回弹窗（草稿保留、不新增截图）', async ({ context, sw }) => {
+  test.setTimeout(90_000)
+  const { page, cdp } = await openMatchedPage(context, sw, 'base64')
+
+  await captureOnce(cdp)
+  await annotateAndNext(page, cdp, false)
+  const TITLE = 'arming Esc 应回到这条草稿'
+  await page.waitForTimeout(700)
+  await page.keyboard.type(TITLE)
+
+  await cdpClick(cdp, await waitFor(cdp, isAddShotBtn, '再截一张按钮'))
+  await waitFor(cdp, isArmTrigger, 'arming 触发器')
+  await waitGone(cdp, isTitleInput, 'arming 态弹窗应收起')
+
+  await page.keyboard.press('Escape')
+  await waitGone(cdp, isArmTrigger, 'Esc 后 arming 触发器应消失')
+  const titleNode = await waitFor(cdp, isTitleInput, 'Esc 后重挂的标题输入框')
+  expect(await cdpValue(cdp, titleNode), 'Esc 取消 arming 应保留草稿').toBe(TITLE)
+  expect(await thumbCount(cdp), 'Esc 取消 arming 不应新增截图').toBe(1)
+
+  expect(received.length, '全程不应有任何上报').toBe(0)
+  await page.close()
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
 // F3 · 取消语义：Esc 主动退出丢草稿，重开流程弹窗干净
 // ═══════════════════════════════════════════════════════════════════════════
 test('F3 · Esc 取消后重开流程：标题空（草稿已丢）+ 仅 1 张新截图', async ({ context, sw }) => {

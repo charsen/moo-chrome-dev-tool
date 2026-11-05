@@ -22,7 +22,7 @@
 //     SSH key 在 REST API 上没用。token 最小权限范围可以缩到「projects:write」/「releases」。
 //   建议：remote 用 SSH（`git remote set-url origin git@gitee.com:OWNER/REPO.git`）+ token 仅作 API 用。
 
-import { execSync } from 'node:child_process'
+import { execSync, execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, rmSync, openAsBlob, readdirSync, cpSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -45,6 +45,14 @@ const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
 const version = pkg.version
 if (!version) {
   console.error('package.json 缺 version 字段')
+  process.exit(1)
+}
+// 版本号会直接拼进 shell 命令（git tag / rev-parse）和文件路径（zip 名）：
+// 必须是纯 semver，否则一个恶意 PR 改 package.json + manifest.json 就能在
+// 发版机上执行任意命令（release 机器通常握着 GITEE_TOKEN）。
+if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
+  console.error(`version 不是合法 semver：${JSON.stringify(version)}`)
+  console.error('只允许 数字.数字.数字[-预发布后缀]，不能含空格 / 引号 / $ / ; 等字符。')
   process.exit(1)
 }
 
@@ -140,30 +148,40 @@ function preFlightPiiCheck() {
     return
   }
   const { terms, source } = loadPiiDenyTerms()
-  if (terms.length === 0) {
-    console.warn('⚠ 未找到 .release-pii-deny 或 .release-pii-deny.example，跳过脱敏检查')
+  const usingExampleOnly = source === PII_DENY_EXAMPLE_FILE
+  const missingRealList = terms.length === 0 || usingExampleOnly
+  if (missingRealList) {
+    // 真词表（.release-pii-deny）是 gitignored 的本地文件 —— 换机器 / CI / 新同事
+    // 克隆后必然没有。以前这里只 warn 就放行，等于公开仓唯一的 PII 防线在别人机器上
+    // 根本不存在（v0.4.0 真名进 release 的事故就是这么来的）。真发必须硬停。
+    if (publish) {
+      console.error('━━━ ⛔ 发版被拦截：没有可用的 PII 词表 ━━━')
+      console.error(`期望：${PII_DENY_FILE}（gitignored，本地维护真词）`)
+      console.error('没有它就等于不做脱敏检查。请先 cp .release-pii-deny.example .release-pii-deny 并填入真词。')
+      console.error('确属紧急且已人工核对，可显式设 MOO_RELEASE_SKIP_PII_CHECK=1 绕过。')
+      process.exit(1)
+    }
+    console.warn('⚠ 未找到可用的脱敏词表（.release-pii-deny），脱敏检查被跳过')
     console.warn('  建议：cp .release-pii-deny.example .release-pii-deny ，加入你需要脱敏的真词')
+    console.warn('  ⚠ --publish 时缺这份词表会直接中止发版。')
     console.warn('')
     return
   }
   const relSource = source.replace(root + '/', '')
-  if (source === PII_DENY_EXAMPLE_FILE) {
-    console.warn(`⚠ 正在用 ${relSource} 作为脱敏词表（fallback）`)
-    console.warn('  建议：cp .release-pii-deny.example .release-pii-deny  然后加入你需要脱敏的真词')
-    console.warn('')
-  }
   // v0.5.1：改 git grep — respect .gitignore + 不扫 release/ / dist/ / .test-output/ 等
   // ignored 路径。之前 grep -rEn 会扫 ignored 假阳（test 残留 / build artifact）
-  const pathspecs = PII_INCLUDE_EXTS.map((e) => `'*.${e}'`).join(' ')
+  const pathspecs = PII_INCLUDE_EXTS.map((e) => `*.${e}`)
   const grepPattern = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
   let raw = ''
   try {
-    raw = execSync(
-      `git grep -nE "${grepPattern}" -- ${pathspecs} 2>/dev/null || true`,
-      { cwd: root, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }
-    )
+    // execFile + 参数数组，不经 shell：词表里出现 `"` / `$` / 反引号不会变成命令注入
+    raw = execFileSync('git', ['grep', '-nE', grepPattern, '--', ...pathspecs], {
+      cwd: root,
+      encoding: 'utf8',
+      maxBuffer: 4 * 1024 * 1024
+    })
   } catch {
-    // grep 找不到时已通过 || true 兜底，这里再 catch 一次保险
+    // git grep 无命中时 exit 1 —— 视为空结果
   }
   const hits = raw
     .split('\n')
@@ -420,6 +438,23 @@ const missing = required.filter((f) => !existsSync(resolve(distDir, f)))
 if (missing.length > 0) {
   console.error('build 产物缺以下必需文件，中止发版：')
   for (const f of missing) console.error(`  - dist/${f}`)
+  process.exit(1)
+}
+
+// --skip-build 直接打包现有 dist/：必须确认它真是本版构建，否则 zip 里的
+// manifest.version 跟 tag 不一致，用户「下载 zip → 重新加载」的升级链路会静默无效
+// （checkUpgradeFinished 对比 expectedVersion 永远不匹配）。
+try {
+  const distMf = JSON.parse(readFileSync(resolve(distDir, 'manifest.json'), 'utf8'))
+  if (distMf.version !== version) {
+    console.error(`dist/manifest.json 版本 ${distMf.version ?? '(缺失)'} ≠ package.json ${version}`)
+    console.error(skipBuild
+      ? '--skip-build 打的是旧构建产物。请先 pnpm build，或去掉 --skip-build 重跑。'
+      : 'build 产物版本不一致，检查 build 是否真的成功。')
+    process.exit(1)
+  }
+} catch (e) {
+  console.error(`读不了 dist/manifest.json：${e instanceof Error ? e.message : String(e)}`)
   process.exit(1)
 }
 

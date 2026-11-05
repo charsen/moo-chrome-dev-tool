@@ -39,7 +39,7 @@ function makeChrome(): MockStorage {
   return state
 }
 
-import { addHistoryEntry, listHistory, removeHistory, clearHistory, updateHistoryEntry, markHistoryEntryRetrySuccess, onHistoryChanged } from '@/storage/history'
+import { addHistoryEntry, listHistory, removeHistory, clearHistory, updateHistoryEntry, upsertHistoryEntry, markHistoryEntryRetrySuccess, markHistoryEntryQueued, patchHistoryRemoteStatus, onHistoryChanged } from '@/storage/history'
 import type { BugHistoryEntry } from '@/types/history'
 
 function entry(id: string, image = 'data:image/png;base64,x'): BugHistoryEntry {
@@ -120,6 +120,47 @@ describe('history.ts — happy path', () => {
   it('updateHistoryEntry 找不到 id → 静默不抛', async () => {
     await addHistoryEntry(entry('a'))
     await expect(updateHistoryEntry('nonexistent', entry('z'))).resolves.toBeUndefined()
+  })
+
+  it('upsertHistoryEntry 原地替换同 id 记录（重提不新增重复行）', async () => {
+    await addHistoryEntry(entry('a'))
+    await addHistoryEntry(entry('b'))
+    const replaced = { ...entry('a'), title: '重提后的标题', result: { ok: true } }
+    await upsertHistoryEntry(replaced)
+    const list = await listHistory()
+    expect(list).toHaveLength(2)
+    const a = list.find((e) => e.id === 'a')
+    expect(a?.title).toBe('重提后的标题')
+    expect(a?.result.ok).toBe(true)
+    // 新 id 不存在时按新条插入
+    await upsertHistoryEntry({ ...entry('c'), title: '新条' })
+    expect((await listHistory()).length).toBe(3)
+  })
+
+  it('patchHistoryRemoteStatus 只改状态字段：不覆盖并发的「重试成功」回填', async () => {
+    // 回归：状态回查拿的是几秒前的快照，整条写回会把 retry success 的 result.ok /
+    // remoteId 翻回失败 → 用户误以为失败又手动重提 → 远端重复单。
+    await addHistoryEntry({ ...entry('a'), result: { ok: false, error: 'boom' } })
+    await markHistoryEntryRetrySuccess('a', 'bug-42')
+
+    await patchHistoryRemoteStatus('a', 'done', '2026-01-01T00:00:00.000Z')
+
+    const after = (await listHistory())[0]!
+    expect(after.remoteStatus).toBe('done')
+    expect(after.remoteStatusUpdatedAt).toBe('2026-01-01T00:00:00.000Z')
+    expect(after.result.ok, '重试成功不能被状态回查覆盖回失败').toBe(true)
+    expect(after.remoteId).toBe('bug-42')
+  })
+
+  it('patchHistoryRemoteStatus 找不到 id → 静默不抛', async () => {
+    await expect(patchHistoryRemoteStatus('nope', 'done', 'x')).resolves.toBeUndefined()
+  })
+
+  it('markHistoryEntryQueued 把失败条标成「队列中」', async () => {
+    await addHistoryEntry({ ...entry('a'), result: { ok: false, error: '503' } })
+    await markHistoryEntryQueued('a')
+    const after = (await listHistory())[0]!
+    expect(after.result).toEqual({ ok: false, error: '503', queued: true })
   })
 })
 

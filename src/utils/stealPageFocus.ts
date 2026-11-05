@@ -1,3 +1,5 @@
+import { HOST_ID } from '@/content/styles'
+
 /**
  * v0.7.7：扩展 overlay（Annotator / SubmitDialog 等）进入键盘交互时偷走宿主页焦点。
  *
@@ -23,9 +25,12 @@
 export function stealPageFocus(): void {
   try {
     const active = document.activeElement
-    if (active instanceof HTMLElement && active.tagName !== 'BODY' && active.tagName !== 'HTML') {
-      active.blur()
-    }
+    if (!(active instanceof HTMLElement)) return
+    if (active.tagName === 'BODY' || active.tagName === 'HTML') return
+    // 焦点已经在 Moo 自己的 UI 里：closed shadow 下 document.activeElement 是 host，
+    // blur(host) 会连用户正在输入的标题/描述一起失焦。这不是「页面抢焦点」，不该偷。
+    if (active.id === HOST_ID) return
+    active.blur()
   } catch {
     // SVG / 跨 origin iframe 边界 silent
   }

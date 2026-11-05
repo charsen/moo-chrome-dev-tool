@@ -93,7 +93,8 @@ export interface Project {
   defaultServerId: string
   /**
    * 禅道配置；kind='zentao' 时使用。
-   * 即使 kind 切回 'webhook' 也保留此字段（用户切回去不丢配置），但 normalize 会清空 password。
+   * 即使 kind 切回 'webhook' 也保留此字段（用户切回去不丢配置）。注意：normalize
+   * **不会**清空 password（清了会破坏正常 save→load；导出时才由 stripSensitiveProjectFields 剥）。
    */
   zentao?: ZentaoProjectConfig
   capture: CaptureConfig

@@ -33,7 +33,7 @@ export function formatSubmitResult(res: SubmitBugRes): { ok: boolean; message: s
       : ''
     return {
       ok: false,
-      message: appendQueued(`提交失败：${res.error}${offlineHint}`, res.queued)
+      message: appendQueued(`提交失败：${res.error}${offlineHint}`, res.queued, res.retryQueueTrimmed)
     }
   }
 
@@ -42,7 +42,7 @@ export function formatSubmitResult(res: SubmitBugRes): { ok: boolean; message: s
   const status = res.status ?? 0
   const head = httpStatusHint(status)
   const message = detail ? `${head}：${detail}` : head
-  return { ok: false, message: appendQueued(message, res.queued) }
+  return { ok: false, message: appendQueued(message, res.queued, res.retryQueueTrimmed) }
 }
 
 /** 把光秃秃的 HTTP 状态码翻译成更可操作的提示 */
@@ -53,7 +53,10 @@ function httpStatusHint(status: number): string {
   if (status === 404) return `服务端找不到这个地址（HTTP 404）—— 请检查上报服务器的「请求 URL」是否写对`
   if (status === 413) return `提交内容太大（HTTP 413）—— 截图 / 录像可能超过了服务端的大小限制`
   if (status === 422) return `服务端不认这份数据格式（HTTP 422）—— 字段和后端要的对不上，去「Payload 模板」检查一下字段名`
-  if (status >= 500) return `服务端报错（HTTP ${status}）—— 不是你的问题，已自动加入重试队列`
+  // 这里不能声称「已加入重试队列」：5xx 也可能因为 body 太大 / multipart 而无法入队，
+  // 是否真入队由 appendQueued(res.queued) 决定，重复断言会出现「已加入队列」+「不会自动
+  // 重试」同时在一条消息里的矛盾文案。
+  if (status >= 500) return `服务端报错（HTTP ${status}）—— 不是你的问题`
   if (status >= 400) return `请求被拒（HTTP ${status}）`
   return `提交未成功（HTTP ${status}）`
 }
@@ -80,9 +83,15 @@ function pickStr(v: unknown): string {
   return typeof v === 'string' && v.trim() !== '' ? v.trim() : ''
 }
 
-function appendQueued(msg: string, queued?: boolean): string {
+function appendQueued(msg: string, queued?: boolean, trimmed?: number): string {
   // v0.4.7：queued === false 时显式说「这次不会自动重试」（之前 undefined / false 都隐藏 → 用户以为还在重试）
-  if (queued === true) return `${msg}\n这条 bug 已存到重试队列，每 5 分钟自动重试一次；也可以去 设置 → 存储 手动「立即重试」`
-  if (queued === false) return `${msg}\n这种失败不会自动重试（4xx / 配置错 / 永久性错误）。请检查后到 历史 Tab 手动重新提交`
+  if (queued === true) {
+    const tail = trimmed && trimmed > 0
+      // 队列满时旧实现静默 FIFO 丢最旧 —— 用户以为所有失败都还在队列里
+      ? `\n⚠ 本地重试队列已满，最早的 ${trimmed} 条被丢弃（可在 历史 Tab 手动重新提交）`
+      : ''
+    return `${msg}\n这条 bug 已存到重试队列，每 5 分钟自动重试一次；也可以去 设置 → 存储 手动「立即重试」${tail}`
+  }
+  if (queued === false) return `${msg}\n这次不会自动重试（4xx / 配置错 / 内容过大 / 永久性错误）。请修正后到 历史 Tab 手动重新提交`
   return msg
 }

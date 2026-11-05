@@ -52,6 +52,7 @@ export const zentaoAdapter: IssueAdapter<'zentao'> = {
       body: res.viewUrl,
       viewUrl: res.viewUrl,
       error: res.error,
+      warnings: res.warnings,
       // 不显式给 retryable —— 让 router/retryQueue 按现行 estimateZentaoSize 兜底
       retryable: undefined
     }
@@ -71,10 +72,9 @@ export const zentaoAdapter: IssueAdapter<'zentao'> = {
     return mapZentaoStatus(r.data)
   },
 
-  serializeForRetry(req, project): AdapterRetryPayload | null {
-    // 入队前 thumbnailize image（之前直接存 1080p PNG 800KB-1.5MB 长期驻 storage）
-    // serialize 是 sync 签名但 image 处理是 async — 直接返 SubmitBugReq 让 caller 自己异步处理
-    // （为保持 interface sync，这里同步只做估算判断；真 thumbnailize 在 router 调用前完成）
+  async serializeForRetry(req, project): Promise<AdapterRetryPayload | null> {
+    // 入队前 thumbnailize image 由 router 的 preprocessZentaoForRetry 完成（结果再喂给
+    // 这里的 size 判断）；serialize 只做估算判断，不做二次图片处理。
     const estimatedSize = estimateZentaoSize(req)
     if (estimatedSize > RETRY_MAX_BODY_BYTES) return null
     return {

@@ -47,3 +47,8 @@ export function takeDialogDraft(): DialogDraft | null {
 export function clearDialogDraft(): void {
   draft = null
 }
+
+/** 是否存在未清理的草稿。流程中途退出 / chunk 加载失败时用来判断「该不该回到弹窗」。 */
+export function hasDialogDraft(): boolean {
+  return draft !== null
+}

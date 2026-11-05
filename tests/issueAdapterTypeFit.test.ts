@@ -43,7 +43,7 @@ describe('IssueAdapter type-fit', () => {
       ): Promise<AdapterStatus | undefined> {
         return undefined
       },
-      serializeForRetry(_req: SubmitBugReq, _project: Project): AdapterRetryPayload | null {
+      async serializeForRetry(_req: SubmitBugReq, _project: Project): Promise<AdapterRetryPayload | null> {
         // zentao 保留完整 SubmitBugReq —— 重试时重发 multipart
         return { kind: 'zentao', req: _req, projectId: _project.id }
       },
@@ -70,7 +70,7 @@ describe('IssueAdapter type-fit', () => {
       ): Promise<AdapterStatus | undefined> {
         return undefined
       },
-      serializeForRetry(_req: SubmitBugReq, _project: Project): AdapterRetryPayload | null {
+      async serializeForRetry(_req: SubmitBugReq, _project: Project): Promise<AdapterRetryPayload | null> {
         // webhook 入队 bodyString + endpoint + headers（不含图片 / 视频）
         return { kind: 'webhook', endpoint: '', method: 'POST', headers: {}, bodyString: '' }
       },
@@ -85,7 +85,7 @@ describe('IssueAdapter type-fit', () => {
     const minimal: IssueAdapter<'webhook'> = {
       kind: 'webhook',
       async submit() { return { ok: false } },
-      serializeForRetry() { return null },
+      async serializeForRetry() { return null },
       async retryFromPayload() { return { kind: 'ok' } }
     }
     expect(minimal.kind).toBe('webhook')
@@ -96,13 +96,13 @@ describe('IssueAdapter type-fit', () => {
       webhook: {
         kind: 'webhook',
         async submit() { return { ok: false } },
-        serializeForRetry() { return null },
+        async serializeForRetry() { return null },
         async retryFromPayload() { return { kind: 'ok' } }
       },
       zentao: {
         kind: 'zentao',
         async submit() { return { ok: false } },
-        serializeForRetry() { return null },
+        async serializeForRetry() { return null },
         async retryFromPayload() { return { kind: 'ok' } }
       }
     }

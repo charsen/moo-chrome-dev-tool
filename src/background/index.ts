@@ -301,7 +301,14 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
         // v0.8.9：删条/清空在 SW 内执行 —— devtools 直 import 写路径会绕过本上下文的
         // withQueueMutex（各上下文一把锁），跟 flush reconcile 写回交错丢条/复活条
         case MSG.RETRY_QUEUE_REMOVE: {
-          const removed = await removeQueueItem(message.payload.enqueuedAt)
+          // payload 来自跨进程 IPC，TS 保证不了：缺字段时直接给出可读错误，
+          // 别让 undefined 走进 filter 变成静默「没删到」（同 HISTORY_REMOVE 的校验口径）。
+          const at = message.payload?.enqueuedAt
+          if (typeof at !== 'number' || !Number.isFinite(at)) {
+            sendResponse({ ok: false, removed: false, error: 'RETRY_QUEUE_REMOVE payload 缺 enqueuedAt' })
+            break
+          }
+          const removed = await removeQueueItem(at)
           sendResponse({ ok: true, removed })
           break
         }

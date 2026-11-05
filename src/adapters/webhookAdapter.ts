@@ -162,22 +162,29 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
     }
   },
 
-  serializeForRetry(req, project): AdapterRetryPayload | null {
+  async serializeForRetry(req, project): Promise<AdapterRetryPayload | null> {
     const server = project.servers.find(s => s.id === req.serverId)
     if (!server?.endpoint) return null
+    if (server.imageFormat === 'multipart') return null  // multipart 不可序列化
+
+    // 跟 live submit 同款：先把截图重编码成 WebP 再渲染。否则 2560px PNG（默认模板还会
+    // 把首图引用两次）几乎必然超过 1MB 上限 → 所有带截图的 5xx 都进不了重试队列。
+    // 失败时 reencodeImage 会返回原图，size cap 仍兜底。
+    const image = await reencodeImage(req.image ?? '', 'image/webp')
+    const srcImages = req.images ?? (req.image ? [req.image] : [])
+    const images = await Promise.all(srcImages.map((d) => reencodeImage(d, 'image/webp')))
 
     // 拼一次 body 看是否可序列化为 string（multipart 直接 false）。
     // serialize 阶段不读 page storage（page tab 可能已关）—— storage 字段视为空快照
     const renderCtx: Record<string, unknown> = {
-      title: req.title, description: req.description, image: req.image,
+      title: req.title, description: req.description, image,
       url: req.url, userAgent: req.userAgent, viewport: req.viewport,
       timestamp: req.timestamp, requests: req.requests, errors: req.errors,
       elements: req.elements ?? [], storage: {}, video: req.video?.dataUrl ?? '',
       videoBytes: req.video?.bytes ?? 0, videoDuration: req.video?.duration ?? 0,
-      // 镜像 live submit 的语义：缺了 images，默认模板的 {{imagesJson}} 会被 renderTemplate
-      // 原样保留成字面量 → 重试 body 非法 JSON、多图全丢。serialize 同步路径不 reencode，
-      // 直接用原始 PNG dataUrl 数组（大体积本就被下面 RETRY_MAX_BODY_BYTES cap 拦下返 null）。
-      images: req.images ?? (req.image ? [req.image] : []),
+      // 缺了 images，默认模板的 {{imagesJson}} 会被 renderTemplate 原样保留成字面量
+      // → 重试 body 非法 JSON、多图全丢（v0.8.15 回归）
+      images,
       token: project.token ?? ''
     }
     const { body, headers } = buildRequestBody(server, renderCtx)
@@ -187,7 +194,10 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
       kind: 'webhook',
       endpoint: server.endpoint,
       method: server.method,
-      headers,
+      // 必须跟 live submit 一样过 sanitizeHeaders（CRLF / 非 ASCII percent-encode）：
+      // 否则带中文 header 值的配置能首次提交成功、重试却每次 fetch 同步抛错，
+      // 5 次 attempts 白烧完被丢弃，用户只看到「都还在失败」的假诊断。
+      headers: sanitizeHeaders(headers),
       bodyString: body
     }
     return payload
@@ -203,7 +213,8 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
       return { kind: 'drop', reason: 'webhook adapter 收到非 webhook payload' }
     }
     try {
-      const resp = await fetch(q.endpoint, { method: q.method, headers: q.headers, body: q.bodyString })
+      // 老版本入队的 payload 可能没经过 sanitize（直接存了原始 headers）→ 这里再过一次
+      const resp = await fetch(q.endpoint, { method: q.method, headers: sanitizeHeaders(q.headers ?? {}), body: q.bodyString })
       if (resp.ok) {
         // 跟首次提交同款：响应体 id 是 remoteId（history 回填 + 状态回查用）。
         // 读体失败不影响成功判定 —— remoteId 缺省只是回填不上 id。
@@ -301,13 +312,18 @@ function buildRequestBody(
     } catch {
       form.append('payload', rendered)
     }
-    form.append(server.imageField, dataUrlToBlob(String(ctx.image)), 'screenshot.png')
+    // 空图（无截图 / dataUrl 损坏）不要 append 一个 0 字节 part：多数后端会把它当
+    // 「有一个空附件」静默丢弃，扩展侧却以为已经发了。
+    const primaryBlob = dataUrlToBlob(String(ctx.image))
+    if (primaryBlob.size > 0) form.append(server.imageField, primaryBlob, 'screenshot.png')
     // v0.8.10 多图：第 2 张起追加 `${imageField}_N` 字段（screenshot_2.png …）。
     // 不认识这些字段的老服务端会忽略 —— 非 BREAKING；要收多图的服务端按字段名约定取
     const extraShots = Array.isArray(ctx.images) ? (ctx.images as string[]).slice(1) : []
     extraShots.forEach((dataUrl, i) => {
       if (typeof dataUrl !== 'string' || !dataUrl) return
-      form.append(`${server.imageField}_${i + 2}`, dataUrlToBlob(dataUrl), `screenshot_${i + 2}.png`)
+      const blob = dataUrlToBlob(dataUrl)
+      if (blob.size === 0) return
+      form.append(`${server.imageField}_${i + 2}`, blob, `screenshot_${i + 2}.png`)
     })
     const headers = { ...server.headers }
     // 大小写无关删除 —— 用户手敲的 `Content-type` / `CONTENT-TYPE` 变体若存活，

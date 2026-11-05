@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import ContentApp from './ContentApp.vue'
+import { installKeyboardIsolation } from './keyboardIsolation'
 import { HOST_ID, SHADOW_CSS } from './styles'
 import { clearRequests, getCurrentRequests } from './useRequests'
 import { clearErrors, getCurrentErrors } from './useErrors'
@@ -78,6 +79,11 @@ if (existing) {
   // mode: 'closed' 阻止宿主页脚本通过 host.shadowRoot 读到扩展 UI 内容
   //（用户在 SubmitDialog 输入的标题/描述、截图 dataUrl 等敏感内容）
   const shadow = host.attachShadow({ mode: 'closed' })
+
+  // v0.8.19：宿主页的键盘守卫（典型：Backspace 防回退）把闭合 shadow 的 host div 当成
+  // 「非输入框」→ preventDefault，导致弹窗里能打字、不能删字。挂在 shadow root 上，
+  // 才能拿到完整的 composedPath（closed shadow 外部会被裁剪）。host 移除即随监听回收。
+  installKeyboardIsolation(shadow)
 
   const style = document.createElement('style')
   style.textContent = SHADOW_CSS
