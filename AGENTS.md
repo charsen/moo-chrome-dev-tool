@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> 规则来源：通用协作、授权、Git 与测试规则见 `~/.agents/AGENTS.md`（每轮自动加载）；Moo/Laravel 领域规则见 `~/.agents/moo.md`（涉及 scaffold/Schema/migration/Composer 时先读）。本文件只写本仓特有约束，不复制全局规则；冲突时以本文件为准。
+> 规则来源：通用协作、授权、Git 与测试规则见 `~/.agents/AGENTS.md`（每轮自动加载）。本文件只写本仓特有约束，不复制全局规则；冲突时以本文件为准。
 
 本文件适用于整个 Moo Dev Tool 仓库。规则冲突时依次服从系统/用户指令、当前代理规则、用户批准的方案、`NOTES.md`、`HANDOFF.md`、发布/测试文档和现码。归档文档记录历史，不得覆盖当前 manifest、类型、测试和真实 Chrome 行为。
 
