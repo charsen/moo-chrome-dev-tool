@@ -5,6 +5,8 @@ order: 60
 ---
 # 发版前真机实测清单
 
+Cloud 七牛分发 ZIP 的步骤与校验见 [BUILD.md](BUILD.md#cloud-release) 和 [UPDATE-CHECK.md](UPDATE-CHECK.md#cloud-release)。补传使用原始发布 ZIP；`pnpm release` 的默认 dry-run 不产生安装包，Cloud 上传也不切换当前 Gitee 检查更新源。
+
 > 每次 BREAKING / 大改提交链路的版本，**push 之前**走一遍。
 > 自动化覆盖不了的部分：CORS 预检、真实 chrome-extension 跨域、multipart 上传、SW fetch 重试、UI toast 文案。
 
