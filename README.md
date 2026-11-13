@@ -78,6 +78,8 @@
 
 ## 想从源码跑
 
+发布者的 ZIP 核验、Cloud 七牛上传与渠道边界见 [构建说明](docs/BUILD.md) 和 [分发说明](docs/UPDATE-CHECK.md)。Cloud 可分发 ZIP，现有扩展内更新提醒仍使用 Gitee Releases。
+
 ```bash
 pnpm install
 pnpm dev      # 启动 Vite，产物输出到 dist/

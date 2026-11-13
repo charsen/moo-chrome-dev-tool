@@ -55,6 +55,8 @@
 
 ## 公开仓与发布
 
+- Cloud 补传安装包读 [docs/BUILD.md](docs/BUILD.md) 和 [docs/UPDATE-CHECK.md](docs/UPDATE-CHECK.md)，使用已核验的原始 ZIP，等待上传与校验完成后保存；存储凭据由平台管理。Cloud 分发不替代现有 Gitee 更新源或官网部署。
+
 - 本仓公开，commit、CHANGELOG、HANDOFF、docs、源码/测试、图片、release 描述和 zip 全部必须脱敏。真实 PII deny list 只放 gitignored `.release-pii-deny`，绝不能把黑名单内容写入 tracked 文件。
 - 版本号在 package、manifest、文档/构建元数据之间保持一致，以 `pnpm check:versions` 为门禁。普通修复不自动 bump。
 - `pnpm release` 默认 dry-run；publish、tag、release 页面与商店提交都须用户明确要求。发布文案保持精炼，版本详情放 CHANGELOG。
