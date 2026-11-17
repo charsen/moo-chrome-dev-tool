@@ -4,7 +4,7 @@
 
 ## 一句话现状
 
-**v0.8.20 发版准备（2026-11-17）**：云端待办截图/录像改七牛直传；待发布后替换下方现状段。
+**v0.8.20 已发（2026-11-17）**：[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.20/moo-chrome-dev-tool-0.8.20.zip)（sha256 `14fe165ca41507f0ea91998ced3169667bb2bb2401a686bd50b2e5e51b854253`）。云端待办截图/录像改七牛直传。
 
 **v0.8.19 已发**（2026-11-05）。[下载](https://gitee.com/charsen/moo-chrome-dev-tool/releases/download/v0.8.19/moo-chrome-dev-tool-0.8.19.zip)（sha256 `3d35e257efa1c82c67927d4683a2e8919bb8ffbba527e0661b2904d22e37c669`）。无 BREAKING —— 一批真机复现的交互 / 稳定性 / 隐私修复 + 新增真机测试套件。🔴 **修宿主页 Backspace 守卫吞掉删除**：闭合 shadow 事件 target 被重定向成 host div，页面守卫误判「不在输入框」→ `preventDefault`；改为 shadow root 拦截冒泡 + capture 抢先取消时补等价删除。🔴 **修手动重试后定时重试再发**：弹窗「重试」/历史「重新提交」成功后旧队列项仍留 → 5 分钟 alarm 造远端重复工单；现在带 `replacesHistoryId` 移除旧队列项并原地更新 history（不新增重复行）。🟠 另有：弹窗补焦不再抢描述框、标题回车提交、多匹配刷新不清空已选项目、删光截图后取消保留草稿、arming Esc、元素选择触摸兜底、缩小态不劫持宿主页粘贴；控制台错误接入 redact；密码遮罩覆盖同源 iframe / open shadow；状态回查只合 `remoteStatus`；录屏 STOP 单飞 / CANCEL 不拆编码；重试 payload 同步 WebP 压缩、队列满淘汰可见；匹配规则严格校验；禅道附件失败在成功视图提示。验证：单测 931、全量 e2e 191、真机 10 全绿 + 两路 type-check + build。**真机套件覆盖不到：原生权限弹窗、真实快捷键录屏、F12 面板挂载、真实输入法、真实禅道/云实例，留人工抽查。** 详情见 CHANGELOG v0.8.19 段。
 
