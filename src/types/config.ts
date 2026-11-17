@@ -106,6 +106,11 @@ export interface Project {
    * 通过 payload 模板的 `{{token}}` 占位符写进 POST body 的 token 字段（webhook 风格，
    * 不进 header / 不进 URL），后端读 body.token 校验。命中后由云端项目归属提交人。
    * endpoint 配成云端 `https://<cloud>/api/v1/todos/intake`。
+   *
+   * endpoint 命中云端 `…/api/v1/todos/intake` 时，webhook adapter 自动改走
+   * 「截图/录像直传七牛」——intake 只建待办主体（剥掉 screenshot/screenshots/video 文件字段），
+   * 媒体再走 tickets → 七牛直传 → confirm 三段（同一 token 鉴权，body 里带 token）。
+   * 自定义模板没写 `{{token}}` 时，adapter 会把本字段兜底注入 intake body 的 token。
    */
   token?: string
 }

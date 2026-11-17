@@ -593,6 +593,215 @@ describe('webhookAdapter.submit — v0.8.14 重编码 WebP', () => {
   })
 })
 
+// ─────────────────── 云端待办：截图/录像直传七牛 ───────────────────
+// 契约（moo-scaffold-cloud）：
+//   ① POST {api}/todos/intake 只建待办主体，body 里不能带 screenshot/screenshots/video 文件字段；
+//   ② 每张截图/录像：POST {api}/uploads/tickets → 直传七牛 upload[-<region>].qiniup.com → POST {api}/uploads/{id}/confirm；
+//   ③ 非云端 endpoint 保持原来的单次 intake 行为；
+//   ④ 待办建成功但某张图失败 → ok=true + warnings 逐条列出，不谎报已上传。
+describe('webhookAdapter.submit — 云端直传七牛', () => {
+  const SHOT_1 = 'data:image/png;base64,QQ=='   // 1 字节
+  const SHOT_2 = 'data:image/png;base64,QUE='   // 2 字节
+  const VIDEO = 'data:video/webm;base64,QUJD'   // 3 字节
+
+  function cloudProject(): Project {
+    const p = baseProject()
+    p.token = 'tok_cloud_123'
+    p.servers = [{
+      id: 's1', name: 'cloud', endpoint: 'https://sc.example.com/api/v1/todos/intake',
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      payloadTemplate: '{"token":"{{token}}","title":"{{title}}","description":"{{description}}","screenshot":"{{image}}","screenshots":{{imagesJson}},"video":"{{video}}","context":{"url":"{{url}}","requests":{{requestsJson}}}}',
+      imageFormat: 'base64', imageField: 'screenshot'
+    }]
+    p.defaultServerId = 's1'
+    return p
+  }
+
+  interface RecordedCall { url: string; init?: RequestInit; bodyText: string; json: Record<string, unknown> | null }
+
+  interface CloudRouterOpts {
+    intake?: (n: number) => Response
+    ticket?: (n: number) => Response
+    qiniu?: (n: number) => Response
+    confirm?: (n: number) => Response
+  }
+
+  /** 按 URL 分派的 fetch mock：全程内存，绝不真实联网；data: 请求走 reencode 的假 blob 让它在无 canvas 时回退原图。 */
+  function stubCloudRouter(opts: CloudRouterOpts = {}) {
+    const calls: RecordedCall[] = []
+    let nIntake = 0, nTicket = 0, nQiniu = 0, nConfirm = 0
+    const fn = vi.fn(async (url: unknown, init?: RequestInit) => {
+      const u = String(url)
+      if (u.startsWith('data:')) {
+        // reencodeImage 内部 fetch(dataUrl)：返回可 .blob() 的轻量对象；node 无 createImageBitmap → 回退原图
+        return { blob: async () => ({ type: 'image/png', arrayBuffer: async () => new ArrayBuffer(1) }) } as unknown as Response
+      }
+      const bodyText = typeof init?.body === 'string' ? init.body : ''
+      let json: Record<string, unknown> | null = null
+      if (bodyText) {
+        try {
+          const parsed: unknown = JSON.parse(bodyText)
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) json = parsed as Record<string, unknown>
+        } catch { /* not json */ }
+      }
+      calls.push({ url: u, init, bodyText, json })
+      if (/\/uploads\/tickets$/.test(u)) {
+        nTicket += 1
+        return (opts.ticket ?? ((n) => jsonRes({ ok: true, upload_id: 'u' + n, key: 'k' + n, region: 'z0', token: 'qt' + n })))(nTicket)
+      }
+      if (/\/uploads\/[^/]+\/confirm$/.test(u)) {
+        nConfirm += 1
+        return (opts.confirm ?? (() => jsonRes({ ok: true })))(nConfirm)
+      }
+      if (/qiniup\.com/.test(u)) {
+        nQiniu += 1
+        return (opts.qiniu ?? (() => textRes('{"key":"ok"}', 200)))(nQiniu)
+      }
+      if (/\/todos\/intake$/.test(u)) {
+        nIntake += 1
+        return (opts.intake ?? (() => jsonRes({ ok: true, id: 'todo-77', status: 'open' })))(nIntake)
+      }
+      return textRes('unexpected url: ' + u, 500)
+    })
+    vi.stubGlobal('fetch', fn)
+    return { calls, fn }
+  }
+
+  const callsTo = (calls: RecordedCall[], re: RegExp) => calls.filter((c) => re.test(c.url))
+
+  it('happy path：intake 建单 + 两张图各走票据/七牛/confirm，intake body 不含截图字段', async () => {
+    const { calls } = stubCloudRouter()
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.submit(
+      baseReq({ image: SHOT_1, images: [SHOT_1, SHOT_2] }), cloudProject(), {}
+    )
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.remoteId).toBe('todo-77')
+      expect(r.warnings).toBeUndefined()
+    }
+
+    const intake = callsTo(calls, /\/todos\/intake$/)[0]!
+    // 文件字段已剥离：body 里不该出现 screenshot/screenshots/video
+    expect(intake.bodyText).not.toContain('screenshot')
+    expect(intake.bodyText).not.toContain('"video"')
+    const obj = intake.json!
+    expect(obj['token']).toBe('tok_cloud_123')       // 模板 {{token}} 渲染
+    expect(obj['title']).toBe('bug')
+    expect(obj['screenshot']).toBeUndefined()
+    expect(obj['screenshots']).toBeUndefined()
+    expect(obj['video']).toBeUndefined()
+    expect((obj['context'] as { url?: string }).url).toBe('https://example.com')
+
+    const tickets = callsTo(calls, /\/uploads\/tickets$/)
+    expect(tickets).toHaveLength(2)
+    expect(tickets[0]!.json!['business']).toBe('todo_images')
+    expect(tickets[0]!.json!['todo_id']).toBe('todo-77')
+    expect(tickets[0]!.json!['attachment_type']).toBe('image')
+    expect(tickets[0]!.json!['media_type']).toBe('image')
+    expect(String(tickets[0]!.json!['sha256'])).toMatch(/^[0-9a-f]{64}$/)
+    expect(tickets[0]!.json!['file_size']).toBe(1)
+    expect(tickets[1]!.json!['file_size']).toBe(2)
+
+    expect(callsTo(calls, /qiniup\.com/)).toHaveLength(2)
+    expect(callsTo(calls, /\/uploads\/[^/]+\/confirm$/)).toHaveLength(2)
+    // 票据响应 region=z0 → 直传域名是 upload.qiniup.com
+    expect(callsTo(calls, /^https:\/\/upload\.qiniup\.com$/)).toHaveLength(2)
+  })
+
+  it('非云端 endpoint 保持原行为：只发一次 intake，不调用 tickets/七牛/confirm', async () => {
+    const fn = vi.fn(async (_url: unknown, _init?: RequestInit) => jsonRes({ id: 'bug-7' }))
+    vi.stubGlobal('fetch', fn)
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.submit(baseReq(), baseProject(), {})
+    expect(r.ok).toBe(true)
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(String(fn.mock.calls[0]?.[0])).toBe('http://api.example.com/intake')
+  })
+
+  it('录像走 attachment_type=video 且带 duration_seconds', async () => {
+    const { calls } = stubCloudRouter()
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.submit(
+      baseReq({
+        image: SHOT_1,
+        images: [SHOT_1],
+        video: { dataUrl: VIDEO, bytes: 3, duration: 12, mime: 'video/webm' }
+      }),
+      cloudProject(), {}
+    )
+    expect(r.ok).toBe(true)
+    const tickets = callsTo(calls, /\/uploads\/tickets$/)
+    const videoTicket = tickets.find((c) => c.json!['attachment_type'] === 'video')
+    expect(videoTicket).toBeDefined()
+    expect(videoTicket!.json!['media_type']).toBe('video')
+    expect(videoTicket!.json!['duration_seconds']).toBe(12)
+    expect(videoTicket!.json!['file_size']).toBe(3)
+  })
+
+  it('某张图票据失败 → ok=true + warnings 明确列出失败项，成功那张照常走完', async () => {
+    const { calls } = stubCloudRouter({
+      ticket: (n) => n === 1
+        ? jsonRes({ ok: false, error: '待办不存在或不属于该项目。' }, 422)
+        : jsonRes({ ok: true, upload_id: 'u' + n, key: 'k' + n, region: 'z0', token: 'qt' + n })
+    })
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.submit(
+      baseReq({ image: SHOT_1, images: [SHOT_1, SHOT_2] }), cloudProject(), {}
+    )
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.remoteId).toBe('todo-77')
+      expect(r.warnings?.length).toBeGreaterThan(0)
+      expect(r.warnings?.some((w) => w.includes('第 1 张截图上传失败'))).toBe(true)
+      expect(r.warnings?.some((w) => w.includes('共 1 个附件上传失败'))).toBe(true)
+    }
+    // 第二张仍成功：只有一次 confirm（第一张没到 confirm）
+    expect(callsTo(calls, /\/uploads\/[^/]+\/confirm$/)).toHaveLength(1)
+  })
+
+  it('intake 失败（422）→ ok=false 且非 retryable', async () => {
+    const { calls } = stubCloudRouter({
+      intake: () => jsonRes({ ok: false, error: 'token 无效' }, 422)
+    })
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.submit(baseReq({ image: SHOT_1, images: [SHOT_1] }), cloudProject(), {})
+    expect(r.ok).toBe(false)
+    expect(r.retryable).toBe(false)
+    if (!r.ok) expect(r.error).toContain('token 无效')
+    // 没拿到 todo id 前不能上传媒体
+    expect(callsTo(calls, /\/uploads\/tickets$/)).toHaveLength(0)
+  })
+
+  it('模板没写 {{token}} → adapter 用项目配置兜底注入 body.token', async () => {
+    const { calls } = stubCloudRouter()
+    const p = cloudProject()
+    p.servers[0]!.payloadTemplate = '{"title":"{{title}}"}'
+    const { webhookAdapter } = await importAdapter()
+    const r = await webhookAdapter.submit(baseReq(), p, {})
+    expect(r.ok).toBe(true)
+    const intake = callsTo(calls, /\/todos\/intake$/)[0]!
+    expect(intake.json!['token']).toBe('tok_cloud_123')
+  })
+
+  it('serializeForRetry 对云端 endpoint 返回 null（多步直传不自动入队）', async () => {
+    const { webhookAdapter } = await importAdapter()
+    const p = await webhookAdapter.serializeForRetry(baseReq(), cloudProject())
+    expect(p).toBeNull()
+  })
+
+  it('endpoint 识别与区域域名映射', async () => {
+    const { isCloudTodoIntakeEndpoint, qiniuUploadHost } = await importAdapter()
+    expect(isCloudTodoIntakeEndpoint('https://sc.example.com/api/v1/todos/intake')).toBe(true)
+    expect(isCloudTodoIntakeEndpoint('https://sc.example.com/api/v1/todos/intake/')).toBe(true)
+    expect(isCloudTodoIntakeEndpoint('https://sc.example.com/api/v1/other/intake')).toBe(false)
+    expect(isCloudTodoIntakeEndpoint('http://localhost:8787/bugs/intake')).toBe(false)
+    expect(qiniuUploadHost('z0')).toBe('https://upload.qiniup.com')
+    expect(qiniuUploadHost('z1')).toBe('https://upload-z1.qiniup.com')
+    expect(qiniuUploadHost('cn-east-2')).toBe('https://upload-cn-east-2.qiniup.com')
+  })
+})
+
 describe('webhookAdapter.retryFromPayload', () => {
   const payload = () => ({
     kind: 'webhook' as const,

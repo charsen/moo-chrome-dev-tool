@@ -70,6 +70,15 @@
 
 用 Laravel 的话最省事——装 `composer require charsen/moo-scaffold`，自带接收接口和后台 UI。
 
+### 提交到 Moo 云端：截图/录像直传七牛
+
+如果上报服务器的「请求 URL」填的是云端的 `https://<cloud>/api/v1/todos/intake`，扩展会自动切到**直传模式**（截图/录像的大文件不再走 intake）：
+
+1. 先把标题、描述、token、context 等主体字段 `POST …/api/v1/todos/intake` 建出待办，**这次请求里不再带截图/录像**；
+2. 对每张截图/录像依次：`POST …/api/v1/uploads/tickets` 签票据 → 直传七牛 `upload.qiniup.com`（按区域也可能走 `upload-<region>.qiniup.com`）→ `POST …/api/v1/uploads/{upload_id}/confirm`，由云端核验大小/SHA-256 后自动落成待办附件。
+
+这样截图和录像的字节从浏览器直达七牛，绕开云端 PHP 的请求体/上传大小上限。某张图或录像传失败时不会谎报成功：待办照常创建，界面上会用「⚠」逐条列出哪个附件没传上去。非云端地址（自建 webhook、禅道）行为完全不变。
+
 ## 内部多系统怎么办
 
 公司内有 3 个系统要监控？在「环境」Tab 建 3 个项目，每个绑定自己的域名和上报地址。悬浮球会根据你当前所在网址自动切换到对应项目。
