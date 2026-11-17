@@ -2,6 +2,10 @@
 
 > 时间倒序。**BREAKING** 表示装新版后老服务器（或反过来）会跑不动，需要同步升级两侧。
 
+## Unreleased
+
+- 云端待办上传改为直传七牛：仅对 `/api/v1/todos/intake` endpoint 生效，先建待办主体，再逐张走 `uploads/tickets` → 七牛 multipart → `uploads/{id}/confirm`；非云端 webhook/禅道行为不变。
+
 ## v0.8.19
 
 2026-11-05。无 BREAKING —— 一批真机复现的交互 / 稳定性 / 隐私修复，并新增可见 Chrome 真机测试套件。
