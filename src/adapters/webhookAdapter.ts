@@ -19,8 +19,9 @@
  *   - deriveRemoteBase —— history.remoteBase 是 router 字段
  */
 
-import type { BugServer } from '@/types/config'
+import type { BugServer, Project } from '@/types/config'
 import type { BugHistoryEntry } from '@/types/history'
+import type { SubmitBugReq } from '@/types/messages'
 import type {
   IssueAdapter,
   AdapterSubmitOutcome,
@@ -93,6 +94,13 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
       token: project.token ?? ''
     }
 
+    // 云端待办（moo-scaffold-cloud）已支持截图/录像直传七牛：intake 只建待办主体，
+    // 媒体走「票据 → 七牛直传 → confirm」三段，避免 base64 塞进 intake 请求把体积
+    // 和 PHP post_max_size / 上传上限压爆。非 cloud endpoint 完全走原来的单请求路径。
+    if (isCloudTodoIntakeEndpoint(server.endpoint)) {
+      return await submitCloudTodo(req, project, server, renderCtx)
+    }
+
     const { body, headers } = buildRequestBody(server, renderCtx)
     const safeHeaders = sanitizeHeaders(headers)
 
@@ -100,23 +108,7 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
       const resp = await fetch(server.endpoint, { method: server.method, headers: safeHeaders, body })
       const text = await resp.text()
       const remoteId = parseRemoteId(text)
-      if (!resp.ok) {
-        // 只 log header 名字不打 value：用户配的 server.headers 可能含敏感字段
-        // （token 已经在 body 里，但有人会额外手配 Authorization 等），SW console
-        // 落盘后任何能读 chrome://extensions 日志的进程都能拿到。
-        // v0.7.6 general-purpose P2-3：bodyPreview 默认不打（即便有 ⚠ 警告，敏感
-        // 数据仍写入 SW console 落盘）。需要时设 chrome.storage.local.mooDebug=true 打开。
-        const debugInfo = await chrome.storage.local.get('mooDebug').catch(() => ({}))
-        const logBody = (debugInfo as { mooDebug?: boolean }).mooDebug === true
-        console.warn('[Moo submit-fail]', {
-          endpoint: server.endpoint,
-          finalUrl: resp.url,
-          status: resp.status,
-          statusText: resp.statusText,
-          ...(logBody ? { bodyPreview: text.slice(0, 200) } : { bodyHint: '(bodyPreview hidden — chrome.storage.local.set({mooDebug:true}) to enable)' }),
-          headerNames: Object.keys(safeHeaders)
-        })
-      }
+      if (!resp.ok) await logSubmitFailure(server.endpoint, resp, text, Object.keys(safeHeaders))
       return {
         ok: resp.ok,
         remoteId,
@@ -165,6 +157,10 @@ export const webhookAdapter: IssueAdapter<'webhook'> = {
   async serializeForRetry(req, project): Promise<AdapterRetryPayload | null> {
     const server = project.servers.find(s => s.id === req.serverId)
     if (!server?.endpoint) return null
+    // 云端直传是多步流程（intake 建单 → 票据 → 七牛 → confirm）：只重放 intake bodyString
+    // 会建出「没有截图/录像」的半成品单，所以不自动入队；失败让用户到「历史」手动重提
+    // （手动重提走完整 adapter.submit，会重新上传媒体）。
+    if (isCloudTodoIntakeEndpoint(server.endpoint)) return null
     if (server.imageFormat === 'multipart') return null  // multipart 不可序列化
 
     // 跟 live submit 同款：先把截图重编码成 WebP 再渲染。否则 2560px PNG（默认模板还会
@@ -294,6 +290,357 @@ export function deriveRemoteBase(endpoint: string): string {
   // 'https://<cloud>/api/v1/todos/intake' → 'https://<cloud>/api/v1/todos'
   // (status-public 回查 = {remoteBase}/{id}/status-public,与云端 /api/v1 路由对齐)
   return endpoint.replace(/\/intake\/?$/, '')
+}
+
+// ───────────────────────── 云端待办：截图/录像直传七牛 ─────────────────────────
+//
+// moo-scaffold-cloud 的 /api/v1/todos/intake 只负责建待办主体；截图/录像不再 base64
+// 塞进 intake，而是「票据 → 七牛直传 → confirm」三段（契约见 cloud 的 DirectUploads）：
+//   1) POST {apiBase}/uploads/tickets  body: {token, business:'todo_images', todo_id,
+//      attachment_type(=type, image|video), original_name, file_size, sha256, mime_type,
+//      duration_seconds?}  → {ok, upload_id, key, region, token}
+//   2) POST https://upload[-<region>].qiniup.com  multipart: token, key, file（字节不过 cloud）
+//   3) POST {apiBase}/uploads/{upload_id}/confirm  body: {token} → 云端核验大小/SHA-256 后落附件
+//
+// 失败语义：待办主体建成即算成功；某张图/录像失败只进 warnings，绝不谎报已上传。
+
+/** 云端 todo intake 的路径约定。命中的 endpoint 才走直传分支，其它 webhook/禅道保持原行为。 */
+const CLOUD_TODO_INTAKE_RE = /\/api\/v1\/todos\/intake\/?$/i
+
+/** 判断一个上报地址是不是云端待办 intake（路径以 /api/v1/todos/intake 结尾）。 */
+export function isCloudTodoIntakeEndpoint(endpoint: string): boolean {
+  const s = (endpoint || '').trim()
+  if (!s) return false
+  try {
+    const u = new URL(s)
+    if (CLOUD_TODO_INTAKE_RE.test(u.pathname)) return true
+  } catch {
+    // 相对地址 / 非标准 URL：退回字符串判定
+  }
+  return CLOUD_TODO_INTAKE_RE.test(s)
+}
+
+/** 七牛区域 → 直传域名：z0 无区域后缀，其余 upload-<region>；未知区域按 upload-<region> 兜底。 */
+export const QINIU_UPLOAD_HOSTS: Record<string, string> = {
+  z0: 'https://upload.qiniup.com',
+  z1: 'https://upload-z1.qiniup.com',
+  z2: 'https://upload-z2.qiniup.com',
+  na0: 'https://upload-na0.qiniup.com',
+  as0: 'https://upload-as0.qiniup.com'
+}
+
+export function qiniuUploadHost(region: string): string {
+  const r = (region || '').trim()
+  if (!r || r === 'z0') return QINIU_UPLOAD_HOSTS.z0!
+  return QINIU_UPLOAD_HOSTS[r] ?? `https://upload-${r}.qiniup.com`
+}
+
+/** 'https://<cloud>/api/v1/todos/intake' → 'https://<cloud>/api/v1'（tickets/confirm 的公共前缀）。 */
+function cloudApiBase(endpoint: string): string {
+  const m = endpoint.match(/^(.*)\/todos\/intake\/?$/i)
+  if (m && m[1]) return m[1]
+  return endpoint.replace(/\/+$/, '')
+}
+
+interface CloudMediaItem {
+  kind: 'image' | 'video'
+  dataUrl: string
+  label: string
+  durationSeconds?: number
+}
+
+/** 云端待办提交流程：建主体 → 逐张直传媒体 → 汇总 warnings。 */
+async function submitCloudTodo(
+  req: SubmitBugReq,
+  project: Project,
+  server: BugServer,
+  renderCtx: Record<string, unknown>
+): Promise<AdapterSubmitOutcome> {
+  const apiBase = cloudApiBase(server.endpoint)
+  const headers = cloudJsonHeaders(server.headers)
+
+  // ① 建待办主体：模板渲染成 JSON，剥掉截图/录像文件字段（媒体另走上传）
+  const intakeBody = buildCloudIntakeBody(server, renderCtx)
+  let resp: Response
+  try {
+    resp = await fetch(server.endpoint, { method: server.method, headers, body: intakeBody })
+  } catch (err) {
+    return { ok: false, error: (err as Error).message, retryable: true }
+  }
+  const text = await resp.text()
+  if (!resp.ok) {
+    await logSubmitFailure(server.endpoint, resp, text, Object.keys(headers))
+    return {
+      ok: false,
+      status: resp.status,
+      body: text,
+      error: errorDetailFromText(text) || `HTTP ${resp.status}`,
+      retryable: resp.status >= 500
+    }
+  }
+
+  const todoId = parseCloudTodoId(text)
+  if (!todoId) {
+    // 待办主体建了却没拿到 id —— 后续媒体无处可挂，也不能当成功（否则用户以为图都存好了）
+    return { ok: false, status: resp.status, body: text, error: '云端未返回待办 id（响应缺少 id）', retryable: false }
+  }
+
+  // ② 逐张截图/录像直传七牛；单个失败只记 warning，不推翻「待办已建」
+  const media = collectCloudMedia(renderCtx, req)
+  const warnings: string[] = []
+  let failed = 0
+  for (const item of media) {
+    try {
+      await uploadOneCloudMedia(apiBase, todoId, project.token ?? '', item)
+    } catch (e) {
+      failed++
+      warnings.push(`${item.label}上传失败：${(e as Error).message}`)
+    }
+  }
+  if (failed > 0) {
+    warnings.push(`共 ${failed} 个附件上传失败，待办已创建，但这些截图/录像没有上传到云端`)
+  }
+
+  return { ok: true, remoteId: todoId, status: resp.status, body: text, warnings: warnings.length ? warnings : undefined }
+}
+
+/** intake body：模板渲染后用空媒体占位（避免把巨大 base64 先拼出来），再删掉媒体字段。 */
+function buildCloudIntakeBody(server: BugServer, renderCtx: Record<string, unknown>): string {
+  const ctx: Record<string, unknown> = { ...renderCtx, image: '', images: [], video: '' }
+  const rendered = renderTemplate(server.payloadTemplate, ctx)
+  let obj: Record<string, unknown>
+  try {
+    const parsed = JSON.parse(rendered) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return rendered
+    obj = parsed as Record<string, unknown>
+  } catch {
+    // 用户模板写坏了：原样发（服务端会 400），保持与普通 webhook 一致的容错
+    return rendered
+  }
+  const drop = new Set([
+    'screenshot', 'screenshots', 'video', 'image', 'images',
+    'video_duration', 'video_bytes', 'videoDuration', 'videoBytes'
+  ])
+  if (server.imageField) drop.add(server.imageField)
+  for (const k of drop) delete obj[k]
+  // token 兜底：自定义模板没写 {{token}} 时从项目配置注入，保证 body.token 存在（middleware 按 body.token 鉴权）
+  if (typeof obj.token !== 'string' || obj.token.trim() === '') obj.token = renderCtx.token ?? ''
+  return JSON.stringify(obj)
+}
+
+/** 云端 JSON 请求 headers：强制 application/json，剥掉用户手配的 content-type 变体避免重复/错误边界。 */
+function cloudJsonHeaders(h: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(h)) {
+    if (k.toLowerCase() === 'content-type') continue
+    out[k] = v
+  }
+  out['Content-Type'] = 'application/json'
+  return sanitizeHeaders(out)
+}
+
+/** 从 intake 响应取待办 id：优先顶层 id（parseRemoteId），再兼容 {todo:{id}}。 */
+function parseCloudTodoId(text: string): string | undefined {
+  const id = parseRemoteId(text)
+  if (id) return id
+  try {
+    const obj = JSON.parse(text) as { todo?: { id?: unknown } }
+    const t = obj?.todo?.id
+    if (typeof t === 'string' && t.length <= 128 && /^[A-Za-z0-9_-]+$/.test(t)) return t
+  } catch {
+    /* not json */
+  }
+  return undefined
+}
+
+/** 收集要直传的媒体：多图（已重编码副本）+ 录像。 */
+function collectCloudMedia(renderCtx: Record<string, unknown>, req: SubmitBugReq): CloudMediaItem[] {
+  const items: CloudMediaItem[] = []
+  const images = Array.isArray(renderCtx.images) ? (renderCtx.images as unknown[]) : []
+  images.forEach((d, i) => {
+    if (typeof d === 'string' && d) items.push({ kind: 'image', dataUrl: d, label: `第 ${i + 1} 张截图` })
+  })
+  const video = req.video?.dataUrl
+  if (typeof video === 'string' && video) {
+    items.push({ kind: 'video', dataUrl: video, label: '录像', durationSeconds: req.video?.duration ?? 0 })
+  }
+  return items
+}
+
+/** 单个媒体：票据 → 七牛直传 → confirm。任一步失败抛错，由调用方汇总成 warnings。 */
+async function uploadOneCloudMedia(
+  apiBase: string,
+  todoId: string,
+  token: string,
+  item: CloudMediaItem
+): Promise<void> {
+  const blob = dataUrlToBlob(item.dataUrl)
+  if (!blob || blob.size === 0) throw new Error('内容为空或不是合法的 data URL')
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  const mime = blob.type || (item.kind === 'video' ? 'video/webm' : 'image/webp')
+  const sha256 = await sha256Hex(bytes)
+  const originalName = `${item.kind === 'video' ? 'video' : 'screenshot'}-${Date.now()}.${extFromMime(mime, item.kind)}`
+
+  // ① 申请直传票据
+  const ticketBody: Record<string, unknown> = {
+    token,
+    business: 'todo_images',
+    todo_id: todoId,
+    // cloud 实际读 attachment_type（兼容 type）；media_type 是对外契约里的同义字段，一并带上
+    media_type: item.kind,
+    attachment_type: item.kind,
+    original_name: originalName,
+    file_size: bytes.byteLength,
+    sha256,
+    mime_type: mime
+  }
+  if (item.kind === 'video' && item.durationSeconds && item.durationSeconds > 0) {
+    ticketBody.duration_seconds = Math.round(item.durationSeconds)
+  }
+  const ticket = await postCloudJson(`${apiBase}/uploads/tickets`, ticketBody)
+  const uploadId = asStr(ticket.upload_id)
+  const key = asStr(ticket.key)
+  const region = asStr(ticket.region)
+  const qiniuToken = asStr(ticket.token)
+  if (!uploadId || !key || !region || !qiniuToken) throw new Error('票据响应缺少 upload_id/key/region/token')
+
+  // ② 字节直传七牛（不经过 cloud）
+  const form = new FormData()
+  form.append('token', qiniuToken)
+  form.append('key', key)
+  form.append('file', new Blob([bytes as unknown as BlobPart], { type: mime }), originalName)
+  let putResp: Response
+  try {
+    putResp = await fetch(qiniuUploadHost(region), { method: 'POST', body: form })
+  } catch (e) {
+    throw new Error(`七牛直传网络错误：${(e as Error).message}`)
+  }
+  const putText = await putResp.text()
+  if (!putResp.ok && !isQiniuFileExists(putResp.status, putText)) {
+    throw new Error(`七牛直传失败 HTTP ${putResp.status}${textDetail(putText)}`)
+  }
+
+  // ③ 确认：云端核验大小/SHA-256 后把对象登记成待办附件
+  await postCloudJson(`${apiBase}/uploads/${encodeURIComponent(uploadId)}/confirm`, { token })
+}
+
+/** POST JSON 到云端并校验 {ok:true}，失败抛带服务端文案的 Error。 */
+async function postCloudJson(url: string, body: unknown): Promise<Record<string, unknown>> {
+  let resp: Response
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+  } catch (e) {
+    throw new Error(`请求失败：${(e as Error).message}`)
+  }
+  const text = await resp.text()
+  let parsed: unknown = null
+  try {
+    parsed = text ? JSON.parse(text) : null
+  } catch {
+    /* 非 JSON 错误页 */
+  }
+  const obj = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : null
+  if (!resp.ok || !obj || obj.ok !== true) {
+    const detail = obj ? errorDetailFromBody(obj) : textDetail(text)
+    throw new Error(`HTTP ${resp.status}${detail ? '：' + detail : ''}`)
+  }
+  return obj
+}
+
+function sha256Hex(bytes: Uint8Array): Promise<string> {
+  // TS 5.9 lib 把 Uint8Array<ArrayBufferLike> 与 BufferSource 卡得很死（SharedArrayBuffer 不可赋给 ArrayBuffer），
+  // 运行时字节一致，这里显式收窄到 BufferSource。
+  return crypto.subtle.digest('SHA-256', bytes as unknown as BufferSource).then((digest) => {
+    const arr = new Uint8Array(digest)
+    let out = ''
+    for (const b of arr) out += b.toString(16).padStart(2, '0')
+    return out
+  })
+}
+
+function extFromMime(mime: string, kind: 'image' | 'video'): string {
+  const m = mime.toLowerCase()
+  if (m === 'image/png') return 'png'
+  if (m === 'image/jpeg') return 'jpg'
+  if (m === 'image/webp') return 'webp'
+  if (m === 'image/gif') return 'gif'
+  if (m === 'video/webm') return 'webm'
+  if (m === 'video/mp4') return 'mp4'
+  if (m === 'video/quicktime') return 'mov'
+  return kind === 'video' ? 'webm' : 'png'
+}
+
+/** 七牛对「目标 key 已存在」返回 614 / {error:'file exists'}；同 key 即同内容，可视为已传。 */
+function isQiniuFileExists(status: number, text: string): boolean {
+  if (status === 614) return true
+  try {
+    const o = JSON.parse(text) as { error?: unknown }
+    return typeof o?.error === 'string' && /file\s*exists/i.test(o.error)
+  } catch {
+    return false
+  }
+}
+
+function asStr(v: unknown): string {
+  return typeof v === 'string' ? v : ''
+}
+
+/** 服务端错误文案：error 优先，其次 Laravel errors{}，再 message。 */
+function errorDetailFromBody(obj: Record<string, unknown>): string {
+  if (typeof obj.error === 'string' && obj.error) return obj.error
+  const errors = obj.errors
+  if (errors && typeof errors === 'object') {
+    const parts = Object.entries(errors as Record<string, unknown>)
+      .map(([field, value]) => `${field}: ${Array.isArray(value) ? value.join(' ') : String(value)}`)
+      .filter(Boolean)
+    if (parts.length) return parts.join('; ')
+  }
+  if (typeof obj.message === 'string' && obj.message) return obj.message
+  return ''
+}
+
+function errorDetailFromText(text: string): string {
+  try {
+    const parsed = JSON.parse(text) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return errorDetailFromBody(parsed as Record<string, unknown>)
+    }
+  } catch {
+    /* not json */
+  }
+  return ''
+}
+
+function textDetail(text: string): string {
+  if (!text) return ''
+  return text.length > 200 ? text.slice(0, 200) + '…' : text
+}
+
+/** 统一失败日志：只打 header 名不打 value（server.headers 可能含用户手配的敏感字段）。 */
+async function logSubmitFailure(
+  endpoint: string,
+  resp: Response,
+  text: string,
+  headerNames: string[]
+): Promise<void> {
+  // v0.7.6 general-purpose P2-3：bodyPreview 默认不打（敏感数据会写进 SW console 落盘）。
+  // 需要时设 chrome.storage.local.mooDebug=true 打开。
+  const debugInfo = await chrome.storage.local.get('mooDebug').catch(() => ({}))
+  const logBody = (debugInfo as { mooDebug?: boolean }).mooDebug === true
+  console.warn('[Moo submit-fail]', {
+    endpoint,
+    finalUrl: resp.url,
+    status: resp.status,
+    statusText: resp.statusText,
+    ...(logBody ? { bodyPreview: text.slice(0, 200) } : { bodyHint: '(bodyPreview hidden — chrome.storage.local.set({mooDebug:true}) to enable)' }),
+    headerNames
+  })
 }
 
 function buildRequestBody(
